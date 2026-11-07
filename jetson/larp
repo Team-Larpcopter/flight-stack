@@ -55,6 +55,9 @@ larp fox stop | status
   --quality Q   JPEG quality 1-100 (default 50)
   --topics ...  CompressedImage topics to relay
                 (default /oak/left/image_raw/compressed,/oak/right/image_raw/compressed)
+  --buffer B    bridge send buffer per client, bytes (default 131072). When the
+                link falls behind, older messages are dropped, not queued, so
+                Foxglove always shows the latest data.
 
 Full-rate camera topics are never served: one OAK stream (~60 Mbit/s) is more
 than the drone's Wi-Fi uplink and cost the bridge ~50% CPU.
@@ -66,11 +69,12 @@ fox() {
   local action="${1:-start}"; shift || true
   case "$action" in
     start)
-      local images=0 rate=5 scale=0.5 quality=50
+      local images=0 rate=5 scale=0.5 quality=50 buffer=131072
       local topics="/oak/left/image_raw/compressed,/oak/right/image_raw/compressed"
       while [[ $# -gt 0 ]]; do
         case "$1" in
           --images) images=1; shift ;;
+          --buffer) buffer="${2:?}"; shift 2 ;;
           --rate) rate="${2:?}"; shift 2 ;;
           --scale) scale="${2:?}"; shift 2 ;;
           --quality) quality="${2:?}"; shift 2 ;;
@@ -84,13 +88,17 @@ fox() {
       fi
       # Read-only (rule 5.5): drop clientPublish/parameters/services, whitelist no client writes.
       # Serve every topic except images; images only via the /viz relay.
+      # Latest data only: a small send buffer (the real latency source) plus shallow ROS
+      # queues (max 5, so /tf_static keeps all 4 static transforms the 3D panel needs),
+      # so a slow link drops old messages instead of queueing seconds of them.
       # Values go in via tmux -e so the regexes need no nested shell quoting.
       docker exec "$STACK" tmux new-window -d -t skybeta -n foxglove \
-        -e "FOX_PORT=${FOX_PORT}" \
+        -e "FOX_PORT=${FOX_PORT}" -e "FOX_BUFFER=${buffer}" \
         -e "FOX_TOPICS=['^(/viz/.*|(?!.*/image).*)\$']" \
         -e "FOX_NONE=['^\$']" \
         'bash -c "source skybeta_env.sh; ros2 launch foxglove_bridge foxglove_bridge_launch.xml \
           port:=\$FOX_PORT address:=0.0.0.0 capabilities:=\"[connectionGraph,assets]\" \
+          send_buffer_limit:=\$FOX_BUFFER min_qos_depth:=1 max_qos_depth:=5 \
           topic_whitelist:=\"\$FOX_TOPICS\" client_topic_whitelist:=\"\$FOX_NONE\" \
           service_whitelist:=\"\$FOX_NONE\" param_whitelist:=\"\$FOX_NONE\"; \
           echo exited; sleep infinity"'

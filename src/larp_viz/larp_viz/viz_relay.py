@@ -13,8 +13,13 @@ import numpy as np
 import rclpy
 from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CompressedImage
+
+#: Keep only the newest frame: a viewer never wants a queued, stale one.
+LATEST_ONLY = QoSProfile(
+    history=HistoryPolicy.KEEP_LAST, depth=1, reliability=ReliabilityPolicy.BEST_EFFORT
+)
 
 DEFAULT_TOPICS = [
     "/oak/left/image_raw/compressed",
@@ -52,7 +57,7 @@ class VizRelay(Node):
                     CompressedImage,
                     topic,
                     lambda msg, t=topic, p=out: self.relay(t, p, msg),
-                    qos_profile_sensor_data,
+                    LATEST_ONLY,
                 )
             )
             self.get_logger().info(f"{topic} -> {self.prefix + topic}")

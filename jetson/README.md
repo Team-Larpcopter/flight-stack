@@ -43,6 +43,7 @@ larp fox start                       # telemetry only
 larp fox start --images              # + both cameras, 5 Hz, half size, JPEG 50
 larp fox start --images --rate 2 --scale 1.0 --quality 80
 larp fox start --topics /some/image/compressed   # relay other CompressedImage topics
+larp fox start --buffer 262144       # bridge send buffer in bytes (default 131072)
 larp fox stop
 ```
 
@@ -55,6 +56,11 @@ frame at 30 Hz (~60 Mbit/s), more than the drone's Wi-Fi uplink, and it cost
 the bridge ~50% CPU. The `--images` copies measured ~97 KB/s per camera at
 5 Hz; `viz_relay` uses ~22% of one core because it still receives every
 30 Hz frame. Any topic containing `/image` is hidden unless it is under `/viz`.
+
+Latest data only: the bridge's send buffer is 128 KB (default 10 MB), so when
+the Wi-Fi falls behind it drops old messages instead of queueing seconds of
+them. ROS queues are capped at 5 (`/tf_static` needs its 4 static transforms),
+and the relay keeps only the newest frame.
 
 The bridge and relay run as `foxglove` and `viz` windows in the stack's tmux,
 so they stop whenever the stack restarts; run `larp fox start` again.
