@@ -29,6 +29,8 @@ def generate_launch_description():
                               description='tangent (face along path) or fixed'),
         DeclareLaunchArgument('max_yaw_rate', default_value='1.0'),
         DeclareLaunchArgument('max_tracking_error', default_value='0.4'),
+        DeclareLaunchArgument('hold_timeout', default_value='5.0'),
+        DeclareLaunchArgument('landing_timeout', default_value='45.0'),
         DeclareLaunchArgument('trajectory_topic', default_value='/larper/trajectory_in'),
         DeclareLaunchArgument('px4_topic_prefix', default_value='/fmu'),
         Node(
@@ -36,6 +38,8 @@ def generate_launch_description():
             output='screen', parameters=[{
                 'simulation_only': True,
                 'takeoff_height': number('cruise_height'),
+                'hold_timeout': number('hold_timeout'),
+                'landing_timeout': number('landing_timeout'),
                 'px4_topic_prefix': arg('px4_topic_prefix'),
                 'trajectory_topic': arg('trajectory_topic'),
             }]),

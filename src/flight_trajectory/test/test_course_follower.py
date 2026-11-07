@@ -141,3 +141,29 @@ def test_tracking_error_or_executive_error_stops_streaming():
     r.follow(r.tick('HOLD'))
     assert r.tick('ERROR') is None
     assert r.f.phase == Phase.ABORTED
+
+
+def test_complete_marks_stationary_final_sample_until_land_handoff():
+    r = Run('fixed')
+    r.take_off()
+    sample = r.tick('HOLD')
+    assert not sample.is_final
+    while r.f.phase == Phase.TRACKING:
+        r.follow(sample)
+        sample = r.tick('TRACKING')
+    assert sample.is_final
+    assert sample.velocity == pytest.approx((0, 0, 0), abs=1e-9)
+    for _ in range(10):
+        assert r.tick('TRACKING').is_final
+    assert r.tick('LAND') is None
+    assert r.f.phase == Phase.FINISHED
+    assert r.tick('DONE') is None
+    assert r.tick('HOLD') is None
+
+
+def test_abort_does_not_produce_a_final_sample():
+    r = Run('fixed')
+    r.take_off()
+    assert not r.tick('HOLD').is_final
+    assert r.tick('ERROR') is None
+    assert r.f.phase == Phase.ABORTED

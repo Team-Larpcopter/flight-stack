@@ -6,6 +6,7 @@ topic. The flight executive owns arming, takeoff, mode, and safety checks.
 
 from math import nan
 from time import monotonic
+from uuid import uuid4
 
 import rclpy
 from flight_executive_msgs.msg import TrajectorySetpoint
@@ -53,6 +54,7 @@ class CourseTrajectoryNode(Node):
         trajectory = COURSES[course](max_speed=max_speed, height=height,
                                      yaw_mode=yaw_mode, max_yaw_rate=max_yaw_rate)
         self.follower = CourseFollower(trajectory, max_error)
+        self.trajectory_id = str(uuid4())
         self.landed = None
 
         telemetry_qos = QoSProfile(
@@ -115,6 +117,8 @@ class CourseTrajectoryNode(Node):
         if sample is None:
             return
         msg = TrajectorySetpoint()
+        msg.trajectory_id = self.trajectory_id
+        msg.is_final = sample.is_final
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'local_ned'
         msg.position.x, msg.position.y, msg.position.z = map(float, sample.position)

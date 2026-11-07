@@ -12,6 +12,7 @@ class State(Enum):
     HOLD = 'HOLD'
     TRACKING = 'TRACKING'
     LAND = 'LAND'
+    DONE = 'DONE'
     ERROR = 'ERROR'
 
 
@@ -25,6 +26,7 @@ class Phase(Enum):
 class Command(Enum):
     OFFBOARD = 176
     ARM = 400
+    LAND = 21
 
 
 @dataclass(frozen=True)
@@ -34,6 +36,7 @@ class Status:
     offboard: bool
     preflight_ok: bool
     failsafe: bool = False
+    auto_land: bool = False
 
 
 @dataclass(frozen=True)
@@ -46,6 +49,9 @@ class Position:
     vz: float
     valid: bool = True
     reset_counters: tuple = (0, 0, 0)
+    vx: float = 0.0
+    vy: float = 0.0
+    velocity_valid: bool = True
 
     def usable(self) -> bool:
         return self.valid and all(isfinite(v) for v in (
@@ -77,6 +83,8 @@ class Trajectory:
     acceleration: tuple
     yaw: Optional[float] = None
     yawspeed: Optional[float] = None
+    trajectory_id: str = ''
+    is_final: bool = False
 
 
 @dataclass(frozen=True)

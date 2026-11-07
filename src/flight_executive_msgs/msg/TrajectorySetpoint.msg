@@ -9,3 +9,6 @@ geometry_msgs/Vector3 acceleration
 bool yaw_valid
 float32 yaw
 float32 yawspeed
+# A trajectory ID is fixed for one flight; repeat the stationary final sample.
+string trajectory_id
+bool is_final

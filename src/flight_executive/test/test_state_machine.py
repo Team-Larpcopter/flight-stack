@@ -55,7 +55,7 @@ class Flight:
         assert self.c.state == State.HOLD
 
 
-def test_nonzero_origin_sequence_and_indefinite_hold():
+def test_nonzero_origin_sequence_and_hold_target():
     f = Flight()
     output = f.tick()
     assert f.c.state == State.TAKEOFF
@@ -80,7 +80,7 @@ def test_nonzero_origin_sequence_and_indefinite_hold():
     for _ in range(21):
         f.tick()
     assert f.c.state == State.HOLD
-    for _ in range(240):
+    for _ in range(80):
         output = f.tick()
         assert (output.setpoint.x, output.setpoint.y, output.setpoint.z,
                 output.setpoint.yaw) == (target.x, target.y, target.z, target.yaw)
