@@ -16,8 +16,11 @@ identity, PX4 parameters, or `/fmu/in/*`.
 | `larp` | Helper CLI, linked as `~/.local/bin/larp`. Run `larp help`. |
 | `install.sh` | One-time host setup: tmux, htop, jq, `larp`, Claude Code, Node 22, Codex CLI. Needs internet. |
 | `tmux.conf` | Copied to `~/.tmux.conf` if none exists. `Ctrl-b Ctrl-b` sends the prefix to the stack's nested tmux. |
-| `foxglove/larpcopter-drone.json` | Foxglove layout: both cameras (`/viz`), IMU and VIO plots, 3D VIO view, `/skybeta/state`, VIO status. |
-| `../src/larp_viz` | ROS package: `viz_relay` republishes camera JPEGs on `/viz/<topic>` at low rate and size. |
+| `foxglove/larpcopter-drone.json` | Foxglove layout: L/R cameras + filtered depth (`/viz`), IMU and VIO plots, 3D VIO view, `/skybeta/state`, VIO status. |
+| `team_image/Dockerfile` | Team overlay image (`skybeta-team:<VERSION>`): bakes `larp_oak` (`1280×800@30` `mono8` VIO + `800×500@30` stereo depth + CUDA pyramid `depth_filter`) and `larp_viz` into `/root/skybeta_ws`. |
+| `oak_test/` | Standalone container harness + monitor for camera/depth/cuVSLAM stress tests. |
+| `../src/larp_oak` | ROS package: `oak_node` (direct DepthAI driver: `1280×800@30` `mono8` L/R + `800×500@30` `ROBOTICS` subpixel depth + `200 Hz` IMU) and `depth_filter` (CUDA multi-scale edge-consistent hole fill + temporal filter → `/oak/stereo/filtered/image`). |
+| `../src/larp_viz` | ROS package: `viz_relay` republishes downscaled camera and colourised depth JPEGs on `/viz/<topic>/compressed` at 5 Hz. |
 
 ## `larp` commands
 
@@ -28,7 +31,8 @@ identity, PX4 parameters, or `/fmu/in/*`.
 | `larp ros CMD` | one ROS command inside the stack |
 | `larp attach` | the stack's tmux (`Ctrl-b d` to leave) |
 | `larp build` | `team_build.sh` (colcon build of `~/team_ws`) inside the stack |
-| `larp fox start [--images]` | read-only Foxglove bridge on port 8766 (no client publish, services or params, rule 5.5). Telemetry only by default; `--images` adds camera copies on `/viz` (see below) |
+| `larp image build` / `off` / `status` | build/disable/inspect `skybeta-team:<VERSION>` (`larp_oak` + `depth_filter` + `larp_viz`) |
+| `larp fox start [--images]` | read-only Foxglove bridge on port 8766 (no client publish, services or params, rule 5.5). Telemetry only by default; `--images` adds 5 Hz camera + depth copies on `/viz` (see below) |
 | `larp fox stop` / `status` | stop the bridge and image relay / show whether they run |
 | `larp bag` | organisers' `host/run.sh bag` |
 | `larp doctor` | organisers' `host/doctor.sh` |

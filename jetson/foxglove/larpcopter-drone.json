@@ -2,12 +2,12 @@
   "configById": {
     "Image!left": {
       "imageMode": {
-        "imageTopic": "/viz/oak/left/image_rect/compressed"
+        "imageTopic": "/viz/oak/left/image_raw/compressed"
       }
     },
     "Image!right": {
       "imageMode": {
-        "imageTopic": "/viz/oak/right/image_rect/compressed"
+        "imageTopic": "/viz/oak/right/image_raw/compressed"
       }
     },
     "Plot!accel": {
@@ -124,7 +124,7 @@
     },
     "Image!depth": {
       "imageMode": {
-        "imageTopic": "/viz/oak/stereo/image_raw/compressed"
+        "imageTopic": "/viz/oak/stereo/filtered/image/compressed"
       }
     }
   },

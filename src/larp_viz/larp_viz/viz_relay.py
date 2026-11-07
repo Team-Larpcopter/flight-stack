@@ -18,6 +18,8 @@ Frames between publications are dropped before any conversion, so the CPU
 cost is only paid at ``rate_hz``. Viewing only: nothing in flight reads /viz.
 """
 
+import array
+
 import cv2
 import numpy as np
 import rclpy
@@ -65,6 +67,20 @@ def image_to_array(msg):
         rows = np.frombuffer(msg.data, dtype=dtype).reshape(msg.height, msg.step // 4)
         return rows[:, : msg.width].copy()
     return None
+
+
+def shrink_depth(depth_m, scale):
+    """Downscale depth like the OAK's decimation: mean of the VALID pixels only.
+
+    Resizing the colourised image instead averages holes (black) into their
+    neighbours and makes the view look far emptier than the depth is.
+    """
+    valid = (depth_m > 0) & np.isfinite(depth_m)
+    d = np.where(valid, depth_m, 0).astype(np.float32)
+    size = (max(1, int(depth_m.shape[1] * scale)), max(1, int(depth_m.shape[0] * scale)))
+    total = cv2.resize(d, size, interpolation=cv2.INTER_AREA)
+    count = cv2.resize(valid.astype(np.float32), size, interpolation=cv2.INTER_AREA)
+    return np.where(count > 0.25, total / np.maximum(count, 1e-6), 0).astype(np.float32)
 
 
 def colorize_depth(depth_m, min_m, max_m):
@@ -124,7 +140,9 @@ class VizRelay(Node):
         depth = image_to_array(msg)
         if depth is None or depth.dtype != np.float32:
             return None
-        return encode(colorize_depth(depth, self.min_m, self.max_m), self.scale, self.quality)
+        if self.scale != 1.0:
+            depth = shrink_depth(depth, self.scale)
+        return encode(colorize_depth(depth, self.min_m, self.max_m), 1.0, self.quality)
 
     def relay(self, topic, publisher, msg, convert):
         now = self.get_clock().now().nanoseconds * 1e-9
@@ -141,7 +159,7 @@ class VizRelay(Node):
         out = CompressedImage()
         out.header = msg.header
         out.format = "jpeg"
-        out.data = data
+        out.data = array.array("B", data)  # rclpy fast path
         publisher.publish(out)
 
 

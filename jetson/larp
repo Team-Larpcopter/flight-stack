@@ -16,7 +16,12 @@ need_stack() { docker inspect -f '{{.State.Running}}' "$STACK" 2>/dev/null | gre
   || die "container $STACK is not running (sudo systemctl status skybeta-stack)"; }
 # Run a command inside the stack with the ROS env (domain, DDS profile, overlays).
 in_ros() { need_stack; docker exec "$STACK" bash -c "source skybeta_env.sh; $*"; }
-in_ros_it() { need_stack; docker exec -it "$STACK" bash -c "source skybeta_env.sh; $*"; }
+in_ros_it() {
+  need_stack
+  local tty=()
+  [[ -t 0 && -t 1 ]] && tty=(-it)
+  docker exec "${tty[@]}" "$STACK" bash -c "source skybeta_env.sh; $*"
+}
 
 usage() {
   cat <<EOF
@@ -57,14 +62,14 @@ larp fox stop | status
   --images      also stream low-bandwidth camera copies on /viz/<topic>
   --rate HZ     image rate (default 5)
   --scale S     image scale (default 0.5; 1.0 = full size)
-  --quality Q   JPEG quality 1-100 (default 50)
+  --quality Q   JPEG quality 1-100 (default 80)
   --topics T,...        CompressedImage (JPEG) topics to relay
   --raw-topics T,...    Image (mono8/bgr8) topics to relay
   --depth-topics T,...  depth Image (16UC1 mm / 32FC1 m) topics, colourised
   --depth-range MIN,MAX colour scale for depth in metres (default 0.3,6)
-                Default sources are detected: our team image (on-device depth)
-                -> /oak/left/image_rect, /oak/right/image_rect,
-                   /oak/stereo/image_raw;
+                Default sources are detected: our team image (larp_oak)
+                -> /oak/left/image_raw, /oak/right/image_raw,
+                   /oak/stereo/filtered/image, /oak/stereo/image_raw;
                 skybeta's image -> /oak/{left,right}/image_raw/compressed.
                 Output: /viz/<topic>[/compressed]
   --buffer B    bridge send buffer per client, bytes (default 131072). When the
@@ -81,7 +86,7 @@ fox() {
   local action="${1:-start}"; shift || true
   case "$action" in
     start)
-      local images=0 rate=5 scale=0.5 quality=50 buffer=131072 explicit=0
+      local images=0 rate=5 scale=0.5 quality=80 buffer=131072 explicit=0
       local topics="" raw_topics="" depth_topics="" depth_range="0.3,6.0"
       while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -121,7 +126,11 @@ fox() {
         if [[ $explicit == 0 ]]; then
           # Capture first: `cmd | grep -q` under pipefail fails when grep exits early.
           local live; live="$(in_ros "ros2 topic list" 2>/dev/null || true)"
-          if grep -qx /oak/stereo/image_raw <<< "$live"; then
+          if grep -qx /oak/stereo/filtered/image <<< "$live" \
+             || in_ros 'grep -q larp_oak "$(ros2 pkg prefix --share oakd_vslam_bringup)/launch/oakd_vslam.launch.py"' 2>/dev/null; then
+            raw_topics="/oak/left/image_raw,/oak/right/image_raw"
+            depth_topics="/oak/stereo/filtered/image,/oak/stereo/image_raw"
+          elif grep -qx /oak/stereo/image_raw <<< "$live"; then
             raw_topics="/oak/left/image_rect,/oak/right/image_rect"
             depth_topics="/oak/stereo/image_raw"
           else
@@ -192,8 +201,10 @@ case "$cmd" in
     running="$(docker inspect -f '{{.Config.Image}}' "$STACK" 2>/dev/null || echo none)"
     case "${1:-status}" in
       build)
-        [[ ! -e "$ws/Dockerfile" ]] || cmp -s "$ws/Dockerfile" "$tdir/Dockerfile" \
-          || die "$ws/Dockerfile exists and differs from ours; move it aside first"
+        [[ ! -e "$ws/Dockerfile" ]] \
+          || cmp -s "$ws/Dockerfile" "$tdir/Dockerfile" \
+          || grep -q 'io.larpcopter.overrides' "$ws/Dockerfile" \
+          || die "$ws/Dockerfile exists and is not a Larpcopter Dockerfile; move it aside first"
         cp "$tdir/Dockerfile" "$ws/Dockerfile"
         cp "$tdir/dockerignore" "$ws/.dockerignore"
         rm -f "$ws/Dockerfile.off"

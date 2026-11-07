@@ -10,15 +10,21 @@
 ARG BASE
 FROM ${BASE}
 
-# On-device stereo depth (jetson/team_image/oakd_vslam.yaml) and the matching VIO
-# launch (cuVSLAM on the OAK's rectified mono8 pair). The originals are colcon
-# --symlink-install links into the build tree, so remove each link first.
-ARG SHARE=/root/skybeta_ws/install/oakd_vslam_bringup/share/oakd_vslam_bringup
-COPY src/flight-stack/jetson/team_image/oakd_vslam.yaml /tmp/larp/oakd_vslam.yaml
-COPY src/flight-stack/jetson/team_image/oakd_vslam.launch.py /tmp/larp/oakd_vslam.launch.py
-RUN rm -f "${SHARE}/config/oakd_vslam.yaml" "${SHARE}/launch/oakd_vslam.launch.py" \
- && install -m 0644 /tmp/larp/oakd_vslam.yaml "${SHARE}/config/oakd_vslam.yaml" \
- && install -m 0644 /tmp/larp/oakd_vslam.launch.py "${SHARE}/launch/oakd_vslam.launch.py" \
- && rm -rf /tmp/larp
+SHELL ["/bin/bash", "-c"]
 
-LABEL io.larpcopter.overrides="oakd_vslam.yaml oakd_vslam.launch.py (on-device depth)"
+# Build larp_oak (1280x800@30 mono8 VIO + 800x500@30 depth + CUDA pyramid depth
+# filter) and larp_viz (5 Hz Foxglove relay) directly into /root/skybeta_ws so
+# run_slam.sh (which sets SKYBETA_UNDERLAY_ONLY=1) finds larp_oak, then replace
+# oakd_vslam_bringup's launch file (originally a --symlink-install link) with
+# larp_vslam.launch.py.
+COPY src/flight-stack/src/larp_oak /root/skybeta_ws/src/larp_oak
+COPY src/flight-stack/src/larp_viz /root/skybeta_ws/src/larp_viz
+RUN source /opt/ros/humble/setup.bash \
+ && source /root/skybeta_ws/install/local_setup.bash \
+ && cd /root/skybeta_ws \
+ && colcon build --packages-select larp_oak larp_viz \
+ && SHARE=/root/skybeta_ws/install/oakd_vslam_bringup/share/oakd_vslam_bringup \
+ && rm -f "${SHARE}/launch/oakd_vslam.launch.py" \
+ && install -m 0644 /root/skybeta_ws/src/larp_oak/launch/larp_vslam.launch.py "${SHARE}/launch/oakd_vslam.launch.py"
+
+LABEL io.larpcopter.overrides="larp_oak (1280x800@30 VIO + 800x500 filtered depth) + larp_viz"
