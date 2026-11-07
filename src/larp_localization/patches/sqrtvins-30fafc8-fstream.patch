@@ -1,0 +1,48 @@
+diff --git a/ov_srvins/src/core/VioManager.cpp b/ov_srvins/src/core/VioManager.cpp
+index 87fa342..d5e7318 100644
+--- a/ov_srvins/src/core/VioManager.cpp
++++ b/ov_srvins/src/core/VioManager.cpp
+@@ -27,6 +27,7 @@
+ 
+ 
+ 
++#include <fstream>  // larpcopter patch: std::ofstream/ifstream used below; not reached transitively on aarch64 (L4T R36) g++
+ #include "VioManager.h"
+ 
+ #include "feat/Feature.h"
+diff --git a/ov_srvins/src/initializer/dynamic/DynamicInitializer.cpp b/ov_srvins/src/initializer/dynamic/DynamicInitializer.cpp
+index 8a9ad36..2f8ab9c 100644
+--- a/ov_srvins/src/initializer/dynamic/DynamicInitializer.cpp
++++ b/ov_srvins/src/initializer/dynamic/DynamicInitializer.cpp
+@@ -27,6 +27,7 @@
+ 
+ 
+ 
++#include <fstream>  // larpcopter patch: std::ofstream/ifstream used below; not reached transitively on aarch64 (L4T R36) g++
+ #include "DynamicInitializer.h"
+ 
+ #include "cpi/CpiV1.h"
+diff --git a/ov_srvins/src/ros/ROSVisualizerHelper.cpp b/ov_srvins/src/ros/ROSVisualizerHelper.cpp
+index e43be3f..36d982b 100644
+--- a/ov_srvins/src/ros/ROSVisualizerHelper.cpp
++++ b/ov_srvins/src/ros/ROSVisualizerHelper.cpp
+@@ -27,6 +27,7 @@
+ 
+ 
+ 
++#include <fstream>  // larpcopter patch: std::ofstream/ifstream used below; not reached transitively on aarch64 (L4T R36) g++
+ #include "ROSVisualizerHelper.h"
+ 
+ #include "core/VioManager.h"
+diff --git a/ov_srvins/src/ros/ROSVisualizerHelper.h b/ov_srvins/src/ros/ROSVisualizerHelper.h
+index cbcecf1..61c5e49 100644
+--- a/ov_srvins/src/ros/ROSVisualizerHelper.h
++++ b/ov_srvins/src/ros/ROSVisualizerHelper.h
+@@ -30,6 +30,7 @@
+ #ifndef OV_SRVINS_ROSVISUALIZER_HELPER_H
+ #define OV_SRVINS_ROSVISUALIZER_HELPER_H
+ 
++#include <fstream>  // larpcopter patch: std::ofstream/ifstream used below; not reached transitively on aarch64 (L4T R36) g++
+ #include <Eigen/Eigen>
+ 
+ #include "utils/DataType.h"
