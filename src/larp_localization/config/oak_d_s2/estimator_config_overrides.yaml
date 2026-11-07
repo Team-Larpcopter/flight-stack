@@ -1,0 +1,9 @@
+# Values to set in estimator_config.yaml for the OAK-D S2 (stereo, 30 Hz)
+use_stereo: true
+max_cameras: 2
+calib_cam_extrinsics: true
+calib_cam_intrinsics: true
+calib_cam_timeoffset: true
+track_frequency: 31.0
+num_pts: 200
+downsample_cameras: false
