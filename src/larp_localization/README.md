@@ -91,6 +91,8 @@ and makes the node exit with "unable to parse all parameters".
 
 ## Testing on the drone
 
+Full setup, testing and handover notes: [docs/vio-handover.md](../../docs/vio-handover.md).
+
 Images: larp_oak undistorts on the camera (`vio_undistorted`, default on) and
 publishes `/oak/{left,right}/image_undistorted` (pinhole, D = 0, K unchanged)
 at the full 30 Hz from one synced capture (left/right stamps within ~0.02 ms).
