@@ -1,3 +1,8 @@
+> Historical bench handover. Current native defaults and raw-IMU behavior are
+> documented in [autonomy integration](autonomy-integration.md). In particular,
+> both estimator YAML templates now enable online camera calibration; the
+> fixed-calibration recommendations below describe earlier experiments.
+
 # VIO on the drone: setup, testing and handover
 
 How the camera, IMU, cuVSLAM and sqrtVINS are set up on the skybeta drone, how to

@@ -10,7 +10,7 @@ SDK downloads and hardware evidence are excluded from Git.
 OAK performs stereo lens undistortion. The native C++ acquisition node publishes
 1280x800 stereo at 30 Hz, paired at average mid-exposure time, with a 0.5 ms pair
 skew gate. It publishes raw accel/gyro independently. Optional VIO IMU alignment
-applies an explicit raw-axis accelerometer correction once, then interpolates
+preserves uncorrected raw-axis SI measurements and interpolates
 between bracketing acceleration samples at gyro timestamps. It never extrapolates
 and rejects brackets wider than 10 ms. Current bench requests are 500 Hz accel,
 400 Hz gyro and a candidate 5 ms exposure cap; these are not universally tuned
@@ -18,7 +18,8 @@ flight settings. IMU noise parameters still require characterization.
 
 `native_calibration.py` generates OpenCV-compatible Kalibr files from SDK
 camera-to-IMU exports and actual image projections, converting centimetres to
-metres. Intrinsics/extrinsics stay fixed; temporal offset is estimated. A generated
+metres. Factory intrinsics/extrinsics initialize the estimator; the restored upstream
+EuRoC defaults refine them and the temporal offset online. A generated
 bench frame is explicitly distinguished from a surveyed aircraft mount. No CAD
 pose matcher is used.
 
@@ -56,6 +57,26 @@ release/1.16 revision recorded in `src/px4_msgs/UPSTREAM_REVISION`.
 Moving accuracy, surveyed airframe mounting, map/PX4 registration, reset handling,
 full-system latency under planner load and real flight remain unqualified.
 
+## Estimator defaults
+
+The OAK estimator templates now match the vendored sqrtVINS EuRoC estimator
+configuration except for `track_frequency: 31.0`, matching the OAK 30 Hz
+camera with a 1 Hz scheduling margin (EuRoC uses 21 for its 20 Hz cameras).
+The current native ROS 2 callback processes every paired frame without using this
+frequency throttle; the value remains correct for paths that honor it.
+Gravity is 9.81 m/s² and is no longer imported from the
+accelerometer correction profile. Online camera calibration is enabled, ZUPT is
+disabled, and the initial accelerometer-bias prior is
+0.05. The historical `estimator_config_fixedcalib.yaml` filename is retained for
+compatibility but now also contains those same settings. Device geometry, sensor
+topics/rates and IMU noise values are separate from this estimator-tuning reset.
+The native driver now applies no local accelerometer bias/scale correction;
+sqrtVINS estimates biases online. No local IMU correction file is required.
+Timestamp alignment still interpolates acceleration between bracketing samples;
+raw does not mean integer sensor counts or unaligned accel/gyro packets. Existing generated
+calibration directories must be regenerated or have their estimator YAML updated;
+changing the source templates does not rewrite deployed evidence.
+
 ## Running localization
 
 `jetson/integration_image/Dockerfile` fixes inherited Boost header/library mismatch
@@ -69,9 +90,10 @@ Fast DDS XML file. It refuses to run beside known competing camera owners.
 
 For indefinite foreground tmux operation use `localization_pane.sh camera`,
 `localization_pane.sh vio`, and `localization_pane.sh monitor` in separate panes
-inside the correctly configured container. Set `CALIBRATION_DIR` for the VIO pane
-to the generated native calibration directory. `WORKSPACE`, `INSTALL_PREFIX`,
-`SDK_PREFIX`, `IMU_CALIBRATION_FILE` and `VIO_VERBOSITY` are configurable. No
+inside the correctly configured container. The default is the bundled target-camera configuration in
+`src/larp_localization/config/oak_d_s2`; no external calibration file is required.
+`CALIBRATION_DIR` optionally selects a different generated calibration directory. `WORKSPACE`, `INSTALL_PREFIX`,
+`SDK_PREFIX` and `VIO_VERBOSITY` are configurable. No
 host-specific calibration artifacts are embedded in these new launch helpers.
 
 Use `jetson/foxglove/larpcopter-autonomy-localization.json` for the new topics.

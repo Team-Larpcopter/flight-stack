@@ -1,5 +1,6 @@
 // Native stereo/IMU acquisition. OAK performs lens undistortion in hardware.
-// Keep raw acceleration/gyro timestamps separate; no interpolation is enabled.
+// Publish raw-axis SI measurements; optional alignment interpolates acceleration
+// between measured samples at native gyro timestamps. No local bias/scale correction.
 #include <depthai/pipeline/Pipeline.hpp>
 #include <depthai/device/Device.hpp>
 #include <depthai/pipeline/node/Camera.hpp>
@@ -32,7 +33,9 @@ class NativeOak final:public rclcpp::Node {
     const bool connect=declare_parameter<bool>("connect_device",false);
     publish_images_=declare_parameter<bool>("publish_images",false);
     align_imu_=declare_parameter<bool>("align_imu",false);
-    const auto imu_calibration=declare_parameter<std::string>("imu_calibration_file","");
+    // Reject stale launch arguments rather than silently pretending to apply them.
+    if(!declare_parameter<std::string>("imu_calibration_file","").empty())
+      throw std::invalid_argument("imu_calibration_file is no longer supported: IMU output is uncorrected raw-axis SI data");
     const auto fps=declare_parameter<double>("camera_fps",30.);
     const int width=declare_parameter<int>("vio_width",1280),height=declare_parameter<int>("vio_height",800);
     const int accel_hz=declare_parameter<int>("accel_hz",250),gyro_hz=declare_parameter<int>("gyro_hz",200);
@@ -54,15 +57,7 @@ class NativeOak final:public rclcpp::Node {
       capture_<<std::setprecision(12);
     }
     if(align_imu_) {
-      if(imu_calibration.empty())throw std::invalid_argument("explicit raw-axis IMU calibration required");
-      std::ifstream in(imu_calibration);nlohmann::json j;in>>j;
-      if(j.at("axes")!="raw")throw std::invalid_argument("IMU calibration must use raw axes");
-      for(int i=0;i<3;++i) {
-        accel_bias_[i]=j.at("accel_bias").at(i);accel_scale_[i]=j.at("accel_scale").at(i);
-        if(!std::isfinite(accel_bias_[i]) || !std::isfinite(accel_scale_[i]) || accel_scale_[i]<.5 || accel_scale_[i]>1.5)
-          throw std::invalid_argument("invalid accelerometer calibration");
-      }
-      calibrated_imu_=create_publisher<sensor_msgs::msg::Imu>("/autonomy/imu/data",rclcpp::SensorDataQoS().keep_last(512));
+      aligned_imu_=create_publisher<sensor_msgs::msg::Imu>("/autonomy/imu/data",rclcpp::SensorDataQoS().keep_last(512));
     }
     pipeline_=std::make_unique<dai::Pipeline>();
     auto device=pipeline_->getDefaultDevice();
@@ -168,7 +163,6 @@ class NativeOak final:public rclcpp::Node {
         if(align_imu_) {
           larp_hardware::Sample sample{t,{report.x,report.y,report.z}};
           if(std::string(stream)=="accel") {
-            for(int i=0;i<3;++i)sample.value[i]=(sample.value[i]-accel_bias_[i])/accel_scale_[i];
             alignment_.accel(sample);
           } else alignment_.gyro(sample);
         }
@@ -182,15 +176,14 @@ class NativeOak final:public rclcpp::Node {
       m.header.frame_id="native_oak_imu_raw";m.orientation_covariance[0]=-1;
       m.linear_acceleration.x=sample->acceleration[0];m.linear_acceleration.y=sample->acceleration[1];m.linear_acceleration.z=sample->acceleration[2];
       m.angular_velocity.x=sample->gyro[0];m.angular_velocity.y=sample->gyro[1];m.angular_velocity.z=sample->gyro[2];
-      calibrated_imu_->publish(m);
+      aligned_imu_->publish(m);
     }
     for(int i=0;i<2;++i)if(auto f=images_[i]->tryGet<dai::ImgFrame>())image(f,i);
   }
   bool align_imu_=false;
   larp_hardware::ImuAlignment alignment_{10'000'000};
-  std::array<double,3> accel_bias_{0,0,0},accel_scale_{1,1,1};
   std::deque<std::shared_ptr<dai::ImgFrame>> pending_images_[2];
-  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr calibrated_imu_;
+  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr aligned_imu_;
   bool publish_images_=false,metadata_saved_[2]={false,false};std::string capture_prefix_;
   std::ofstream capture_;double capture_seconds_=0.;Clock::time_point started_;
   int64_t offset_=0,last_a_=0,last_g_=0;uint64_t frames_[2]={0,0};

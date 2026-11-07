@@ -49,12 +49,9 @@ def generate(out,infos,transforms,template_dir,body_frame,bench_only):
     (out/'kalibr_imucam_chain.yaml').write_text(opencv_yaml(cams))
     text=(Path(template_dir)/'kalibr_imu_chain.yaml').read_text()
     (out/'kalibr_imu_chain.yaml').write_text(text)
-    config=(Path(template_dir)/'estimator_config_fixedcalib.yaml').read_text()
-    import re
-    for key,value in {'calib_cam_extrinsics':'false','calib_cam_intrinsics':'false','calib_cam_timeoffset':'true',
-                      'try_zupt':'true','zupt_only_at_beginning':'true','record_init_pose':'false','record_init_timing':'false',
-                      'num_opencv_threads':'1','init_prior_ba':'0.25','verbosity':'WARNING'}.items():
-        config=re.sub(r'(?m)^'+key+r':.*$',key+': '+value,config)
+    # Keep estimator tuning identical to the selected template. Device geometry
+    # is generated separately; no hidden tuning overrides are applied here.
+    config=(Path(template_dir)/'estimator_config.yaml').read_text()
     (out/'estimator_config.yaml').write_text(config)
     rig={k:v.tolist() for k,v in transforms.items()}
     rig.update({'source':'Live undistorted CameraInfo and TF','body_frame':body_frame,'depth_frame':infos.get('depth',{}).get('frame',''),

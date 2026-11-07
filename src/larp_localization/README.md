@@ -1,5 +1,12 @@
 # larp_localization: sqrtVINS on the OAK-D S2
 
+The current production path is the native DepthAI driver and raw aligned IMU.
+Run `bash jetson/launch_localization_tmux.sh` from the repository root on Jetson;
+factory geometry for the target camera is bundled and no local IMU correction
+file is required. See [current integration](../../docs/autonomy-integration.md).
+The undistortion workflow below describes the retained legacy tooling; its
+`/oak` topics require an explicit matching configuration override.
+
 Visual-inertial odometry with [sqrtVINS](https://github.com/rpng/sqrtVINS)
 (RPNG, University of Delaware, LGPL-3.0; a square-root-filter fork of OpenVINS),
 running next to cuVSLAM for comparison. It does not feed PX4 yet.
@@ -62,10 +69,10 @@ and makes the node exit with "unable to parse all parameters".
 | `use_stereo` / `max_cameras` | true / 2 | OAK-D S2 stereo pair |
 | `track_frequency` | 31 | camera at 30 Hz |
 | `downsample_cameras` | false | 1280x800; set true (640x400) if CPU-bound |
-| `num_opencv_threads` | 2 | leave cores for the rest of the stack |
-| `init_max_reproj` / `init_min_feat` | 2.0 / 30 | values the euroc config recommends for stereo |
-| `record_init_pose` / `record_init_timing` | false | do not write logs to /tmp on the drone |
-| `try_zupt` / `zupt_only_at_beginning` | true / true | zero-velocity updates on the pad |
+| `num_opencv_threads` | 1 | upstream EuRoC default |
+| `init_max_reproj` / `init_min_feat` | 3.0 / 20 | upstream EuRoC defaults |
+| `record_init_pose` / `record_init_timing` | true | upstream EuRoC defaults |
+| `try_zupt` / `zupt_only_at_beginning` | false / false | upstream EuRoC defaults |
 | `calib_cam_extrinsics` / `_intrinsics` / `_timeoffset` | true | refine the nominal IMU pose and timing online |
 
 ## Known gaps

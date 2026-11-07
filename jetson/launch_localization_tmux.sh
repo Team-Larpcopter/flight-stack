@@ -3,8 +3,8 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 CONTAINER_CALIBRATION_DIR"
-  echo 'Or set CALIBRATION_DIR. Optional: CONTAINER, SESSION, VIO_VERBOSITY.'
+  echo "Usage: $0 [CONTAINER_CALIBRATION_DIR]"
+  echo 'Defaults to the bundled OAK-D S2 configuration. Optional: CALIBRATION_DIR, CONTAINER, SESSION, VIO_VERBOSITY.'
 }
 if [[ ${1:-} == --help || ${1:-} == -h ]]; then usage; exit 0; fi
 if (($#>1)); then usage >&2; exit 2; fi
@@ -27,8 +27,7 @@ if tmux has-session -t "=$session" 2>/dev/null; then
   attach
   exit 0
 fi
-calibration=${1:-${CALIBRATION_DIR:-}}
-if [[ -z $calibration ]]; then usage >&2; exit 2; fi
+calibration=${1:-${CALIBRATION_DIR:-${WORKSPACE:-/integration}/src/larp_localization/config/oak_d_s2}}
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 pane_script="$script_dir/integration_image/localization_pane.sh"
 [[ -r $pane_script ]] || { echo "Missing pane helper: $pane_script" >&2; exit 2; }
@@ -46,7 +45,7 @@ docker exec -e "CALIBRATION_DIR=$calibration" "$container" bash -c '
 remote_helper="/tmp/flight-stack-localization-${session}.sh"
 docker cp "$pane_script" "$container:$remote_helper" >/dev/null
 common=(docker exec -it -e "CALIBRATION_DIR=$calibration" -e "VIO_VERBOSITY=${VIO_VERBOSITY:-INFO}")
-for name in WORKSPACE INSTALL_PREFIX SDK_PREFIX IMU_CALIBRATION_FILE; do
+for name in WORKSPACE INSTALL_PREFIX SDK_PREFIX; do
   if [[ -n ${!name:-} ]]; then common+=(-e "$name=${!name}"); fi
 done
 printf -v camera_cmd '%q ' "${common[@]}" "$container" bash "$remote_helper" camera
