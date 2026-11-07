@@ -58,12 +58,14 @@ setsid "$native" --ros-args -p connect_device:=true -p publish_images:=true \
 native_pid=$!
 for ((i=0;i<40;i++)); do
   kill -0 "$native_pid" 2>/dev/null || { cat "$run/camera.log"; exit 1; }
-  [[ -s $run/raw.csv.left.json && -s $run/raw.csv.right.json ]] && break
+  # depth geometry is exported with the first depth frame (oak_native_node publish_depth)
+  [[ -s $run/raw.csv.left.json && -s $run/raw.csv.right.json && -s $run/factory.json.depth.json ]] && break
   sleep 1
 done
 python3 -m larp_autonomy.native_calibration \
   --extrinsics "$run/factory.json.extrinsics.json" \
   --left "$run/raw.csv.left.json" --right "$run/raw.csv.right.json" \
+  --depth "$run/factory.json.depth.json" \
   --imu-calibration "$correction" --out "$run/calibration" \
   --template-dir /integration/src/larp_localization/config/oak_d_s2 --bench-only
 setsid "$vio" --ros-args -r __ns:=/autonomy \

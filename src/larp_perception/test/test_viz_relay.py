@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from sensor_msgs.msg import Image
 
-from larp_viz.viz_relay import colorize_depth, image_to_array, shrink_jpeg
+from larp_perception.viz_relay import colorize_depth, image_to_array, shrink_jpeg
 
 
 def make_image(array, encoding):

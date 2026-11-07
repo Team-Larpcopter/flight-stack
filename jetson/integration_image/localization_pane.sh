@@ -12,7 +12,7 @@ case ${1:-} in
 camera)
   mkdir -p "$workspace/evidence"
   run=$(mktemp -d "$workspace/evidence/localization-XXXXXXXX")
-  echo "Camera runs continuously. Calibration export: $run"
+  echo "Camera runs continuously (stereo, IMU and on-device depth). Calibration export: $run"
   exec ros2 run larp_hardware oak_native_node --ros-args \
     -p connect_device:=true -p publish_images:=true -p align_imu:=true \
     -p imu_calibration_file:="${IMU_CALIBRATION_FILE:-$workspace/evidence/imu_calibration.json}" \
@@ -29,5 +29,15 @@ vio)
 monitor)
   exec ros2 topic hz /autonomy/poseimu
   ;;
-*) echo 'Usage: localization_pane.sh camera|vio|monitor'; exit 2;;
+perception)
+  # Jetson depth filter (-> /stereo/depth/image) + Foxglove bridge and /viz image relay.
+  exec ros2 launch larp_perception perception.launch.py "${@:2}"
+  ;;
+bench)
+  # bench SECONDS [OUT.json]: rates, latency, depth fill/noise, CPU of the running setup.
+  mkdir -p "$workspace/evidence"
+  exec python3 "$workspace/src/larp_perception/tools/bench.py" "${2:-20}" \
+    --out "${3:-$workspace/evidence/perception-bench-$(date +%Y%m%d-%H%M%S).json}"
+  ;;
+*) echo 'Usage: localization_pane.sh camera|vio|monitor|perception|bench'; exit 2;;
 esac

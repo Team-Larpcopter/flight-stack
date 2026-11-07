@@ -25,8 +25,10 @@ pose matcher is used.
 The body adapter handles frame and lever-arm conversions and supports explicit
 initial position/yaw in the CAD coordinate system. Fixed-CAD planning requires an
 explicit geofence parameter file. Air-FAR's route feeds SUPER's geometric frontend;
-the trajectory bridge samples its certified stopping polynomial. Depth acquisition
-and map updates are disabled in the current hardware path.
+the trajectory bridge samples its certified stopping polynomial. Depth is computed on
+the camera (800x500, rectified left), filtered on the Jetson by
+`larp_perception` and published on `/stereo/depth/image` for `depth_map_node`;
+live map updates from it are not yet validated on hardware.
 
 `px4_bench_node` publishes external vision and certified setpoints only with
 explicit enablement, fresh disarmed status and healthy VIO. Setpoints additionally

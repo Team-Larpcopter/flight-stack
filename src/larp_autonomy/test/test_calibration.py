@@ -85,3 +85,28 @@ def test_generated_chain_is_readable_by_opencv(tmp_path):
     assert cam.getNode('intrinsics').size()==4
     assert cam.getNode('T_imu_cam').at(0).at(3).real()==pytest.approx(.075)
     storage.release()
+
+
+def test_native_depth_rig_uses_rectified_left_rotation(tmp_path,monkeypatch):
+    import sys
+    from larp_autonomy import native_calibration
+    t_left=np.eye(4);t_left[:3,:3]=[[1,0,0],[0,-1,0],[0,0,-1]];t_left[:3,3]=[7.6,0,-.15]  # cm, as exported
+    t_right=t_left.copy();t_right[0,3]=0.
+    (tmp_path/'ext.json').write_text(json.dumps({'camera_to_imu_cm':{'left':t_left.tolist(),'right':t_right.tolist()}}))
+    for side in ('left','right'):
+        (tmp_path/f'{side}.json').write_text(json.dumps({'width':1280,'height':800,'D':[0.]*8,
+            'intrinsics':[[800.,0,640],[0,800.,400],[0,0,1]]}))
+    (tmp_path/'imu.json').write_text(json.dumps({'axes':'raw','accel_bias':[0,0,0],'accel_scale':[1,1,1],'g':9.8}))
+    a=np.radians(.4);r=np.array([[np.cos(a),0,np.sin(a)],[0,1,0],[-np.sin(a),0,np.cos(a)]])
+    (tmp_path/'depth.json').write_text(json.dumps({'frame':'native_oak_depth_optical','width':800,'height':500,
+        'k':[500.,0,400,0,500.,250,0,0,1],'p':[500.,0,400,-37.75,0,500.,250,0,0,0,1,0],'r':r.ravel().tolist()}))
+    out=tmp_path/'cal'
+    monkeypatch.setattr(sys,'argv',['x','--extrinsics',str(tmp_path/'ext.json'),'--left',str(tmp_path/'left.json'),
+        '--right',str(tmp_path/'right.json'),'--imu-calibration',str(tmp_path/'imu.json'),'--out',str(out),
+        '--template-dir',str(TEMPLATES),'--bench-only','--depth',str(tmp_path/'depth.json')])
+    native_calibration.main()
+    rig=json.loads((out/'rig.json').read_text())
+    assert rig['depth_frame']=='native_oak_depth_optical'
+    t_imu_left=t_left.copy();t_imu_left[:3,3]*=.01
+    left_depth=np.eye(4);left_depth[:3,:3]=r.T
+    np.testing.assert_allclose(rig['T_body_depth'],np.array(rig['T_body_imu'])@t_imu_left@left_depth,atol=1e-9)

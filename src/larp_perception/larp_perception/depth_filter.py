@@ -1,8 +1,9 @@
-"""larp_depth_filter: Fast Jetson CUDA post-processing for OAK-D S2 raw depth.
+"""depth_filter: Jetson CUDA post-processing for the OAK-D S2's on-device depth.
 
-The OAK-D S2's on-device post-processing filters throttle VIO camera streams
-when decimation=1 (800x500), so larp_oak runs hardware LR-check + 7x7 median on
-the camera and streams raw 800x500 depth here.
+The OAK-D S2's on-device post-processing filters throttle the VIO camera streams
+at decimation 1 (800x500), so the native camera node (larp_hardware
+oak_native_node) runs only the hardware left-right check (+ subpixel) on the
+camera and streams raw 800x500 depth here.
 
 Pipeline:
   1. 2x-binned disparity speckle filter (CPU, ~1.5 ms):
@@ -18,8 +19,10 @@ Pipeline:
      Exponential smoothing (alpha=0.4) reset on jumps > 150 mm, holding dropouts
      for up to 4 frames (~133 ms at 30 Hz).
 
-Subscribes: /oak/stereo/image_raw (16UC1 mm) + /oak/stereo/camera_info
-Publishes:  /oak/stereo/filtered/image (16UC1 mm) + /oak/stereo/filtered/camera_info
+Subscribes: input_topic  (default /native_oak/depth/image_raw, 16UC1 mm) + input_info_topic
+Publishes:  output_topic (default /stereo/depth/image, 16UC1 mm) + output_info_topic
+            (defaults are what larp_navigation depth_map_node reads). Header stamp,
+            frame and camera_info are passed through unchanged.
 """
 
 import array
@@ -177,10 +180,15 @@ class DepthFilter(Node):
         except ImportError:
             self.torch, self.dev = None, None
         self.get_logger().info(f"multi-scale spatial/temporal on {'CUDA' if self.dev else 'CPU fallback'}")
-        self.pub = self.create_publisher(Image, "/oak/stereo/filtered/image", OUT_QOS)
-        self.pub_info = self.create_publisher(CameraInfo, "/oak/stereo/filtered/camera_info", OUT_QOS)
-        self.create_subscription(CameraInfo, "/oak/stereo/camera_info", self._on_info, LATEST)
-        self.create_subscription(Image, "/oak/stereo/image_raw", self._on_depth, LATEST)
+        topic = lambda name, default: str(dp(name, default).value)  # noqa: E731
+        self.pub = self.create_publisher(Image, topic("output_topic", "/stereo/depth/image"), OUT_QOS)
+        self.pub_info = self.create_publisher(
+            CameraInfo, topic("output_info_topic", "/stereo/depth/camera_info"), OUT_QOS
+        )
+        self.create_subscription(
+            CameraInfo, topic("input_info_topic", "/native_oak/depth/camera_info"), self._on_info, LATEST
+        )
+        self.create_subscription(Image, topic("input_topic", "/native_oak/depth/image_raw"), self._on_depth, LATEST)
         self.create_timer(10.0, self._report)
 
     def _on_info(self, msg):

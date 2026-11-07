@@ -1,7 +1,10 @@
 # Native hardware integration
 
 `oak_native_node` uses DepthAI 3.10 for on-device stereo undistortion and C++
-ROS publication. Depth is disabled. Device access defaults off. Factory exports
+ROS publication. On-device stereo depth is on by default (`publish_depth`):
+800x500 16UC1 mm on `/native_oak/depth/image_raw`, aligned to the rectified left
+camera; the Jetson filter and Foxglove viewing are in `../larp_perception`.
+Dynamic stereo auto-calibration is off unless `auto_calibration` selects it. Device access defaults off. Factory exports
 and explicit raw-axis accelerometer correction are required for localization.
 Stereo pairs use their average mid-exposure timestamp, with a 0.5 ms skew gate.
 

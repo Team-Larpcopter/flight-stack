@@ -1,9 +1,19 @@
-// Native stereo/IMU acquisition. OAK performs lens undistortion in hardware.
-// Keep raw acceleration/gyro timestamps separate; no interpolation is enabled.
+// Native stereo/IMU/depth acquisition. OAK performs lens undistortion and stereo
+// depth in hardware. Keep raw acceleration/gyro timestamps separate.
+//
+// Depth (publish_depth, default on): each mono camera has a second, smaller
+// output (depth_width x depth_height, default 800x500) feeding the on-device
+// StereoDepth engine (left-right check, subpixel, aligned to the rectified left
+// camera, on-device post-filters off: they throttle the camera at this size).
+// Published raw on /native_oak/depth/image_raw (16UC1 mm) + camera_info; the
+// Jetson filter (larp_perception depth_filter) publishes /stereo/depth/image.
 #include <depthai/pipeline/Pipeline.hpp>
 #include <depthai/device/Device.hpp>
 #include <depthai/pipeline/node/Camera.hpp>
 #include <depthai/pipeline/node/IMU.hpp>
+#include <depthai/pipeline/node/StereoDepth.hpp>
+#include <depthai/common/CameraExposureOffset.hpp>
+#include <map>
 #include <depthai/pipeline/datatype/IMUData.hpp>
 #include <depthai/pipeline/datatype/ImgFrame.hpp>
 #include <depthai/pipeline/MessageQueue.hpp>
@@ -41,6 +51,13 @@ class NativeOak final:public rclcpp::Node {
     const auto capture_file=declare_parameter<std::string>("capture_csv","");
     if(capture_seconds_<0 || !std::isfinite(capture_seconds_))throw std::invalid_argument("invalid capture duration");
     const auto calibration_out=declare_parameter<std::string>("factory_calibration_out","");
+    publish_depth_=declare_parameter<bool>("publish_depth",true);
+    const int depth_width=declare_parameter<int>("depth_width",800),depth_height=declare_parameter<int>("depth_height",500);
+    const auto depth_preset=declare_parameter<std::string>("depth_preset","ROBOTICS");
+    const bool depth_subpixel=declare_parameter<bool>("depth_subpixel",true);
+    // DepthAI 3.x runs dynamic stereo recalibration at every pipeline start by default
+    // and may flash the result to the camera. Off unless chosen explicitly.
+    const auto auto_calibration=declare_parameter<std::string>("auto_calibration","OFF");
     if(!connect) {RCLCPP_INFO(get_logger(),"Device connection disabled; no camera opened");return;}
     if(fps<=0 || fps>60 || width<=0 || height<=0 || accel_hz<=0 || gyro_hz<=0 || exposure<0)
       throw std::invalid_argument("invalid acquisition settings");
@@ -64,7 +81,16 @@ class NativeOak final:public rclcpp::Node {
       }
       calibrated_imu_=create_publisher<sensor_msgs::msg::Imu>("/autonomy/imu/data",rclcpp::SensorDataQoS().keep_last(512));
     }
+    if(publish_depth_ && (depth_width<=0 || depth_height<=0 || depth_width>width || depth_height>height))
+      throw std::invalid_argument("invalid depth size");
     pipeline_=std::make_unique<dai::Pipeline>();
+    {
+      static const std::map<std::string,dai::PipelineAutoCalibrationMode> modes{
+        {"OFF",dai::PipelineAutoCalibrationMode::OFF},{"ON_START",dai::PipelineAutoCalibrationMode::ON_START},
+        {"CONTINUOUS",dai::PipelineAutoCalibrationMode::CONTINUOUS}};
+      if(!modes.count(auto_calibration))throw std::invalid_argument("auto_calibration must be OFF, ON_START or CONTINUOUS");
+      pipeline_->setAutoCalibrationMode(modes.at(auto_calibration));
+    }
     auto device=pipeline_->getDefaultDevice();
     auto calibration=device->readCalibration();
     calibration.eepromToJsonFile(calibration_out);
@@ -74,15 +100,51 @@ class NativeOak final:public rclcpp::Node {
     extrinsics["camera_to_imu_cm"]["left"]=calibration.getCameraToImuExtrinsics(dai::CameraBoardSocket::CAM_B);
     extrinsics["camera_to_imu_cm"]["right"]=calibration.getCameraToImuExtrinsics(dai::CameraBoardSocket::CAM_C);
     std::ofstream(calibration_out+".extrinsics.json")<<extrinsics.dump(2)<<'\n';
+    dai::Node::Output* stereo_inputs[2]={nullptr,nullptr};
     for(int i=0;i<2;++i) {
       auto cam=pipeline_->create<dai::node::Camera>();
       cam->build(i==0?dai::CameraBoardSocket::CAM_B:dai::CameraBoardSocket::CAM_C,std::nullopt,float(fps));
       if(exposure>0)cam->initialControl.setAutoExposureLimit(exposure);
       auto vio=cam->requestOutput({uint32_t(width),uint32_t(height)},dai::ImgFrame::Type::GRAY8,dai::ImgResizeMode::CROP,float(fps),true);
       images_[i]=vio->createOutputQueue(8,false);
+      if(publish_depth_)  // not undistorted: StereoDepth rectifies with the full calibration itself
+        stereo_inputs[i]=cam->requestOutput({uint32_t(depth_width),uint32_t(depth_height)},dai::ImgFrame::Type::GRAY8,
+                                            dai::ImgResizeMode::CROP,float(fps));
       const std::string side=i==0?"left":"right";
       image_pub_[i]=create_publisher<sensor_msgs::msg::Image>("/native_oak/"+side+"/image_undistorted",rclcpp::SensorDataQoS());
       info_pub_[i]=create_publisher<sensor_msgs::msg::CameraInfo>("/native_oak/"+side+"/camera_info",rclcpp::SensorDataQoS());
+    }
+    if(publish_depth_) {
+      static const std::map<std::string,dai::node::StereoDepth::PresetMode> presets{
+        {"DEFAULT",dai::node::StereoDepth::PresetMode::DEFAULT},{"ROBOTICS",dai::node::StereoDepth::PresetMode::ROBOTICS},
+        {"HIGH_DETAIL",dai::node::StereoDepth::PresetMode::HIGH_DETAIL},{"DENSITY",dai::node::StereoDepth::PresetMode::DENSITY},
+        {"ACCURACY",dai::node::StereoDepth::PresetMode::ACCURACY},{"FACE",dai::node::StereoDepth::PresetMode::FACE}};
+      if(!presets.count(depth_preset))throw std::invalid_argument("unknown depth_preset");
+      auto stereo=pipeline_->create<dai::node::StereoDepth>();
+      stereo->build(*stereo_inputs[0],*stereo_inputs[1],presets.at(depth_preset));
+      stereo->setLeftRightCheck(true);
+      stereo->setSubpixel(depth_subpixel);
+      stereo->setDepthAlign(dai::StereoDepthConfig::AlgorithmControl::DepthAlign::RECTIFIED_LEFT);
+      // Non-blocking: a slow depth stage drops depth frames, never stalls the VIO images.
+      stereo->left.setBlocking(false);stereo->right.setBlocking(false);
+      auto& pp=stereo->initialConfig->postProcessing;
+      if(!depth_subpixel)pp.median=dai::StereoDepthConfig::MedianFilter::KERNEL_7x7;
+      pp.decimationFilter.decimationFactor=1;
+      pp.spatialFilter.enable=false;pp.temporalFilter.enable=false;pp.speckleFilter.enable=false;
+      depth_=stereo->depth.createOutputQueue(4,false);
+      depth_pub_=create_publisher<sensor_msgs::msg::Image>("/native_oak/depth/image_raw",rclcpp::SensorDataQoS());
+      depth_info_pub_=create_publisher<sensor_msgs::msg::CameraInfo>("/native_oak/depth/camera_info",rclcpp::SensorDataQoS());
+      // Rectified-left geometry: R maps the left (undistorted) optical frame into the
+      // rectified frame depth is aligned to; P carries fx and -fx*baseline.
+      const auto r=calibration.getStereoLeftRectificationRotation();
+      for(int a=0;a<3;++a)for(int b=0;b<3;++b)depth_r_[a*3+b]=r.at(a).at(b);
+      depth_baseline_m_=calibration.getBaselineDistance(dai::CameraBoardSocket::CAM_C,dai::CameraBoardSocket::CAM_B,false)*.01;
+      depth_export_=calibration_out+".depth.json";
+      // For checking the depth frame's own (rectified) intrinsics on first frame.
+      const auto kl=calibration.getCameraIntrinsics(dai::CameraBoardSocket::CAM_B,depth_width,depth_height);
+      depth_factory_k_={kl[0][0],kl[1][1],kl[0][2],kl[1][2]};
+      RCLCPP_INFO(get_logger(),"Depth on the camera: %dx%d %s, subpixel %d, baseline %.4f m, auto calibration %s",
+                  depth_width,depth_height,depth_preset.c_str(),int(depth_subpixel),depth_baseline_m_,auto_calibration.c_str());
     }
     auto imu=pipeline_->create<dai::node::IMU>();
     imu->enableIMUSensor(dai::IMUSensor::ACCELEROMETER_RAW,accel_hz);
@@ -185,8 +247,42 @@ class NativeOak final:public rclcpp::Node {
       calibrated_imu_->publish(m);
     }
     for(int i=0;i<2;++i)if(auto f=images_[i]->tryGet<dai::ImgFrame>())image(f,i);
+    if(depth_)while(auto f=depth_->tryGet<dai::ImgFrame>())publish_depth(f);
   }
-  bool align_imu_=false;
+  void publish_depth(const std::shared_ptr<dai::ImgFrame>& frame) {
+    const auto capture=frame->getTimestamp(dai::CameraExposureOffset::MIDDLE);
+    if(Clock::now()-capture>200ms)return;
+    sensor_msgs::msg::Image m;m.header.stamp=stamp(capture);m.header.frame_id="native_oak_depth_optical";
+    m.width=frame->getWidth();m.height=frame->getHeight();m.encoding="16UC1";m.is_bigendian=0;
+    auto data=frame->getData();
+    m.step=frame->getStride()?frame->getStride():m.width*2;
+    if(data.size()!=size_t(m.step)*m.height)throw std::runtime_error("unexpected depth layout");
+    m.data.assign(data.begin(),data.end());
+    if(!depth_info_) {  // geometry of the depth output itself (rectified left, this size)
+      depth_info_=std::make_shared<sensor_msgs::msg::CameraInfo>();
+      auto& ci=*depth_info_;ci.width=m.width;ci.height=m.height;ci.distortion_model="plumb_bob";ci.d.assign(5,0.);
+      const auto k=frame->getTransformation().getIntrinsicMatrix();
+      for(int r=0;r<3;++r)for(int c=0;c<3;++c){ci.k[r*3+c]=k[r][c];ci.p[r*4+c]=k[r][c];ci.r[r*3+c]=depth_r_[r*3+c];}
+      ci.p[3]=-ci.k[0]*depth_baseline_m_;  // stereo convention: P[0][3] = -fx * baseline
+      nlohmann::json j={{"frame",m.header.frame_id},{"width",ci.width},{"height",ci.height},
+        {"k",std::vector<double>(ci.k.begin(),ci.k.end())},{"p",std::vector<double>(ci.p.begin(),ci.p.end())},
+        {"r",std::vector<double>(ci.r.begin(),ci.r.end())},{"baseline_m",depth_baseline_m_},
+        {"aligned_to","rectified left (CAM_B); r maps left optical into this frame"}};
+      std::ofstream(depth_export_)<<j.dump(2)<<'\n';
+      RCLCPP_INFO(get_logger(),"Depth %ux%u fx=%.2f fy=%.2f cx=%.2f cy=%.2f (factory left at this size: "
+                  "fx=%.2f fy=%.2f cx=%.2f cy=%.2f), exported %s",ci.width,ci.height,ci.k[0],ci.k[4],ci.k[2],ci.k[5],
+                  depth_factory_k_[0],depth_factory_k_[1],depth_factory_k_[2],depth_factory_k_[3],depth_export_.c_str());
+    }
+    depth_info_->header=m.header;
+    depth_info_pub_->publish(*depth_info_);depth_pub_->publish(std::move(m));
+  }
+  bool align_imu_=false,publish_depth_=true;
+  std::shared_ptr<dai::MessageQueue> depth_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr depth_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr depth_info_pub_;
+  sensor_msgs::msg::CameraInfo::SharedPtr depth_info_;
+  std::array<double,9> depth_r_{1,0,0,0,1,0,0,0,1};double depth_baseline_m_=0.;std::string depth_export_;
+  std::array<double,4> depth_factory_k_{0,0,0,0};
   larp_hardware::ImuAlignment alignment_{10'000'000};
   std::array<double,3> accel_bias_{0,0,0},accel_scale_{1,1,1};
   std::deque<std::shared_ptr<dai::ImgFrame>> pending_images_[2];

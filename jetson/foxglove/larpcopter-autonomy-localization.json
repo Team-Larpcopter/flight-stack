@@ -205,6 +205,16 @@
       "isSynced": true,
       "xAxisVal": "timestamp",
       "followingViewWidth": 20
+    },
+    "Image!depth": {
+      "imageMode": {
+        "imageTopic": "/viz/stereo/depth/image/compressed"
+      }
+    },
+    "Image!depth_raw": {
+      "imageMode": {
+        "imageTopic": "/viz/native_oak/depth/image_raw/compressed"
+      }
     }
   },
   "globalVariables": {},
@@ -222,8 +232,18 @@
         "second": "Image!right",
         "splitPercentage": 50
       },
-      "second": "Image!tracks",
-      "splitPercentage": 66
+      "second": {
+        "direction": "column",
+        "first": "Image!tracks",
+        "second": {
+          "direction": "row",
+          "first": "Image!depth",
+          "second": "Image!depth_raw",
+          "splitPercentage": 50
+        },
+        "splitPercentage": 50
+      },
+      "splitPercentage": 50
     },
     "second": {
       "direction": "column",
