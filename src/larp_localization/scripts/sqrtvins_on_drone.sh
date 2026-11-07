@@ -11,6 +11,10 @@
 #   sqrtvins_on_drone.sh camera    camera node ALONE (container larp-camera), for when the
 #                                  stack is not running. Stop it before starting the stack.
 #   sqrtvins_on_drone.sh camerastop
+#   sqrtvins_on_drone.sh fox       Foxglove bridge ws://<drone-ip>:8766 + 5 Hz image relay
+#                                  (container larp-fox), for when the stack is not running
+#                                  (with the stack, use larp fox). Same read-only settings.
+#   sqrtvins_on_drone.sh foxstop
 #   sqrtvins_on_drone.sh bag DIR   record a test bag (container larp-bag) into
 #                                  ~/team_ws/sqrtvins_ws/results/DIR/bag (mcap)
 #   sqrtvins_on_drone.sh bagstop   stop the recording cleanly
@@ -67,6 +71,32 @@ case "${1:-}" in
     echo "started larp-camera (logs: docker logs -f larp-camera)"
     ;;
   camerastop) docker rm -f larp-camera >/dev/null 2>&1 && echo "stopped larp-camera" || echo "not running" ;;
+  fox)
+    docker ps --format '{{.Names}}' | grep -qx skybeta-stack && { echo "the stack is running: use larp fox start --images"; exit 1; }
+    docker rm -f larp-fox >/dev/null 2>&1 || true
+    # Read-only like larp fox: no client publish / services / params; images only via /viz.
+    docker run -d --name larp-fox --network host --ipc host \
+      -v "$HOME/team_ws:/root/team_ws" -v "$DDS:/etc/skybeta/fastdds.xml:ro" \
+      -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/skybeta/fastdds.xml \
+      -e FASTDDS_DEFAULT_PROFILES_FILE=/etc/skybeta/fastdds.xml \
+      -e ROS_DOMAIN_ID="$DOMAIN" \
+      -e "FOX_TOPICS=['^(/viz/.*|(?!.*/image)(?!.*trackhist).*)\$']" -e "FOX_NONE=['^\$']" \
+      -e "VIZ_RAW=['/oak/left/image_undistorted','/oak/right/image_undistorted','/ov_srvins/trackhist']" \
+      -e "VIZ_JPEG=['']" \
+      -e "VIZ_DEPTH=['/oak/stereo/image_raw','/oak/stereo/filtered/image']" \
+      --entrypoint bash "$IMAGE" -c \
+      'set +u; source /opt/ros/humble/setup.bash; source /root/skybeta_ws/install/setup.bash; \
+       source /root/team_ws/install/setup.bash; \
+       ros2 run larp_viz viz_relay --ros-args -p topics:="$VIZ_JPEG" -p raw_topics:="$VIZ_RAW" \
+         -p depth_topics:="$VIZ_DEPTH" -p rate_hz:=5.0 -p scale:=0.5 -p jpeg_quality:=80 \
+         -p min_depth_m:=0.3 -p max_depth_m:=6.0 & \
+       exec ros2 launch foxglove_bridge foxglove_bridge_launch.xml port:=8766 address:=0.0.0.0 \
+         capabilities:="[connectionGraph,assets]" send_buffer_limit:=131072 min_qos_depth:=1 max_qos_depth:=5 \
+         topic_whitelist:="$FOX_TOPICS" client_topic_whitelist:="$FOX_NONE" \
+         service_whitelist:="$FOX_NONE" param_whitelist:="$FOX_NONE"' >/dev/null
+    echo "started larp-fox: ws://<drone-ip>:8766 (images at 5 Hz on /viz/...; logs: docker logs larp-fox)"
+    ;;
+  foxstop) docker rm -f larp-fox >/dev/null 2>&1 && echo "stopped larp-fox" || echo "not running" ;;
   bag)
     DIR="${2:?usage: bag DIR}"
     docker rm -f larp-bag >/dev/null 2>&1 || true

@@ -356,6 +356,12 @@ larp fox start              # telemetry only (no images: lighter)
 larp fox status | larp fox stop
 ```
 
+**Without the stack** (camera and sqrtVINS run standalone, see section 5):
+`sqrtvins_on_drone.sh camera` starts the camera node alone and
+`sqrtvins_on_drone.sh fox` starts the same read-only bridge on 8766 plus a 5 Hz
+relay of the undistorted images, raw/filtered depth and `/ov_srvins/trackhist`
+(`foxstop` / `camerastop` to stop; stop both before starting the stack).
+
 - Port **8766** (8765 is the organisers' status agent). Read-only bridge: no
   publishing, services or parameters from the client.
 - Full-rate camera topics are never served (one stream is more than the Wi-Fi
