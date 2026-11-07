@@ -1,0 +1,17 @@
+# Colcon / ROS workspace outputs
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+
+# Editor / local
+.cache/
+.vscode/
+*.swp
+.env
