@@ -3,9 +3,13 @@
 
     stationary_test.py SECONDS OUT_DIR [--topics /ov_srvins/odomimu /visual_slam/tracking/odometry]
 
-Keep the drone still for the whole run. Writes OUT_DIR/<name>.csv per topic
-(t_s, x, y, z, yaw_deg, vx, vy, vz, stamp lag) and OUT_DIR/summary.json, and
-prints the summary. Read-only: only subscribes.
+Writes OUT_DIR/<name>.csv per topic (recv_s, stamp_s, x, y, z, yaw_deg, vx, vy,
+vz, lag_ms) and OUT_DIR/summary.json, and prints the summary. Read-only.
+
+Time base is the RECEIVE time on this machine (recv_s), shared by every topic:
+sqrtVINS runs in float32 and its header stamps are quantised to 128 s at current
+Unix time, so header stamps cannot be used to compare or time-align. All CSVs are
+written before any statistics, and each statistic fails on its own.
 
 Summary per topic:
   rate_hz, max_gap_ms        output rate and the longest pause
@@ -33,23 +37,32 @@ def yaw_deg(q):
     return math.degrees(math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z)))
 
 
+def _safe(fn):
+    try:
+        return fn()
+    except Exception as e:  # noqa: BLE001
+        return f"n/a ({type(e).__name__})"
+
+
 def summarise(rows):
     if len(rows) < 3:
         return {"samples": len(rows), "note": "too few messages"}
-    a = np.array(rows, dtype=float)  # t, x, y, z, yaw, vx, vy, vz, lag
-    t, p, yaw, lag = a[:, 0] - a[0, 0], a[:, 1:4], np.unwrap(np.radians(a[:, 4])), a[:, 8]
+    a = np.array(rows, dtype=float)  # recv, stamp, x, y, z, yaw, vx, vy, vz, lag
+    a = a[np.argsort(a[:, 0], kind="stable")]
+    t, p, yaw, lag = a[:, 0] - a[0, 0], a[:, 2:5], np.unwrap(np.radians(a[:, 5])), a[:, 9]
     d = np.linalg.norm(p - p[0], axis=1)
     gaps = np.diff(t)
     out = {
         "samples": len(rows),
         "duration_s": round(float(t[-1]), 1),
-        "rate_hz": round(float((len(t) - 1) / t[-1]), 1) if t[-1] > 0 else None,
-        "max_gap_ms": round(float(gaps.max() * 1000), 1),
+        "rate_hz": _safe(lambda: round(float((len(t) - 1) / t[-1]), 1)),
+        "max_gap_ms": _safe(lambda: round(float(gaps.max() * 1000), 1)),
         "drift_m_end": round(float(d[-1]), 4),
         "drift_m_max": round(float(d.max()), 4),
-        "drift_rate_mm_per_min": round(float(np.polyfit(t, d, 1)[0] * 60000), 1),
+        "drift_rate_mm_per_min": _safe(lambda: round(float(np.polyfit(t, d, 1)[0] * 60000), 1)),
         "yaw_drift_deg": round(float(np.degrees(yaw[-1] - yaw[0])), 3),
         "lag_ms_median": round(float(np.median(lag)), 1),
+        "lag_note": "header stamps are unreliable for sqrtVINS (float32), ignore its lag",
     }
     for s in (10, 30, 60):
         i = np.searchsorted(t, s)
@@ -80,26 +93,32 @@ def main():
             now = node.get_clock().now().nanoseconds * 1e-9
             st = m.header.stamp.sec + m.header.stamp.nanosec * 1e-9
             p, v = m.pose.pose.position, m.twist.twist.linear
-            data[topic].append([st, p.x, p.y, p.z, yaw_deg(m.pose.pose.orientation), v.x, v.y, v.z, (now - st) * 1000])
+            data[topic].append(
+                [now, st, p.x, p.y, p.z, yaw_deg(m.pose.pose.orientation), v.x, v.y, v.z, (now - st) * 1000]
+            )
 
         return f
 
     subs = [node.create_subscription(Odometry, t, cb(t), qos_profile_sensor_data) for t in a.topics]
-    print(f"recording {a.seconds:.0f} s from {a.topics} -- keep the drone still", flush=True)
+    print(f"recording {a.seconds:.0f} s from {a.topics}", flush=True)
     end, next_note = time.monotonic() + a.seconds, time.monotonic() + 10
     while time.monotonic() < end:
         rclpy.spin_once(node, timeout_sec=0.05)
         if time.monotonic() > next_note:
             print("  " + ", ".join(f"{t}: {len(r)} msgs" for t, r in data.items()), flush=True)
             next_note += 10
-    summary = {}
-    for topic, rows in data.items():
+    for topic, rows in data.items():  # write every CSV first
         name = topic.strip("/").replace("/", "_")
         with open(os.path.join(a.out, f"{name}.csv"), "w", newline="") as f:
             w = csv.writer(f)
-            w.writerow(["stamp_s", "x", "y", "z", "yaw_deg", "vx", "vy", "vz", "lag_ms"])
+            w.writerow(["recv_s", "stamp_s", "x", "y", "z", "yaw_deg", "vx", "vy", "vz", "lag_ms"])
             w.writerows(rows)
-        summary[topic] = summarise(rows)
+    summary = {}
+    for topic, rows in data.items():
+        try:
+            summary[topic] = summarise(rows)
+        except Exception as e:  # noqa: BLE001
+            summary[topic] = {"samples": len(rows), "error": f"{type(e).__name__}: {e}"}
     json.dump(summary, open(os.path.join(a.out, "summary.json"), "w"), indent=2)
     print(json.dumps(summary, indent=2))
     del subs

@@ -30,9 +30,11 @@ import numpy as np
 
 def load(path):
     rows = list(csv.DictReader(open(path)))
-    t = np.array([float(r["stamp_s"]) for r in rows])
+    # receive time (shared clock); sqrtVINS header stamps are float32-quantised
+    key = "recv_s" if rows and "recv_s" in rows[0] else "stamp_s"
+    t = np.array([float(r[key]) for r in rows])
     p = np.array([[float(r["x"]), float(r["y"]), float(r["z"])] for r in rows])
-    order = np.argsort(t)
+    order = np.argsort(t, kind="stable")
     return t[order], p[order]
 
 
