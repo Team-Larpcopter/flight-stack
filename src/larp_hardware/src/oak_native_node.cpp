@@ -7,6 +7,12 @@
 // camera, on-device post-filters off: they throttle the camera at this size).
 // Published raw on /native_oak/depth/image_raw (16UC1 mm) + camera_info; the
 // Jetson filter (larp_perception depth_filter) publishes /stereo/depth/image.
+//
+// Rectified pair (publish_rectified, default on with depth): the StereoDepth
+// engine's own rectified, hardware-synced left/right at depth size, for stereo
+// networks on the Jetson (no rectification there): /native_oak/rectified/{left,right}/
+// image + camera_info. Both images of a pair carry the same (mid-exposure) stamp;
+// the left one is in native_oak_depth_optical, the frame depth is aligned to.
 #include <depthai/pipeline/Pipeline.hpp>
 #include <depthai/device/Device.hpp>
 #include <depthai/pipeline/node/Camera.hpp>
@@ -52,6 +58,7 @@ class NativeOak final:public rclcpp::Node {
     if(capture_seconds_<0 || !std::isfinite(capture_seconds_))throw std::invalid_argument("invalid capture duration");
     const auto calibration_out=declare_parameter<std::string>("factory_calibration_out","");
     publish_depth_=declare_parameter<bool>("publish_depth",true);
+    publish_rectified_=declare_parameter<bool>("publish_rectified",true);
     const int depth_width=declare_parameter<int>("depth_width",800),depth_height=declare_parameter<int>("depth_height",500);
     const auto depth_preset=declare_parameter<std::string>("depth_preset","ROBOTICS");
     const bool depth_subpixel=declare_parameter<bool>("depth_subpixel",true);
@@ -132,6 +139,15 @@ class NativeOak final:public rclcpp::Node {
       pp.decimationFilter.decimationFactor=1;
       pp.spatialFilter.enable=false;pp.temporalFilter.enable=false;pp.speckleFilter.enable=false;
       depth_=stereo->depth.createOutputQueue(4,false);
+      if(publish_rectified_) {
+        rect_[0]=stereo->rectifiedLeft.createOutputQueue(4,false);
+        rect_[1]=stereo->rectifiedRight.createOutputQueue(4,false);
+        for(int i=0;i<2;++i) {
+          const std::string side=i==0?"left":"right";
+          rect_pub_[i]=create_publisher<sensor_msgs::msg::Image>("/native_oak/rectified/"+side+"/image",rclcpp::SensorDataQoS());
+          rect_info_pub_[i]=create_publisher<sensor_msgs::msg::CameraInfo>("/native_oak/rectified/"+side+"/camera_info",rclcpp::SensorDataQoS());
+        }
+      }
       depth_pub_=create_publisher<sensor_msgs::msg::Image>("/native_oak/depth/image_raw",rclcpp::SensorDataQoS());
       depth_info_pub_=create_publisher<sensor_msgs::msg::CameraInfo>("/native_oak/depth/camera_info",rclcpp::SensorDataQoS());
       // Rectified-left geometry: R maps the left (undistorted) optical frame into the
@@ -248,6 +264,46 @@ class NativeOak final:public rclcpp::Node {
     }
     for(int i=0;i<2;++i)if(auto f=images_[i]->tryGet<dai::ImgFrame>())image(f,i);
     if(depth_)while(auto f=depth_->tryGet<dai::ImgFrame>())publish_depth(f);
+    if(rect_[0])rectified();
+  }
+  // Pair the StereoDepth rectified outputs by sequence number; one stamp per pair.
+  void rectified() {
+    for(int i=0;i<2;++i)while(auto f=rect_[i]->tryGet<dai::ImgFrame>()) {
+      pending_rect_[i].push_back(f);
+      if(pending_rect_[i].size()>8)pending_rect_[i].pop_front();
+    }
+    while(!pending_rect_[0].empty() && !pending_rect_[1].empty()) {
+      auto l=pending_rect_[0].front(),r=pending_rect_[1].front();
+      if(l->getSequenceNum()!=r->getSequenceNum()) {
+        pending_rect_[l->getSequenceNum()<r->getSequenceNum()?0:1].pop_front();continue;
+      }
+      pending_rect_[0].pop_front();pending_rect_[1].pop_front();
+      const auto lt=l->getTimestamp(dai::CameraExposureOffset::MIDDLE),rt=r->getTimestamp(dai::CameraExposureOffset::MIDDLE);
+      const auto capture=lt+(rt-lt)/2;
+      if(Clock::now()-capture>200ms)continue;
+      for(int i=0;i<2;++i) {
+        auto& f=i==0?l:r;
+        sensor_msgs::msg::Image m;m.header.stamp=stamp(capture);
+        m.header.frame_id=i==0?"native_oak_depth_optical":"native_oak_right_rectified_optical";
+        m.width=f->getWidth();m.height=f->getHeight();m.encoding="mono8";
+        m.step=f->getStride()?f->getStride():m.width;
+        auto data=f->getData();
+        if(data.size()<size_t(m.step)*m.height)throw std::runtime_error("unexpected rectified layout");
+        m.data.assign(data.begin(),data.begin()+size_t(m.step)*m.height);
+        if(!rect_info_[i]) {  // rectified: no distortion, shared K, right P carries -fx*baseline
+          rect_info_[i]=std::make_shared<sensor_msgs::msg::CameraInfo>();
+          auto& ci=*rect_info_[i];ci.width=m.width;ci.height=m.height;ci.distortion_model="plumb_bob";ci.d.assign(5,0.);
+          const auto k=f->getTransformation().getIntrinsicMatrix();
+          ci.r={1,0,0,0,1,0,0,0,1};
+          for(int a=0;a<3;++a)for(int b=0;b<3;++b){ci.k[a*3+b]=k[a][b];ci.p[a*4+b]=k[a][b];}
+          if(i==1)ci.p[3]=-ci.k[0]*depth_baseline_m_;
+          RCLCPP_INFO(get_logger(),"Rectified %s %ux%u fx=%.2f cx=%.2f cy=%.2f",i==0?"left":"right",
+                      ci.width,ci.height,ci.k[0],ci.k[2],ci.k[5]);
+        }
+        rect_info_[i]->header=m.header;
+        rect_info_pub_[i]->publish(*rect_info_[i]);rect_pub_[i]->publish(std::move(m));
+      }
+    }
   }
   void publish_depth(const std::shared_ptr<dai::ImgFrame>& frame) {
     const auto capture=frame->getTimestamp(dai::CameraExposureOffset::MIDDLE);
@@ -276,7 +332,12 @@ class NativeOak final:public rclcpp::Node {
     depth_info_->header=m.header;
     depth_info_pub_->publish(*depth_info_);depth_pub_->publish(std::move(m));
   }
-  bool align_imu_=false,publish_depth_=true;
+  bool align_imu_=false,publish_depth_=true,publish_rectified_=true;
+  std::shared_ptr<dai::MessageQueue> rect_[2];
+  std::deque<std::shared_ptr<dai::ImgFrame>> pending_rect_[2];
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr rect_pub_[2];
+  rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr rect_info_pub_[2];
+  sensor_msgs::msg::CameraInfo::SharedPtr rect_info_[2];
   std::shared_ptr<dai::MessageQueue> depth_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr depth_pub_;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr depth_info_pub_;

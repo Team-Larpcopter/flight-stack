@@ -1,10 +1,10 @@
 """Lite Any Stereo V2 (LAS2) depth on the native OAK stereo pair, TensorRT FP16.
 
-    ros2 launch larp_liteanystereo las_depth.launch.py \\
+    ros2 launch larp_liteanystereo las_depth.launch.py [input:=rectified|undistorted] \\
         [engine_path:=/models/las2_m_320x480_d192_fp16.engine] [publish_as_primary:=false]
 
-Runs larp_neural_depth's neural_stereo_node (rectification into the camera-depth
-frame, disparity -> metric depth, CameraInfo, /viz previews) with the LAS2 engine:
+Runs larp_neural_depth's neural_stereo_node (disparity -> metric depth, CameraInfo,
+/viz previews) with the LAS2 engine:
 
 * inputs are raw 0-255 RGB: LAS normalizes inside the network
   (normalize_input:=false; Fast-FoundationStereo needs it true)
@@ -13,21 +13,78 @@ frame, disparity -> metric depth, CameraInfo, /viz previews) with the LAS2 engin
 * publish_as_primary:=true also publishes /stereo/depth/image (+ camera_info),
   the depth the planner's depth_map_node reads
 
-Needs /native_oak/depth/camera_info (oak_native_node with publish_depth) for the
-rectification. Engine: scripts/las_ws.sh export (ONNX) + engine (TensorRT).
+input:=rectified (default): the camera's own rectified, hardware-synced pair
+(/native_oak/rectified/*, 800x500, oak_native_node publish_rectified): no
+rectification on the Jetson and 2.5x less image data per pair.
+input:=undistorted: the 1280x800 undistorted pair, rectified on the Jetson; needs
+/native_oak/depth/camera_info (oak_native_node with publish_depth).
+
+Engine: scripts/las_ws.sh export (ONNX) + engine (TensorRT).
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
+INPUTS = {
+    "rectified": {
+        "left_topic": "/native_oak/rectified/left/image",
+        "right_topic": "/native_oak/rectified/right/image",
+        "left_info_topic": "/native_oak/rectified/left/camera_info",
+        "right_info_topic": "/native_oak/rectified/right/camera_info",
+        "rectify_stereo": False,
+    },
+    "undistorted": {
+        "left_topic": "/native_oak/left/image_undistorted",
+        "right_topic": "/native_oak/right/image_undistorted",
+        "left_info_topic": "/native_oak/left/camera_info",
+        "right_info_topic": "/native_oak/right/camera_info",
+        "rectify_stereo": True,
+    },
+}
+
+
+def node(context):
+    arg = LaunchConfiguration
+    source = arg("input").perform(context)
+    if source not in INPUTS:
+        raise RuntimeError(f"input must be one of {sorted(INPUTS)}")
+    return [
+        Node(
+            package="larp_neural_depth",
+            executable="neural_stereo_node",
+            name="las_stereo_node",
+            output="screen",
+            respawn=True,
+            respawn_delay=3.0,
+            parameters=[
+                dict(INPUTS[source]),
+                {
+                    "engine_path": arg("engine_path"),
+                    "normalize_input": False,
+                    "publish_as_primary": ParameterValue(arg("publish_as_primary"), value_type=bool),
+                    "target_height": ParameterValue(arg("target_height"), value_type=int),
+                    "target_width": ParameterValue(arg("target_width"), value_type=int),
+                    "min_depth_m": ParameterValue(arg("min_depth_m"), value_type=float),
+                    "max_depth_m": ParameterValue(arg("max_depth_m"), value_type=float),
+                    "viz_rate_hz": ParameterValue(arg("viz_rate_hz"), value_type=float),
+                    "output_depth_topic": "/las_depth/depth/image_raw",
+                    "output_info_topic": "/las_depth/depth/camera_info",
+                    "output_disp_topic": "/las_depth/disparity/image_raw",
+                    "viz_depth_topic": "/viz/las_depth/depth/image/compressed",
+                    "viz_disp_topic": "/viz/las_depth/disparity/image/compressed",
+                },
+            ],
+        )
+    ]
+
 
 def generate_launch_description():
-    arg = LaunchConfiguration
     return LaunchDescription(
         [
+            DeclareLaunchArgument("input", default_value="rectified"),
             DeclareLaunchArgument("engine_path", default_value="/models/las2_m_320x480_d192_fp16.engine"),
             DeclareLaunchArgument("publish_as_primary", default_value="false"),
             DeclareLaunchArgument("target_height", default_value="320"),
@@ -35,30 +92,6 @@ def generate_launch_description():
             DeclareLaunchArgument("min_depth_m", default_value="0.15"),
             DeclareLaunchArgument("max_depth_m", default_value="8.0"),
             DeclareLaunchArgument("viz_rate_hz", default_value="5.0"),
-            Node(
-                package="larp_neural_depth",
-                executable="neural_stereo_node",
-                name="las_stereo_node",
-                output="screen",
-                respawn=True,
-                respawn_delay=3.0,
-                parameters=[
-                    {
-                        "engine_path": arg("engine_path"),
-                        "normalize_input": False,
-                        "publish_as_primary": ParameterValue(arg("publish_as_primary"), value_type=bool),
-                        "target_height": ParameterValue(arg("target_height"), value_type=int),
-                        "target_width": ParameterValue(arg("target_width"), value_type=int),
-                        "min_depth_m": ParameterValue(arg("min_depth_m"), value_type=float),
-                        "max_depth_m": ParameterValue(arg("max_depth_m"), value_type=float),
-                        "viz_rate_hz": ParameterValue(arg("viz_rate_hz"), value_type=float),
-                        "output_depth_topic": "/las_depth/depth/image_raw",
-                        "output_info_topic": "/las_depth/depth/camera_info",
-                        "output_disp_topic": "/las_depth/disparity/image_raw",
-                        "viz_depth_topic": "/viz/las_depth/depth/image/compressed",
-                        "viz_disp_topic": "/viz/las_depth/disparity/image/compressed",
-                    }
-                ],
-            ),
+            OpaqueFunction(function=node),
         ]
     )
