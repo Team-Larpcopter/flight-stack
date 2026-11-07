@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<package format="3"><name>larp_hardware</name><version>0.1.0</version>
+<description>Native OAK acquisition and shadow PX4 trajectory interface.</description>
+<maintainer email="team@larpcopter.local">Team Larpcopter</maintainer><license>Apache-2.0</license>
+<buildtool_depend>ament_cmake</buildtool_depend>
+<depend>rclcpp</depend><depend>sensor_msgs</depend><depend>std_msgs</depend>
+<depend>geometry_msgs</depend>
+<depend>depthai_v3</depend><depend>yaml-cpp</depend><depend>eigen</depend>
+<export><build_type>ament_cmake</build_type></export><depend>nav_msgs</depend><depend>px4_msgs</depend><depend>flight_executive_msgs</depend></package>

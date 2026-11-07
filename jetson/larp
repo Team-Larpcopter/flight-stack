@@ -1,0 +1,246 @@
+#!/usr/bin/env bash
+# larp -- Team Larpcopter helper for the skybeta drone (runs on the Jetson HOST).
+#
+# The organisers' stack runs in the docker container `skybeta-stack` (tmux session
+# `skybeta`: agent, slam, bridge, competitor). ROS lives only inside that container.
+# This script wraps the common things we do against it. It never touches the
+# organisers' doctor, status services, tailscaled, drone.env identity, or /fmu/in/*.
+set -euo pipefail
+
+STACK="${STACK:-skybeta-stack}"
+SKYBETA="${SKYBETA:-$HOME/skybeta}"
+FOX_PORT="${FOX_PORT:-8766}"  # 8765 is taken by the organisers' skybeta-status agent on the Tailscale IP
+
+die() { printf 'larp: %s\n' "$*" >&2; exit 1; }
+need_stack() { docker inspect -f '{{.State.Running}}' "$STACK" 2>/dev/null | grep -q true \
+  || die "container $STACK is not running (sudo systemctl status skybeta-stack)"; }
+# Run a command inside the stack with the ROS env (domain, DDS profile, overlays).
+in_ros() { need_stack; docker exec "$STACK" bash -c "source skybeta_env.sh; $*"; }
+in_ros_it() {
+  need_stack
+  local tty=()
+  [[ -t 0 && -t 1 ]] && tty=(-it)
+  docker exec "${tty[@]}" "$STACK" bash -c "source skybeta_env.sh; $*"
+}
+
+usage() {
+  cat <<EOF
+Usage: larp COMMAND
+
+  status            hostname, Wi-Fi IP, containers, VIO state, /skybeta/state
+  attach            attach to the stack's tmux (agent/slam/bridge/competitor). Ctrl-b d to leave
+  shell             bash inside the stack container (ROS sourced)
+  ros CMD...        run one ROS command in the stack, e.g.  larp ros ros2 topic list
+  fox start [--images] [--rate HZ] ...  |  fox stop  |  fox status
+                    Foxglove bridge on ws://<drone-ip>:${FOX_PORT}, READ-ONLY
+                    (no client publish / services / params -- rule 5.5).
+                    --images adds 5 Hz half-size camera copies on /viz/*.
+                    larp fox start --help for all options
+  build             colcon-build ~/team_ws inside the stack (team_build.sh)
+  image build|off|status
+                    team image = skybeta + our camera/VIO overrides (on-device depth).
+                    build: install jetson/team_image/Dockerfile and run skybeta's
+                    host/run.sh build. off: move it aside (stack uses skybeta's image).
+                    Either takes effect on the next stack start (larp restart).
+  bag [ARGS]        record the flight-debug topic set (organisers' host/run.sh bag)
+  doctor            organisers' health check (host/doctor.sh)
+  restart           restart the stack (WARNING: power-cycle the FC afterwards, bug #15)
+  work              host tmux session "larp" for dev work (survives SSH drops)
+  portal            press ACCEPT on the Stanford Visitor guest portal (Cisco web-auth),
+                    when HTTPS stops working on that network
+EOF
+}
+
+has_window() { docker exec "$STACK" tmux list-windows -t skybeta -F '#W' | grep -qx "$1"; }
+
+fox_usage() {
+  cat <<EOF
+larp fox start [--images] [--rate HZ] [--scale S] [--quality Q] [--topics T1,T2,...]
+larp fox stop | status
+
+  (default)     telemetry only: IMU, VIO, PX4, /skybeta/*. No images.
+  --images      also stream low-bandwidth camera copies on /viz/<topic>
+  --rate HZ     image rate (default 5)
+  --scale S     image scale (default 0.5; 1.0 = full size)
+  --quality Q   JPEG quality 1-100 (default 80)
+  --topics T,...        CompressedImage (JPEG) topics to relay
+  --raw-topics T,...    Image (mono8/bgr8) topics to relay
+  --depth-topics T,...  depth Image (16UC1 mm / 32FC1 m) topics, colourised
+  --depth-range MIN,MAX colour scale for depth in metres (default 0.3,6)
+                Default sources are detected: our team image (larp_oak)
+                -> /oak/left/image_raw, /oak/right/image_raw,
+                   /oak/stereo/filtered/image, /oak/stereo/image_raw;
+                skybeta's image -> /oak/{left,right}/image_raw/compressed.
+                Output: /viz/<topic>[/compressed]
+  --buffer B    bridge send buffer per client, bytes (default 131072). When the
+                link falls behind, older messages are dropped, not queued, so
+                Foxglove always shows the latest data.
+
+Full-rate camera topics are never served: one OAK stream (~60 Mbit/s) is more
+than the drone's Wi-Fi uplink and cost the bridge ~50% CPU.
+EOF
+}
+
+fox() {
+  need_stack
+  local action="${1:-start}"; shift || true
+  case "$action" in
+    start)
+      local images=0 rate=5 scale=0.5 quality=80 buffer=131072 explicit=0
+      local topics="" raw_topics="" depth_topics="" depth_range="0.3,6.0"
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --images) images=1; shift ;;
+          --buffer) buffer="${2:?}"; shift 2 ;;
+          --rate) rate="${2:?}"; shift 2 ;;
+          --scale) scale="${2:?}"; shift 2 ;;
+          --quality) quality="${2:?}"; shift 2 ;;
+          --topics) topics="${2:?}"; images=1; explicit=1; shift 2 ;;
+          --raw-topics) raw_topics="${2:?}"; images=1; explicit=1; shift 2 ;;
+          --depth-topics) depth_topics="${2:?}"; images=1; explicit=1; shift 2 ;;
+          --depth-range) depth_range="${2:?}"; shift 2 ;;
+          -h|--help) fox_usage; return ;;
+          *) fox_usage; die "unknown option $1" ;;
+        esac
+      done
+      if has_window foxglove || has_window viz; then
+        die "foxglove already running: larp fox stop first"
+      fi
+      # Read-only (rule 5.5): drop clientPublish/parameters/services, whitelist no client writes.
+      # Serve every topic except images; images only via the /viz relay.
+      # Latest data only: a small send buffer (the real latency source) plus shallow ROS
+      # queues (max 5, so /tf_static keeps all 4 static transforms the 3D panel needs),
+      # so a slow link drops old messages instead of queueing seconds of them.
+      # Values go in via tmux -e so the regexes need no nested shell quoting.
+      docker exec "$STACK" tmux new-window -d -t skybeta -n foxglove \
+        -e "FOX_PORT=${FOX_PORT}" -e "FOX_BUFFER=${buffer}" \
+        -e "FOX_TOPICS=['^(/viz/.*|(?!.*/image).*)\$']" \
+        -e "FOX_NONE=['^\$']" \
+        'bash -c "source skybeta_env.sh; ros2 launch foxglove_bridge foxglove_bridge_launch.xml \
+          port:=\$FOX_PORT address:=0.0.0.0 capabilities:=\"[connectionGraph,assets]\" \
+          send_buffer_limit:=\$FOX_BUFFER min_qos_depth:=1 max_qos_depth:=5 \
+          topic_whitelist:=\"\$FOX_TOPICS\" client_topic_whitelist:=\"\$FOX_NONE\" \
+          service_whitelist:=\"\$FOX_NONE\" param_whitelist:=\"\$FOX_NONE\"; \
+          echo exited; sleep infinity"'
+      if [[ $images == 1 ]]; then
+        if [[ $explicit == 0 ]]; then
+          # Capture first: `cmd | grep -q` under pipefail fails when grep exits early.
+          local live; live="$(in_ros "ros2 topic list" 2>/dev/null || true)"
+          if grep -qx /oak/stereo/filtered/image <<< "$live" \
+             || in_ros 'grep -q larp_oak "$(ros2 pkg prefix --share oakd_vslam_bringup)/launch/oakd_vslam.launch.py"' 2>/dev/null; then
+            raw_topics="/oak/left/image_raw,/oak/right/image_raw"
+            depth_topics="/oak/stereo/filtered/image,/oak/stereo/image_raw"
+          elif grep -qx /oak/stereo/image_raw <<< "$live"; then
+            raw_topics="/oak/left/image_rect,/oak/right/image_rect"
+            depth_topics="/oak/stereo/image_raw"
+          else
+            topics="/oak/left/image_raw/compressed,/oak/right/image_raw/compressed"
+          fi
+        fi
+        # "a,b" -> "['a','b']"; empty -> "['']" (the node skips empty names)
+        ros_list() { printf "['%s']" "${1//,/\',\'}"; }
+        docker exec "$STACK" tmux new-window -d -t skybeta -n viz \
+          -e "VIZ_TOPICS=$(ros_list "$topics")" -e "VIZ_RAW=$(ros_list "$raw_topics")" \
+          -e "VIZ_DEPTH=$(ros_list "$depth_topics")" \
+          -e "VIZ_RATE=${rate}" -e "VIZ_SCALE=${scale}" -e "VIZ_QUALITY=${quality}" \
+          -e "VIZ_DMIN=${depth_range%,*}" -e "VIZ_DMAX=${depth_range#*,}" \
+          'bash -c "source skybeta_env.sh; \
+            if ros2 pkg prefix larp_viz >/dev/null 2>&1; then \
+              ros2 run larp_viz viz_relay --ros-args -p topics:=\"\$VIZ_TOPICS\" \
+                -p raw_topics:=\"\$VIZ_RAW\" -p depth_topics:=\"\$VIZ_DEPTH\" \
+                -p rate_hz:=\$VIZ_RATE -p scale:=\$VIZ_SCALE -p jpeg_quality:=\$VIZ_QUALITY \
+                -p min_depth_m:=\$VIZ_DMIN -p max_depth_m:=\$VIZ_DMAX; \
+            else echo \"larp_viz not built: run larp build\"; fi; \
+            echo exited; sleep infinity"'
+        echo "images at ${rate} Hz, scale ${scale}, quality ${quality} -> /viz/...:"
+        echo "  jpeg: ${topics:-none} | raw: ${raw_topics:-none} | depth: ${depth_topics:-none}"
+      else
+        echo "images: off (larp fox start --images to add them)"
+      fi
+      echo "foxglove starting -> connect Foxglove to:"
+      ips
+      ;;
+    stop)
+      local w stopped=0
+      for w in viz foxglove; do
+        docker exec "$STACK" tmux kill-window -t "skybeta:$w" 2>/dev/null && stopped=1
+      done
+      [[ $stopped == 1 ]] && echo stopped || echo "not running" ;;
+    status)
+      echo "bridge: $(has_window foxglove && echo running || echo 'not running')," \
+           "images: $(has_window viz && echo on || echo off)" ;;
+    *) fox_usage; exit 1 ;;
+  esac
+}
+
+ips() {
+  local w; w="$(ip -4 -br addr show wlP1p1s0 2>/dev/null | awk '{print $3}' | cut -d/ -f1)"
+  [[ -n "$w" ]] && echo "  Wi-Fi: ws://$w:${FOX_PORT}"
+  echo "  USB:   ws://192.168.55.1:${FOX_PORT}"
+}
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  status)
+    echo "host: $(hostname)   drone.env: $(grep -E '^(DRONE_ID|ROS_DOMAIN_ID|COMPETITOR_PKG|COMPETITOR_LAUNCH)=' /etc/skybeta/drone.env | tr '\n' ' ')"
+    ip -4 -br addr show wlP1p1s0 2>/dev/null || true
+    docker ps --format '  {{.Names}}  {{.Image}}  {{.Status}}'
+    echo "foxglove: $(fox status 2>/dev/null || echo '?')"
+    in_ros "timeout 5 ros2 topic echo --once /visual_slam/status 2>/dev/null | grep -E 'vo_state' || echo '  vo_state: no sample'; \
+            timeout 5 ros2 topic echo --once /skybeta/state 2>/dev/null | head -3 || echo '  /skybeta/state: no sample'"
+    ;;
+  attach)  need_stack; docker exec -it "$STACK" tmux attach -t skybeta ;;
+  shell)   need_stack; docker exec -it "$STACK" bash ;;
+  ros)     [[ $# -gt 0 ]] || die "larp ros <command>"; in_ros_it "$*" ;;
+  fox)     fox "$@" ;;
+  build)   in_ros_it "team_build.sh" ;;
+  image)
+    tdir="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)/team_image"
+    ws="${TEAM_WS:-$HOME/team_ws}"
+    tag="$(tr -d '[:space:]' < "$SKYBETA/VERSION")"
+    running="$(docker inspect -f '{{.Config.Image}}' "$STACK" 2>/dev/null || echo none)"
+    case "${1:-status}" in
+      build)
+        [[ ! -e "$ws/Dockerfile" ]] \
+          || cmp -s "$ws/Dockerfile" "$tdir/Dockerfile" \
+          || grep -q 'io.larpcopter.overrides' "$ws/Dockerfile" \
+          || die "$ws/Dockerfile exists and is not a Larpcopter Dockerfile; move it aside first"
+        cp "$tdir/Dockerfile" "$ws/Dockerfile"
+        cp "$tdir/dockerignore" "$ws/.dockerignore"
+        rm -f "$ws/Dockerfile.off"
+        (cd "$SKYBETA" && host/run.sh build)
+        echo "built skybeta-team:$tag. Stack runs: $running. Takes effect on next start: larp restart"
+        ;;
+      off)
+        if [[ -e "$ws/Dockerfile" ]]; then mv "$ws/Dockerfile" "$ws/Dockerfile.off"; fi
+        echo "team image disabled; the next stack start (larp restart) uses skybeta:$tag"
+        ;;
+      status)
+        echo "running image: $running"
+        echo "Dockerfile:    $([[ -e "$ws/Dockerfile" ]] && echo present || echo absent)"
+        echo "team image:    $(docker image inspect -f '{{.Created}}' "skybeta-team:$tag" 2>/dev/null \
+          || echo 'not built')"
+        ;;
+      *) die "larp image build|off|status" ;;
+    esac ;;
+  bag)     cd "$SKYBETA" && host/run.sh bag "$@" ;;
+  doctor)  "$SKYBETA/host/doctor.sh" ;;
+  restart)
+    echo "Restarting $STACK. Known PX4 v1.16.2 bug #15: the FC's TELEM2 goes silent after"
+    echo "any stack stop -- POWER-CYCLE THE FLIGHT CONTROLLER afterwards. Keep the drone still."
+    read -r -p "Continue? [y/N] " a; [[ "$a" == y || "$a" == Y ]] || exit 1
+    docker rm -f "$STACK" >/dev/null; echo "removed; systemd restarts it in ~10 s" ;;
+  work)
+    command -v tmux >/dev/null || die "host tmux missing: run jetson/install.sh"
+    tmux new-session -A -s larp -c "$HOME/team_ws" ;;
+  portal)
+    loc="$(curl -sS --max-time 10 -D - -o /dev/null http://neverssl.com | awk 'tolower($1)=="location:"{print $2}' | tr -d '\r')"
+    if [[ -z "$loc" ]]; then echo "no portal redirect -- already online?"; else
+      portal_host="$(printf '%s' "$loc" | sed -E 's#^(https?://[^/]+).*#\1#')"
+      curl -sS --max-time 15 -o /dev/null -w "portal POST %{http_code}\n" -X POST "${portal_host}/login.html" \
+        --data "buttonClicked=4&err_flag=0&err_msg=&info_flag=0&info_msg=&redirect_url=http%3A%2F%2Fneverssl.com%2F"
+    fi
+    curl -sS -o /dev/null -w "https check: %{http_code} in %{time_total}s\n" --max-time 15 https://github.com ;;
+  help|-h|--help) usage ;;
+  *) usage; exit 1 ;;
+esac

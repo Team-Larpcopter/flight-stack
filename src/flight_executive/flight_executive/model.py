@@ -85,6 +85,7 @@ class Trajectory:
     yawspeed: Optional[float] = None
     trajectory_id: str = ''
     is_final: bool = False
+    valid_until: Optional[float] = None
 
 
 @dataclass(frozen=True)

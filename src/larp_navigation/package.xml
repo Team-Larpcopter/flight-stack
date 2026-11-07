@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<package format="3">
+<name>larp_navigation</name><version>0.1.0</version>
+<description>ROG-Map, native Air-FAR route guidance and certified SUPER trajectories.</description>
+<maintainer email="team@larpcopter.local">Team Larpcopter</maintainer>
+<license>LGPL-3.0-or-later</license><license>BSD-3-Clause</license>
+<buildtool_depend>ament_cmake</buildtool_depend>
+<depend>rclcpp</depend>
+<depend>sensor_msgs</depend>
+<depend>nav_msgs</depend>
+<depend>std_msgs</depend>
+<depend>geometry_msgs</depend>
+<depend>visualization_msgs</depend>
+<depend>pcl_msgs</depend>
+<depend>pcl_conversions</depend>
+<depend>message_filters</depend>
+<depend>std_srvs</depend>
+<depend>dronehacks_msgs</depend>
+<depend>nav_graph_msg</depend>
+<depend>route_goal_msg</depend>
+<depend>visibility_graph_msg</depend>
+<depend>eigen</depend>
+<depend>yaml-cpp</depend>
+<depend>libpcl-all-dev</depend>
+<depend>opencv</depend>
+<depend>pkg-config</depend>
+<test_depend>ov_core</test_depend><test_depend>ov_srvins</test_depend>
+<export><build_type>ament_cmake</build_type></export></package>

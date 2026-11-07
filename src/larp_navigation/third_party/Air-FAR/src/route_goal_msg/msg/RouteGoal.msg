@@ -1,0 +1,3 @@
+std_msgs/Header header
+bool is_free_nav
+geometry_msgs/Point position
