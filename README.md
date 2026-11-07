@@ -23,6 +23,7 @@ practice are in [CONTRIBUTING.md](CONTRIBUTING.md). PRs use
 
 ## Documentation
 
+- [Simulate automatic takeoff and hold](src/flight_executive/README.md)
 - [Workspace setup](docs/workspace.md)
 - [AI assistant setup](docs/ai-assistants.md)
 - [Agent / project contract](AGENTS.md)
