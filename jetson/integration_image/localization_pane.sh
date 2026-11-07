@@ -7,6 +7,9 @@ if [[ -f /root/skybeta_ws/install/local_setup.bash ]]; then
   source /root/skybeta_ws/install/local_setup.bash
 fi
 source "${INSTALL_PREFIX:-$workspace/install_clean}/setup.bash"
+# Optional overlay (e.g. a branch built separately on top of the shared install).
+if [[ -n ${OVERLAY_PREFIX:-} ]]; then source "$OVERLAY_PREFIX/setup.bash"; fi
+perception_src=${PERCEPTION_SRC:-$workspace/src/larp_perception}
 export LD_LIBRARY_PATH="${SDK_PREFIX:-$workspace/sdk_install}/lib:${LD_LIBRARY_PATH:-}"
 case ${1:-} in
 camera)
@@ -36,7 +39,7 @@ perception)
 bench)
   # bench SECONDS [OUT.json]: rates, latency, depth fill/noise, CPU of the running setup.
   mkdir -p "$workspace/evidence"
-  exec python3 "$workspace/src/larp_perception/tools/bench.py" "${2:-20}" \
+  exec python3 "$perception_src/tools/bench.py" "${2:-20}" \
     --out "${3:-$workspace/evidence/perception-bench-$(date +%Y%m%d-%H%M%S).json}"
   ;;
 *) echo 'Usage: localization_pane.sh camera|vio|monitor|perception|bench'; exit 2;;

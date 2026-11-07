@@ -16,9 +16,22 @@ Three kinds of input:
 
 Frames between publications are dropped before any conversion, so the CPU
 cost is only paid at ``rate_hz``. Viewing only: nothing in flight reads /viz.
+
+Non-image topics for Foxglove are throttled too, so the bridge never forwards
+anything at full rate (400 Hz IMU, IMU-rate odometry) and Wi-Fi never queues:
+
+* ``throttle_topics``  "topic@hz" entries, any message type: the newest message
+                       is forwarded as raw serialized bytes (no decoding) to
+                       /viz + topic, at most hz times per second.
+* ``path_pose_topic``  a PoseWithCovarianceStamped / PoseStamped / Odometry
+                       topic; a bounded path (``path_max_points``, one point
+                       per 1/``path_hz`` s) is published on /viz + topic +
+                       /path at ``path_hz``. Replaces estimator paths that
+                       resend the whole, ever-growing trajectory every update.
 """
 
 import array
+from collections import deque
 
 import cv2
 import numpy as np
@@ -26,7 +39,10 @@ import rclpy
 from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
+from nav_msgs.msg import Path
+from rosidl_runtime_py.utilities import get_message
 from sensor_msgs.msg import CompressedImage, Image
+from geometry_msgs.msg import PoseStamped
 
 #: Keep only the newest frame: a viewer never wants a queued, stale one.
 LATEST_ONLY = QoSProfile(
@@ -107,8 +123,21 @@ class VizRelay(Node):
         self.min_m = float(self.declare_parameter("min_depth_m", 0.3, number).value)
         self.max_m = float(self.declare_parameter("max_depth_m", 6.0, number).value)
         self.prefix = self.declare_parameter("prefix", "/viz").value.rstrip("/")
+        throttle = self.declare_parameter("throttle_topics", [""], strings).value
+        path_topic = self.declare_parameter("path_pose_topic", "").value
+        self.path_period = 1.0 / float(self.declare_parameter("path_hz", 5.0, number).value)
+        self.path_points = deque(maxlen=int(self.declare_parameter("path_max_points", 1500, number).value))
         self.last = {}
         self._keep = []
+        self._pending = {}  # throttled topic -> (topic, rate) until its type is known
+        for entry in filter(None, throttle):
+            topic, _, hz = entry.partition("@")
+            self._pending[topic] = float(hz or 5.0)
+        self._path_topic = path_topic
+        self._path_pub = None
+        self._discovery = None
+        if self._pending or path_topic:
+            self._discovery = self.create_timer(1.0, self._discover)  # topics may appear later
         for topic in filter(None, topics):
             self._add(CompressedImage, topic, self.prefix + topic, self._compressed)
         for topic in filter(None, raw_topics):
@@ -119,6 +148,52 @@ class VizRelay(Node):
             f"{1.0 / self.period:.1f} Hz, scale {self.scale}, JPEG quality {self.quality}, "
             f"depth {self.min_m}-{self.max_m} m"
         )
+
+    def _discover(self):
+        """Subscribe to throttled / path topics once their type is known."""
+        types = dict(self.get_topic_names_and_types())
+        for topic, hz in list(self._pending.items()):
+            if topic in types:
+                cls = get_message(types[topic][0])
+                out = self.create_publisher(cls, self.prefix + topic, 1)
+                period = 1.0 / hz
+                self._keep.append(self.create_subscription(
+                    cls, topic, lambda raw, t=topic, p=out, dt=period: self._throttle(t, p, raw, dt),
+                    LATEST_ONLY, raw=True))
+                del self._pending[topic]
+                self.get_logger().info(f"{topic} -> {self.prefix + topic} at {hz:g} Hz (raw)")
+        if self._path_topic and self._path_pub is None and self._path_topic in types:
+            cls = get_message(types[self._path_topic][0])
+            self._path_pub = self.create_publisher(Path, self.prefix + self._path_topic + "/path", 1)
+            self._keep.append(self.create_subscription(cls, self._path_topic, self._pose, LATEST_ONLY))
+            self.create_timer(self.path_period, self._publish_path)
+            self.get_logger().info(f"{self._path_topic} -> {self.prefix + self._path_topic}/path")
+        if self._discovery and not self._pending and (not self._path_topic or self._path_pub is not None):
+            self._discovery.cancel()
+
+    def _throttle(self, topic, publisher, raw, period):
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if now - self.last.get(topic, 0.0) >= period:
+            self.last[topic] = now
+            publisher.publish(raw)  # serialized bytes: forwarded without decoding
+
+    def _pose(self, msg):
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if now - self.last.get("__path", 0.0) < self.path_period:
+            return
+        self.last["__path"] = now
+        pose = msg.pose.pose if hasattr(msg.pose, "pose") else msg.pose
+        p = PoseStamped()
+        p.header = msg.header
+        p.pose = pose
+        self.path_points.append(p)
+
+    def _publish_path(self):
+        if self.path_points:
+            path = Path()
+            path.header = self.path_points[-1].header
+            path.poses = list(self.path_points)
+            self._path_pub.publish(path)
 
     def _add(self, msg_type, topic, out_topic, convert):
         out = self.create_publisher(CompressedImage, out_topic, 1)

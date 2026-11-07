@@ -51,7 +51,12 @@ class Bench(Node):
         self.data = {t: {"recv": [], "age": []} for t in topics}
         self.depth = {}
         self.missing = []
-        types = dict(self.get_topic_names_and_types())
+        deadline = time.time() + 5.0  # wait for discovery before looking up types
+        while True:
+            types = dict(self.get_topic_names_and_types())
+            if all(t in types for t in topics) or time.time() > deadline:
+                break
+            rclpy.spin_once(self, timeout_sec=0.2)
         for t in topics:
             if t not in types:
                 self.missing.append(t)
