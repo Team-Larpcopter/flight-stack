@@ -109,7 +109,7 @@ class OakNode(Node):
         # skybeta-15) and the same |g| (9.16 m/s^2 at rest, ~7% low: an accelerometer
         # scale error the filter must absorb), so it does NOT match those extrinsics.
         self.imu_mode = dp("imu_mode", "raw").value
-        self.imu_check = []  # first ~1 s of accel samples for the start-up gravity check
+        self.imu_check = []  # first ~5 s of IMU samples for the start-up gravity check
         self.r_left_imu = None  # rotation IMU -> left optical, for that check
         self.parent = dp("parent_frame", "oak_parent_frame").value
         self.prefix = dp("tf_prefix", "oak").value
@@ -272,11 +272,15 @@ class OakNode(Node):
         for name in ("spatialFilter", "temporalFilter", "speckleFilter"):
             getattr(pp, name).enable = False
         imu = p.create(dai.node.IMU)
-        sensors = (
-            [dai.IMUSensor.ACCELEROMETER_RAW, dai.IMUSensor.GYROSCOPE_RAW]
-            if self.imu_mode == "raw"
-            else [dai.IMUSensor.ACCELEROMETER_CALIBRATED, dai.IMUSensor.GYROSCOPE_CALIBRATED]
-        )
+        modes = {
+            "raw": [dai.IMUSensor.ACCELEROMETER_RAW, dai.IMUSensor.GYROSCOPE_RAW],
+            "calibrated": [dai.IMUSensor.ACCELEROMETER_CALIBRATED, dai.IMUSensor.GYROSCOPE_CALIBRATED],
+            "uncalibrated": [dai.IMUSensor.ACCELEROMETER_UNCALIBRATED, dai.IMUSensor.GYROSCOPE_UNCALIBRATED],
+        }
+        if self.imu_mode not in modes:
+            self.get_logger().error(f"unknown imu_mode {self.imu_mode!r}, using raw")
+            self.imu_mode = "raw"
+        sensors = modes[self.imu_mode]
         imu.enableIMUSensor(sensors, self.imu_hz)
         imu.setBatchReportThreshold(1)
         imu.setMaxBatchReports(10)
@@ -430,18 +434,22 @@ class OakNode(Node):
         self.pub["imu"].publish(msg)
         self.stats["imu"] += 1
         if self.imu_check is not None:
-            self.imu_check.append((a.x, a.y, a.z))
-            if len(self.imu_check) >= self.imu_hz:  # ~1 s
+            self.imu_check.append((a.x, a.y, a.z, g.x, g.y, g.z, int(a.accuracy), int(g.accuracy)))
+            if len(self.imu_check) >= 5 * self.imu_hz:  # ~5 s
                 self._gravity_check(np.array(self.imu_check))
                 self.imu_check = None
 
     def _gravity_check(self, acc):
         """Log the resting accelerometer vector once: |a| should be ~9.81 m/s^2, and in
         the left optical frame (x right, y down, z forward) a level camera reads ~(0, -9.81, 0)."""
-        mean = acc.mean(axis=0)
-        text = f"IMU check ({self.imu_mode}, {len(acc)} samples): |a| = {np.linalg.norm(mean):.3f} m/s^2, mean a = {np.round(mean, 3)} (IMU frame)"
+        mean, gyro = acc[:, :3].mean(axis=0), acc[:, 3:6].mean(axis=0)
+        # BNO086 report accuracy: 0 unreliable, 1 low, 2 medium, 3 high
+        acc_q, gyro_q = np.bincount(acc[:, 6].astype(int), minlength=4), np.bincount(acc[:, 7].astype(int), minlength=4)
+        text = (f"IMU check ({self.imu_mode}, {len(acc)} samples): |a| = {np.linalg.norm(mean):.3f} m/s^2, "
+                f"mean a = {np.round(mean, 3)}, mean gyro = {np.round(gyro, 4)} rad/s (IMU frame), "
+                f"accuracy counts [unrel, low, med, high] accel {acc_q.tolist()} gyro {gyro_q.tolist()}")
         if self.r_left_imu is not None:
-            text += f", in left optical frame = {np.round(self.r_left_imu @ mean, 3)}"
+            text += f", a in left optical frame = {np.round(self.r_left_imu @ mean, 3)}"
         self.get_logger().info(text)
 
     def _report(self):

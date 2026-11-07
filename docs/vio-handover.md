@@ -137,8 +137,20 @@ at start-up, and remaining sensor errors are estimated online by the filter.
 
 ### IMU orientation (the bug that made sqrtVINS drift a metre while still)
 
-- The OAK-D S2 has a BNO086. depthai offers RAW and CALIBRATED reports. On this
-  unit CALIBRATED = RAW with y and z negated, and both read |g| = 9.16 m/s².
+- The OAK-D S2 has a BNO086. Measured on skybeta-15 (still, 5 s per mode, `imu_mode`
+  raw / calibrated / uncalibrated):
+
+  | mode | accel mean (m/s²) | \|a\| | gyro mean (rad/s) | BNO accuracy flag |
+  |---|---|---|---|---|
+  | raw | (−0.285, **+9.149**, −0.278) | 9.157 | (−0.0010, **+0.0045**, −0.0003) | UNRELIABLE (all samples) |
+  | calibrated | (−0.284, **−9.151**, +0.279) | 9.160 | (−0.0011, **−0.0042**, +0.0002) | UNRELIABLE |
+  | uncalibrated | (−0.286, −9.153, +0.276) | 9.162 | (−0.0010, −0.0041, 0.0000) | UNRELIABLE |
+
+  CALIBRATED and UNCALIBRATED are RAW with y and z negated (a different axis
+  convention), with the **same gravity error and the same gyro bias**: the chip's
+  own calibration is not doing anything here, and its accuracy flag never leaves
+  UNRELIABLE. depthai gives no access to the chip's calibration state or bias
+  estimate beyond that flag, so there is nothing extra to gain from those modes.
 - The camera's factory calibration includes the IMU→camera transform
   (`calib.getImuToCameraExtrinsics(CAM_B)`), defined for the **RAW** axes
   (≈ diag(1, −1, −1), t ≈ (7.6, 0, −0.15) cm from the left camera).
