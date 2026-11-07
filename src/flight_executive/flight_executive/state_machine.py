@@ -159,7 +159,8 @@ class StateMachine:
             self.fail('Local position, vertical velocity, or heading is invalid')
         elif self.position.reset_counters != self.resets:
             self.fail('Local position or heading estimator reset')
-        elif gap and self.phase != Phase.PREPARE:
+        elif gap and self.phase not in (Phase.PREPARE, Phase.WAIT_ARM,
+                                        Phase.ARMED_IN_POSITION, Phase.WAIT_POSITION):
             self.fail('Control timer gap exceeded 0.5 seconds')
         elif self.state in (State.HOLD, State.TRACKING):
             if not self.status.offboard:

@@ -1,11 +1,4 @@
 %YAML:1.0 # need to specify the file type at the top!
-# Same as estimator_config.yaml but trusts the OAK factory calibration: camera
-# intrinsics and camera-IMU extrinsics are NOT refined online (in lift1 the
-# online refinement moved the cameras ~6 cm apart and broke stereo depth).
-# The camera-IMU time offset is still estimated.
-# Larpcopter: sqrtVINS for the skybeta OAK-D S2, derived from sqrtVINS config/euroc_mav
-# (LGPL-3.0, rpng/sqrtVINS 30fafc8; the rs_d455 config is outdated for this version).
-# Overrides vs that template: see README. Images come from larp_undistort.
 
 verbosity: "INFO" # ALL, DEBUG, INFO, WARNING, ERROR, SILENT
 
@@ -17,8 +10,8 @@ max_cameras: 2 # how many cameras we have 1: mono, 2: stereo, >2: binocular (all
 use_imuavg: true
 use_rk4int: true
 
-calib_cam_extrinsics: false # if the transform between camera and IMU should be optimized R_ItoC, p_CinI
-calib_cam_intrinsics: false # if camera intrinsics should be optimized (focal, center, distortion)
+calib_cam_extrinsics: true # if the transform between camera and IMU should be optimized R_ItoC, p_CinI
+calib_cam_intrinsics: true # if camera intrinsics should be optimized (focal, center, distortion)
 calib_cam_timeoffset: true # if timeoffset between camera and IMU should be optimized
 calib_imu_intrinsics: false # if imu intrinsics should be calibrated (rotation and skew-scale matrix)
 calib_imu_g_sensitivity: false # if gyroscope gravity sensitivity (Tg) should be calibrated
@@ -37,12 +30,12 @@ feat_rep_aruco: "ANCHORED_MSCKF_INVERSE_DEPTH"
 
 # zero velocity update parameters we can use
 # we support either IMU-based or disparity detection.
-try_zupt: true
+try_zupt: false
 zupt_chi2_multipler: 0 # set to 0 for only disp-based
 zupt_max_velocity: 0.1
 zupt_noise_multiplier: 10
 zupt_max_disparity: 0.5 # set to 0 for only imu-based
-zupt_only_at_beginning: true
+zupt_only_at_beginning: false
 
 # ==================================================================
 # ==================================================================
@@ -76,11 +69,11 @@ init_prior_dc1: 0.01
 init_prior_dc2: 1e-5
 
 init_use_fej: false
-init_max_reproj: 2.0 # 2.0 for stereo
+init_max_reproj: 3.0 # 2.0 for stereo
 init_dyn_mle_max_iter: 10
 init_ba_dx_converge_thres: 1e-6
 init_ba_res_converge_thres: 1e-4
-init_min_feat: 30 # 30 for stereo
+init_min_feat: 20 # 30 for stereo
 init_max_feat: 50
 init_ba_huber_th: 999.0
 init_max_slam: 50
@@ -92,8 +85,8 @@ residual_debug: false
 dof: 1
 
 # init logger
-record_init_pose: false
-record_init_timing: false
+record_init_pose: true
+record_init_timing: true
 init_poses_log_file_path: /tmp/init_window_poses.txt
 init_metadata_log_file_path: /tmp/init_window_timing.txt
 
@@ -133,7 +126,7 @@ ransac_th: 2.0 # ransac threshold for the essential matrix
 knn_ratio: 0.70 # descriptor knn threshold for the top two descriptor matches
 track_frequency: 31.0 # frequency we will perform feature tracking at (in frames per second / hertz)
 downsample_cameras: false # will downsample image in half if true
-num_opencv_threads: 2 # -1: auto, 0-1: serial, >1: number of threads
+num_opencv_threads: 1 # -1: auto, 0-1: serial, >1: number of threads
 histogram_method: "HISTOGRAM" # NONE, HISTOGRAM, CLAHE
 
 

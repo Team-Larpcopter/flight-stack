@@ -1,13 +1,8 @@
-"""sqrtVINS on the OAK-D S2: larp_undistort + ov_srvins run_subscribe_msckf.
+"""sqrtVINS for the native OAK driver using bundled device calibration.
 
-Inputs (from larp_oak): /oak/{left,right}/image_raw + camera_info, /oak/imu/data
-Outputs (namespace ov_srvins): odomimu (nav_msgs/Odometry), poseimu, pathimu,
-points_msckf / points_slam (feature clouds)
-
-    ros2 launch larp_localization sqrtvins.launch.py
-    ros2 launch larp_localization sqrtvins.launch.py config:=/path/estimator_config.yaml
-
-sqrtVINS runs alongside cuVSLAM here; it does not feed PX4.
+Inputs: /native_oak/{left,right}/image_undistorted, /autonomy/imu/data.
+Launch the native camera separately; this launch starts the estimator only.
+Legacy Python undistortion is opt-in and requires a matching config override.
 """
 
 import os
@@ -28,9 +23,9 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument("config", default_value=default_config),
-            DeclareLaunchArgument("namespace", default_value="ov_srvins"),
+            DeclareLaunchArgument("namespace", default_value="autonomy"),
             DeclareLaunchArgument("verbosity", default_value="INFO"),
-            DeclareLaunchArgument("undistort", default_value="true"),
+            DeclareLaunchArgument("undistort", default_value="false"),
             Node(
                 package="larp_localization",
                 executable="undistort",
@@ -43,6 +38,7 @@ def generate_launch_description():
                 executable="run_subscribe_msckf",
                 namespace=arg("namespace"),
                 name="ov_srvins",
+                remappings=[("/sim/processed/vio", "/autonomy/processed_vio")],
                 output="screen",
                 parameters=[
                     {"config_path": arg("config"), "verbosity": arg("verbosity")},

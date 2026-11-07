@@ -35,8 +35,7 @@ chmod a+rx "$run"
 echo "Logs and fresh calibration: $run"
 native=/integration/install_clean/larp_hardware/lib/larp_hardware/oak_native_node
 vio=/integration/install_clean/ov_srvins/lib/ov_srvins/run_subscribe_msckf
-correction=/integration/evidence/imu_calibration.json
-[[ -x $native && -x $vio && -f $correction ]] || { echo 'Missing binaries or measured IMU correction'; exit 2; }
+[[ -x $native && -x $vio ]] || { echo 'Missing localization binaries'; exit 2; }
 cleanup() {
   trap - EXIT INT TERM
   [[ -z ${tail_pid:-} ]] || kill "$tail_pid" 2>/dev/null || true
@@ -51,7 +50,7 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 setsid "$native" --ros-args -p connect_device:=true -p publish_images:=true \
-  -p align_imu:=true -p imu_calibration_file:="$correction" \
+  -p align_imu:=true \
   -p factory_calibration_out:="$run/factory.json" -p capture_csv:="$run/raw.csv" \
   -p capture_seconds:="$((seconds+45)).0" -p accel_hz:=500 -p gyro_hz:=400 \
   -p max_exposure_us:=5000 > "$run/camera.log" 2>&1 &
@@ -64,7 +63,7 @@ done
 python3 -m larp_autonomy.native_calibration \
   --extrinsics "$run/factory.json.extrinsics.json" \
   --left "$run/raw.csv.left.json" --right "$run/raw.csv.right.json" \
-  --imu-calibration "$correction" --out "$run/calibration" \
+  --out "$run/calibration" \
   --template-dir /integration/src/larp_localization/config/oak_d_s2 --bench-only
 setsid "$vio" --ros-args -r __ns:=/autonomy \
   -r /sim/processed/vio:=/autonomy/processed_vio \

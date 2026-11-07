@@ -9,7 +9,7 @@ from .calibration import generate,opencv_yaml
 def main():
     p=argparse.ArgumentParser()
     p.add_argument('--extrinsics',required=True);p.add_argument('--left',required=True);p.add_argument('--right',required=True)
-    p.add_argument('--imu-calibration',required=True);p.add_argument('--out',required=True);p.add_argument('--template-dir',required=True)
+    p.add_argument('--out',required=True);p.add_argument('--template-dir',required=True)
     p.add_argument('--body-mount',help='JSON with surveyed T_body_imu, metres')
     p.add_argument('--bench-only',action='store_true');p.add_argument('--imu-hz',type=float,default=400)
     a=p.parse_args()
@@ -36,14 +36,10 @@ def main():
     imu=directory/'kalibr_imu_chain.yaml';cfg=yaml.safe_load(imu.read_text().split('\n',1)[1])
     cfg['imu0']['rostopic']='/autonomy/imu/data';cfg['imu0']['update_rate']=a.imu_hz
     imu.write_text(opencv_yaml(cfg))
-    correction=json.loads(Path(a.imu_calibration).read_text())
-    if correction['axes']!='raw':raise ValueError('Raw IMU axis correction required')
-    config=directory/'estimator_config.yaml'
-    import re
-    config.write_text(re.sub(r'(?m)^gravity_mag:.*$',f"gravity_mag: {float(correction['g'])}",config.read_text()))
-    rig['source']='DepthAI camera-to-IMU export in cm; per-frame undistorted projection; explicit raw-axis IMU correction'
+    rig['source']='DepthAI camera-to-IMU export in cm; per-frame undistorted projection; uncorrected raw-axis IMU in SI units'
+    rig['imu_correction']='none; biases estimated by sqrtVINS'
     rig['image_timestamp']='paired mid-exposure';rig['imu_alignment']='bracketed acceleration at native gyro times; no extrapolation'
-    inputs=[a.extrinsics,a.left,a.right,a.imu_calibration]+([a.body_mount] if a.body_mount else [])
+    inputs=[a.extrinsics,a.left,a.right]+([a.body_mount] if a.body_mount else [])
     rig['input_sha256']={str(x):hashlib.sha256(Path(x).read_bytes()).hexdigest() for x in inputs}
     (directory/'rig.json').write_text(json.dumps(rig,indent=2)+'\n')
     hashes={f.name:hashlib.sha256(f.read_bytes()).hexdigest() for f in directory.iterdir() if f.is_file() and f.name!='calibration-hashes.json'}
