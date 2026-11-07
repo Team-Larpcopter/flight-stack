@@ -7,6 +7,7 @@ often named `flight_stack_ws`.
 
 ```bash
 cd /path/to/flight_stack_ws
+git submodule update --init --recursive
 source /opt/ros/humble/setup.bash
 colcon build --symlink-install
 source install/local_setup.bash

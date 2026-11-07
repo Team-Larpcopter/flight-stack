@@ -1,9 +1,10 @@
-"""Simulation-only ROS 2 adapter for the takeoff controller."""
+"""Simulation-only ROS 2 adapter for the flight state machine."""
 
-from math import nan
+from math import isfinite, nan
 from time import monotonic
 
 import rclpy
+from flight_executive_msgs.msg import TrajectorySetpoint as LarperTrajectorySetpoint
 from px4_msgs.msg import (
     OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleCommandAck,
     VehicleLandDetected, VehicleLocalPosition, VehicleStatus,
@@ -16,9 +17,8 @@ from rclpy.qos import (
 )
 from std_msgs.msg import String
 
-from flight_executive.controller import (
-    Command, Controller, Landed, Position, Status,
-)
+from flight_executive.model import Command, Landed, Position, Status, Trajectory
+from flight_executive.state_machine import StateMachine
 
 
 def topic_name(prefix, name, message_type):
@@ -29,14 +29,14 @@ def topic_name(prefix, name, message_type):
 
 
 class FlightExecutiveNode(Node):
-    """Translate PX4 messages and publish the controller's outputs at 20 Hz."""
+    """Translate PX4 messages and publish the state machine's outputs at 20 Hz."""
 
     def __init__(self):
         super().__init__('flight_executive')
         if not self.declare_parameter('simulation_only', False).value:
             raise ValueError('Use the simulation launch file; hardware is not supported')
         height = self.declare_parameter('takeoff_height', 1.0).value
-        self.controller = Controller(monotonic(), height)
+        self.state_machine = StateMachine(monotonic(), height)
         self.prefix = self.declare_parameter('px4_topic_prefix', '/fmu').value.rstrip('/')
         if not self.prefix.startswith('/') or self.prefix == '':
             raise ValueError('px4_topic_prefix must be an absolute nonempty topic prefix')
@@ -55,7 +55,7 @@ class FlightExecutiveNode(Node):
         self.mode_pub = self._publisher(OffboardControlMode, 'in/offboard_control_mode')
         self.setpoint_pub = self._publisher(TrajectorySetpoint, 'in/trajectory_setpoint')
         self.command_pub = self._publisher(VehicleCommand, 'in/vehicle_command')
-        self._subscriptions = [
+        self.input_subscriptions = [
             self.create_subscription(message_type,
                                      topic_name(self.prefix, name, message_type),
                                      callback, telemetry_qos)
@@ -66,6 +66,10 @@ class FlightExecutiveNode(Node):
                 (VehicleCommandAck, 'out/vehicle_command_ack', self._ack),
             )
         ]
+        trajectory_topic = self.declare_parameter(
+            'trajectory_topic', '/larper/trajectory_in').value
+        self.input_subscriptions.append(self.create_subscription(
+            LarperTrajectorySetpoint, trajectory_topic, self._trajectory, telemetry_qos))
         self.state_pub = self.create_publisher(String, '~/state', QoSProfile(
             depth=1, reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL))
@@ -84,30 +88,44 @@ class FlightExecutiveNode(Node):
     def _status(self, msg):
         if (msg.system_id != self.target_system
                 or msg.component_id != self.target_component):
-            self.controller.fail('PX4 telemetry vehicle identity mismatch')
+            self.state_machine.fail('PX4 telemetry vehicle identity mismatch')
             return
-        self.controller.status = Status(
+        self.state_machine.status = Status(
             monotonic(), msg.arming_state == VehicleStatus.ARMING_STATE_ARMED,
             msg.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD,
             msg.pre_flight_checks_pass, msg.failsafe)
 
     def _position(self, msg):
-        self.controller.position = Position(
+        self.state_machine.position = Position(
             monotonic(), msg.x, msg.y, msg.z, msg.heading, msg.vz,
             msg.xy_valid and msg.z_valid and msg.v_z_valid,
             (msg.xy_reset_counter, msg.z_reset_counter, msg.heading_reset_counter,
              msg.vxy_reset_counter, msg.vz_reset_counter))
 
     def _landed(self, msg):
-        self.controller.landed = Landed(monotonic(), msg.landed)
+        self.state_machine.landed = Landed(monotonic(), msg.landed)
 
     def _ack(self, msg):
         if (msg.target_system == self.source_system
                 and msg.target_component == self.source_component):
-            self.controller.acknowledge(msg.command, msg.result)
+            self.state_machine.acknowledge(msg.command, msg.result)
+
+    def _trajectory(self, msg):
+        if msg.header.frame_id != 'local_ned':
+            self.get_logger().warning(
+                'Ignoring trajectory: frame_id must be local_ned', throttle_duration_sec=1.0)
+            return
+        vectors = tuple(tuple(getattr(v, axis) for axis in ('x', 'y', 'z'))
+                        for v in (msg.position, msg.velocity, msg.acceleration))
+        if not all(isfinite(v) and abs(v) <= 3.4028234663852886e38
+                   for vector in vectors for v in vector):
+            self.get_logger().warning(
+                'Ignoring trajectory: invalid PX4 float32 component', throttle_duration_sec=1.0)
+            return
+        self.state_machine.accept_trajectory(Trajectory(monotonic(), *vectors))
 
     def _report(self):
-        c = self.controller
+        c = self.state_machine
         report = (c.state, c.phase, c.reason)
         if report != self.last_report:
             self.last_report = report
@@ -120,7 +138,7 @@ class FlightExecutiveNode(Node):
                 self.get_logger().info(text)
 
     def _tick(self):
-        output = self.controller.tick(monotonic())
+        output = self.state_machine.tick(monotonic())
         self._report()
         if output.setpoint is None:
             return
@@ -133,8 +151,8 @@ class FlightExecutiveNode(Node):
         setpoint = TrajectorySetpoint()
         setpoint.timestamp = timestamp
         setpoint.position = [target.x, target.y, target.z]
-        setpoint.velocity = [nan, nan, nan]
-        setpoint.acceleration = [nan, nan, nan]
+        setpoint.velocity = list(target.velocity)
+        setpoint.acceleration = list(target.acceleration)
         setpoint.jerk = [nan, nan, nan]
         setpoint.yaw = target.yaw
         setpoint.yawspeed = nan

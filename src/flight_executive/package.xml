@@ -3,7 +3,7 @@
 <package format="3">
   <name>flight_executive</name>
   <version>0.1.0</version>
-  <description>Simulation-only automatic PX4 takeoff and hold executive.</description>
+  <description>Simulation-only PX4 takeoff, hold, and trajectory tracking executive.</description>
   <maintainer email="team@larpcopter.local">Team Larpcopter</maintainer>
   <license>Apache-2.0</license>
 
@@ -11,6 +11,7 @@
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>px4_msgs</exec_depend>
+  <exec_depend>flight_executive_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>

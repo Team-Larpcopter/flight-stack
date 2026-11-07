@@ -8,6 +8,7 @@
 | Path | Role |
 | --- | --- |
 | `src/` | First-party ROS 2 packages |
+| `src/px4_msgs/` | Pinned PX4 v1.17 message submodule |
 | `docs/` | Contributor and assistant guidance |
 | `.github/` | PR template and GitHub metadata |
 | `build/`, `install/`, `log/` | Generated colcon output (do not commit) |
@@ -16,6 +17,7 @@
 
 ```bash
 cd /path/to/flight_stack_ws
+git submodule update --init --recursive
 source /opt/ros/humble/setup.bash
 # optional: source any required overlay workspaces
 colcon build --symlink-install
@@ -35,6 +37,12 @@ ros2 run flight_executive flight_executive_node
 ```
 
 Keep colcon outputs under this workspace’s `build/`, `install/`, and `log/`.
+
+When this checkout is nested inside `flight-systems`, follow the parent
+repository's container and output-directory rules instead. The
+[executive build instructions](../src/flight_executive/README.md#build-in-the-dev-container)
+use the local message submodule and keep all generated files under the parent's
+`ros2_ws`. Source that build's overlay before importing `px4_msgs`.
 
 ## Lint / format
 

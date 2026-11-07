@@ -1,9 +1,10 @@
-# Simulate automatic takeoff and hold
+# Simulate takeoff, hold, and trajectory tracking
 
 This Python ROS 2 node automatically enters Offboard, arms, climbs 1 m above its
 initial local position, and holds. It is a one-shot SITL prototype for PX4 v1.17
-and the pinned `px4_msgs` release. TRACKING and LAND are reserved states without
-transitions. HOLD keeps PX4 in Offboard; it does not select PX4's native Hold mode.
+and the pinned `px4_msgs` release. TRACKING follows custom local NED trajectory
+samples. LAND remains reserved without an implementation. HOLD keeps PX4 in
+Offboard; it does not select PX4's native Hold mode.
 
 ## Build in the Dev Container
 
@@ -13,14 +14,21 @@ and workspace rules. Do not install ROS or build on the host.
 
 ```bash
 cd /workspaces/flight-systems
+git -C flight_stack_ws submodule update --init --recursive
 ./scripts/dev doctor
 cd ros2_ws
 source /opt/ros/humble/setup.bash
-colcon build --base-paths src/px4_msgs ../flight_stack_ws/src/flight_executive --packages-up-to flight_executive --symlink-install
-source install/local_setup.bash
-colcon test --base-paths src/px4_msgs ../flight_stack_ws/src/flight_executive --packages-select flight_executive
-colcon test-result --verbose
+colcon --log-base log/flight-stack build --base-paths ../flight_stack_ws/src --build-base build/flight-stack --install-base install/flight-stack --packages-up-to flight_executive --symlink-install
+source install/flight-stack/local_setup.bash
+colcon --log-base log/flight-stack test --base-paths ../flight_stack_ws/src --build-base build/flight-stack --install-base install/flight-stack --packages-select flight_executive
+colcon test-result --test-result-base build/flight-stack --verbose
 ```
+
+`src/px4_msgs` in the flight-stack repository is a Git submodule pinned to
+`86d8239e962f6939e05c3737784f60c02fa884db`, matching the parent simulator's
+PX4 v1.17 baseline. The Python import is `px4_msgs`, not `px4_messages`.
+Build it with colcon and source the resulting overlay before running the node;
+the source checkout alone does not provide the generated Python messages.
 
 ## Run against SITL
 
@@ -114,6 +122,57 @@ For another simulator run after landing and disarming, select PX4 Hold before
 restarting the node (`commander mode auto:loiter` in the SITL console). A previous
 Offboard intention without a heartbeat, or Position mode without RC input, can
 prevent preflight readiness.
+
+## Publish tracking setpoints
+
+After takeoff reaches HOLD, publish `flight_executive_msgs/msg/TrajectorySetpoint`
+on `/larper/trajectory_in`. A valid fresh sample automatically enters TRACKING.
+Samples received in WAITING, TAKEOFF, or ERROR are discarded rather than cached.
+The input topic is configurable with the `trajectory_topic` launch argument.
+
+The custom message contains these fields:
+
+```text
+std_msgs/Header header
+geometry_msgs/Point position
+geometry_msgs/Vector3 velocity
+geometry_msgs/Vector3 acceleration
+```
+
+Set `header.frame_id` to `local_ned`. All vectors use exactly PX4's local NED
+frame and estimator origin, in metres, metres/second, and metres/second squared.
+There is no axis conversion, sign flip, origin translation, or TF lookup.
+Position is absolute in this local frame, not an offset from takeoff.
+The source stamp is informational; freshness uses monotonic receipt time.
+All nine components must be finite and representable as PX4 float32 values.
+Invalid samples are ignored and do not refresh the accepted sample's deadline.
+
+For example, after HOLD, stream a stationary target one metre above PX4's local
+origin. Adjust the position to match the current local origin before publishing.
+
+```bash
+ros2 topic pub --rate 10 /larper/trajectory_in flight_executive_msgs/msg/TrajectorySetpoint "{header: {frame_id: local_ned}, position: {x: 0.0, y: 0.0, z: -1.0}, velocity: {x: 0.0, y: 0.0, z: 0.0}, acceleration: {x: 0.0, y: 0.0, z: 0.0}}"
+```
+
+The executive repeats the latest accepted position, velocity, and acceleration
+unchanged at 20 Hz while its age is at most 1 second. Position control remains
+selected; velocity and acceleration are feedforward terms. Yaw stays at the
+HOLD target's yaw because the input does not contain a yaw command.
+
+If no accepted sample arrives for more than 1 second, TRACKING returns to HOLD.
+It captures the current measured position and yaw once and publishes that fixed
+pose with zero velocity and acceleration. A new valid sample can resume tracking.
+Existing telemetry, estimator-reset, mode-takeover, disarm, and failsafe checks
+apply during tracking. Tracking never requests arming or a mode change.
+
+## Code structure
+
+`flight_executive/state_machine.py` owns mission transitions and shared health
+checks. `model.py` contains ROS-independent values. `extensions/takeoff.py` owns
+preparation, mode and arm acknowledgments/retries, ascent, and settling.
+`extensions/tracking.py` owns the latest trajectory and its receipt deadline.
+`flight_executive_node.py` handles ROS subscriptions and PX4 publication.
+The separate `flight_executive_msgs` package generates the input message.
 
 ## Hardware prerequisites
 

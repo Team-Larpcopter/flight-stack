@@ -11,6 +11,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('takeoff_height', default_value='1.0'),
         DeclareLaunchArgument('px4_topic_prefix', default_value='/fmu'),
+        DeclareLaunchArgument('trajectory_topic', default_value='/larper/trajectory_in'),
         Node(
             package='flight_executive', executable='flight_executive_node',
             output='screen', parameters=[{
@@ -18,5 +19,6 @@ def generate_launch_description():
                 'takeoff_height': ParameterValue(
                     LaunchConfiguration('takeoff_height'), value_type=float),
                 'px4_topic_prefix': LaunchConfiguration('px4_topic_prefix'),
+                'trajectory_topic': LaunchConfiguration('trajectory_topic'),
             }]),
     ])

@@ -5,15 +5,16 @@ from math import nan
 
 import pytest
 
-from flight_executive.controller import (
-    Command, Controller, Landed, Phase, Position, State, Status,
+from flight_executive.model import (
+    Command, Landed, Phase, Position, State, Status, Trajectory,
 )
+from flight_executive.state_machine import StateMachine
 
 
 class Flight:
     def __init__(self):
         self.now = 0.0
-        self.c = Controller(self.now)
+        self.c = StateMachine(self.now)
         self.status = Status(0.0, False, False, True)
         self.position = Position(0.0, 3.0, -2.0, 7.0, 0.8, 0.0)
         self.landed = Landed(0.0, True)
@@ -81,8 +82,11 @@ def test_nonzero_origin_sequence_and_indefinite_hold():
     assert f.c.state == State.HOLD
     for _ in range(240):
         output = f.tick()
-        assert output.setpoint == target
+        assert (output.setpoint.x, output.setpoint.y, output.setpoint.z,
+                output.setpoint.yaw) == (target.x, target.y, target.z, target.yaw)
         assert output.command is None
+        assert output.setpoint.velocity == (0, 0, 0)
+        assert output.setpoint.acceleration == (0, 0, 0)
     assert f.c.state == State.HOLD
 
 
@@ -90,7 +94,7 @@ def test_nonzero_origin_sequence_and_indefinite_hold():
 def test_missing_telemetry_times_out_without_commands(missing):
     f = Flight()
     f.tick()
-    c = Controller(0.0)
+    c = StateMachine(0.0)
     c.status = f.c.status
     c.position = f.c.position
     c.landed = f.c.landed
@@ -127,7 +131,7 @@ def test_preflight_gate_and_startup_refusal():
 @pytest.mark.parametrize('height', [0, -1, nan, float('inf')])
 def test_bad_height_is_rejected(height):
     with pytest.raises(ValueError):
-        Controller(0, height)
+        StateMachine(0, height)
 
 
 def test_command_retries_are_bounded_and_accepted_ack_is_not_confirmation():
@@ -281,3 +285,85 @@ def test_velocity_estimator_resets_are_terminal(counter):
     f.position = replace(f.position, reset_counters=tuple(counters))
     assert f.tick().setpoint is None
     assert f.c.state == State.ERROR
+
+
+def trajectory(now):
+    return Trajectory(now, (8.0, -3.0, -2.0), (.2, -.3, .4), (.1, .2, -.1))
+
+
+def test_tracking_copies_all_vectors_and_timeout_freezes_measured_position():
+    f = Flight()
+    f.hold()
+    f.c.accept_trajectory(trajectory(f.now))
+    output = f.tick()
+    assert f.c.state == State.TRACKING
+    assert (output.setpoint.x, output.setpoint.y, output.setpoint.z) == (8, -3, -2)
+    assert output.setpoint.velocity == (.2, -.3, .4)
+    assert output.setpoint.acceleration == (.1, .2, -.1)
+    assert output.setpoint.yaw == .8
+    assert output.command is None
+    f.position = replace(f.position, x=4, y=5, z=-1, yaw=.7)
+    for _ in range(20):
+        output = f.tick()
+    assert f.c.state == State.HOLD
+    frozen = output.setpoint
+    assert (frozen.x, frozen.y, frozen.z, frozen.yaw) == (4, 5, -1, .7)
+    assert frozen.velocity == (0, 0, 0)
+    assert frozen.acceleration == (0, 0, 0)
+    f.position = replace(f.position, x=9)
+    for _ in range(20):
+        assert f.tick().setpoint == frozen
+        assert f.c.state == State.HOLD
+    f.c.accept_trajectory(trajectory(f.now))
+    assert f.tick().setpoint.x == 8
+    assert f.c.state == State.TRACKING
+
+
+def test_pre_takeoff_trajectory_is_not_cached():
+    f = Flight()
+    f.c.accept_trajectory(trajectory(f.now))
+    f.hold()
+    assert f.tick().setpoint.z == 6
+    assert f.c.state == State.HOLD
+
+
+@pytest.mark.parametrize('fault', ['mode', 'disarm', 'failsafe', 'reset', 'gap', 'stale'])
+def test_tracking_preserves_shared_health_checks(fault):
+    f = Flight()
+    f.hold()
+    f.c.accept_trajectory(trajectory(f.now))
+    f.tick()
+    if fault == 'mode':
+        f.status = replace(f.status, offboard=False)
+    elif fault == 'disarm':
+        f.status = replace(f.status, armed=False)
+    elif fault == 'failsafe':
+        f.status = replace(f.status, failsafe=True)
+    elif fault == 'reset':
+        f.position = replace(f.position, reset_counters=(1, 0, 0))
+    if fault == 'stale':
+        f.c.position = replace(f.c.position, received_at=f.now - 1.1)
+        output = f.c.tick(f.now)
+    else:
+        output = f.tick(.6 if fault == 'gap' else .05)
+    assert f.c.state == State.ERROR
+    assert output.setpoint is None
+    assert output.command is None
+    f.c.accept_trajectory(trajectory(f.now))
+    assert f.tick().setpoint is None
+
+
+def test_latest_sample_is_repeated_through_exactly_one_second():
+    f = Flight()
+    f.hold()
+    f.c.accept_trajectory(trajectory(f.now))
+    for _ in range(20):
+        output = f.tick()
+        assert f.c.state == State.TRACKING
+        assert (output.setpoint.x, output.setpoint.y, output.setpoint.z) == (8, -3, -2)
+        assert output.setpoint.velocity == (.2, -.3, .4)
+        assert output.setpoint.acceleration == (.1, .2, -.1)
+        assert output.command is None
+    output = f.tick()
+    assert f.c.state == State.HOLD
+    assert output.setpoint.velocity == (0, 0, 0)
