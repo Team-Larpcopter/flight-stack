@@ -15,15 +15,14 @@ camera)
   echo "Camera runs continuously. Calibration export: $run"
   exec ros2 run larp_hardware oak_native_node --ros-args \
     -p connect_device:=true -p publish_images:=true -p align_imu:=true \
-    -p imu_calibration_file:="${IMU_CALIBRATION_FILE:-$workspace/evidence/imu_calibration.json}" \
     -p factory_calibration_out:="$run/factory.json" \
     -p accel_hz:=500 -p gyro_hz:=400 -p max_exposure_us:=5000 -p capture_seconds:=0.0
   ;;
 vio)
-  : "${CALIBRATION_DIR:?Set CALIBRATION_DIR to the generated native calibration directory}"
+  calibration=${CALIBRATION_DIR:-$workspace/src/larp_localization/config/oak_d_s2}
   exec ros2 run ov_srvins run_subscribe_msckf --ros-args \
     -r __ns:=/autonomy -r /sim/processed/vio:=/autonomy/processed_vio \
-    -p config_path:="$CALIBRATION_DIR/estimator_config.yaml" \
+    -p config_path:="$calibration/estimator_config.yaml" \
     -p verbosity:="${VIO_VERBOSITY:-INFO}"
   ;;
 monitor)

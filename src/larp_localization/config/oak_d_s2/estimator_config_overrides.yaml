@@ -1,4 +1,4 @@
-# Values to set in estimator_config.yaml for the OAK-D S2 (stereo, 30 Hz)
+# Values matching the vendored sqrtVINS EuRoC estimator defaults
 use_stereo: true
 max_cameras: 2
 calib_cam_extrinsics: true
