@@ -51,10 +51,11 @@
       i_width: 1024
       i_height: 640
       # Depth: /oak/stereo/image_raw (uint16, mm) + /oak/stereo/camera_info.
-      # Measured 320x200 with only the preset set; force decimation to 1x so
-      # depth matches the rectified pair.
-      i_enable_decimation_filter: true
-      i_decimation_filter_decimation_factor: 1
+      # The DEFAULT preset publishes depth at half the stereo size (measured
+      # 320x200 at a 640x400 stereo size). Forcing the decimation filter to 1x
+      # gave full-size depth but turned on on-device post-processing and dropped
+      # EVERYTHING, rectified pair included, from 30 to ~6.8 Hz (measured). So the
+      # filter stays off: depth is expected at 512x320, the pair at 1024x640 @ 30.
       i_depth_preset: DEFAULT
       i_lr_check: true # drop pixels where left->right and right->left disagree
       i_subpixel: false
