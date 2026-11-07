@@ -79,3 +79,28 @@ codex     # log in yourself
 ```
 
 Never commit credentials, auth keys, or Wi-Fi passwords.
+
+## Native sqrtVINS: two-pane tmux launcher
+
+On the Jetson host, with the configured `larp-localization-ready` container
+already created and no other camera/VIO owner running:
+
+```bash
+bash jetson/launch_localization_tmux.sh /integration/evidence/YOUR_RUN/calibration
+```
+
+Pass the generated calibration directory **inside the container**. The launcher
+starts the existing container if stopped, then creates one tmux window with two
+side-by-side panes: camera on the left and sqrtVINS on the right. Both processes
+run in the foreground indefinitely; sqrtVINS uses `INFO` verbosity. No monitor,
+Foxglove preview, planner, or PX4 process is launched. Ctrl+C stops the process in
+its pane. Detaching leaves localization running. Re-running attaches to the same
+session without launching another camera or estimator. End that session before
+starting a new run with a different calibration.
+
+`CONTAINER`, `SESSION`, `CALIBRATION_DIR`, and `VIO_VERBOSITY` can be set in the
+host environment. `WORKSPACE`, `INSTALL_PREFIX`, `SDK_PREFIX`, and
+`IMU_CALIBRATION_FILE` are also forwarded when provided. Defaults match the native
+bench container described in [autonomy integration](../docs/autonomy-integration.md).
+The helper copied into the container comes from this checkout, so it does not rely
+on an older manually installed `localization_pane.sh`.
