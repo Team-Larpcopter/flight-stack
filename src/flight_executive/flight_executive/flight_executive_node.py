@@ -1,4 +1,4 @@
-"""Simulation-only ROS 2 adapter for the takeoff controller."""
+"""Simulation-only ROS 2 adapter for the takeoff and tracking controller."""
 
 from math import nan
 from time import monotonic
@@ -19,6 +19,9 @@ from std_msgs.msg import String
 from flight_executive.controller import (
     Command, Controller, Landed, Position, Status,
 )
+from flight_executive.dronehacks_course import course_trajectory
+
+COURSES = {'dronehacks': course_trajectory}
 
 
 def topic_name(prefix, name, message_type):
@@ -36,7 +39,22 @@ class FlightExecutiveNode(Node):
         if not self.declare_parameter('simulation_only', False).value:
             raise ValueError('Use the simulation launch file; hardware is not supported')
         height = self.declare_parameter('takeoff_height', 1.0).value
-        self.controller = Controller(monotonic(), height)
+        course = self.declare_parameter('course', '').value
+        max_speed = self.declare_parameter('max_speed', 1.0).value
+        max_error = self.declare_parameter('max_tracking_error', 0.4).value
+        yaw_mode = self.declare_parameter('yaw_mode', 'tangent').value
+        max_yaw_rate = self.declare_parameter('max_yaw_rate', 1.0).value
+        trajectory = None
+        if course:
+            if course not in COURSES:
+                raise ValueError(f'Unknown course {course!r}; choose from {sorted(COURSES)}')
+            trajectory = COURSES[course](max_speed=max_speed, height=height,
+                                         yaw_mode=yaw_mode, max_yaw_rate=max_yaw_rate)
+            self.get_logger().info(
+                f'Course {course}: {trajectory.length:.1f} m in '
+                f'{trajectory.duration:.1f} s at up to {max_speed:.2f} m/s, '
+                f'yaw {yaw_mode} (max {max_yaw_rate:.2f} rad/s)')
+        self.controller = Controller(monotonic(), height, trajectory, max_error)
         self.prefix = self.declare_parameter('px4_topic_prefix', '/fmu').value.rstrip('/')
         if not self.prefix.startswith('/') or self.prefix == '':
             raise ValueError('px4_topic_prefix must be an absolute nonempty topic prefix')
@@ -73,7 +91,7 @@ class FlightExecutiveNode(Node):
         self.timer = self.create_timer(
             0.05, self._tick, clock=Clock(clock_type=ClockType.STEADY_TIME))
         self.get_logger().warning(
-            'SITL ONLY: automatic arming and takeoff enabled. '
+            'SITL ONLY: automatic arming, takeoff, and course tracking enabled. '
             'simulation_only is operator acknowledgement, not vehicle identification.')
         self._report()
 
@@ -89,7 +107,8 @@ class FlightExecutiveNode(Node):
         self.controller.status = Status(
             monotonic(), msg.arming_state == VehicleStatus.ARMING_STATE_ARMED,
             msg.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD,
-            msg.pre_flight_checks_pass, msg.failsafe)
+            msg.pre_flight_checks_pass, msg.failsafe,
+            msg.nav_state == VehicleStatus.NAVIGATION_STATE_AUTO_LAND)
 
     def _position(self, msg):
         self.controller.position = Position(
@@ -133,17 +152,17 @@ class FlightExecutiveNode(Node):
         setpoint = TrajectorySetpoint()
         setpoint.timestamp = timestamp
         setpoint.position = [target.x, target.y, target.z]
-        setpoint.velocity = [nan, nan, nan]
-        setpoint.acceleration = [nan, nan, nan]
+        setpoint.velocity = [float(v) for v in target.velocity]
+        setpoint.acceleration = [float(a) for a in target.acceleration]
         setpoint.jerk = [nan, nan, nan]
         setpoint.yaw = target.yaw
-        setpoint.yawspeed = nan
+        setpoint.yawspeed = float(target.yawspeed)
         self.setpoint_pub.publish(setpoint)
         if output.command is not None:
             command = VehicleCommand()
             command.timestamp = timestamp
             command.command = output.command.value
-            command.param1 = 1.0
+            command.param1 = 0.0 if output.command == Command.LAND else 1.0
             command.param2 = 6.0 if output.command == Command.OFFBOARD else 0.0
             command.target_system = self.target_system
             command.target_component = self.target_component

@@ -2,8 +2,41 @@
 
 This Python ROS 2 node automatically enters Offboard, arms, climbs 1 m above its
 initial local position, and holds. It is a one-shot SITL prototype for PX4 v1.17
-and the pinned `px4_msgs` release. TRACKING and LAND are reserved states without
-transitions. HOLD keeps PX4 in Offboard; it does not select PX4's native Hold mode.
+and the pinned `px4_msgs` release. HOLD keeps PX4 in Offboard; it does not select
+PX4's native Hold mode. With a `course` parameter it skips HOLD, tracks a
+hard-coded trajectory (TRACKING), then requests PX4 Land (LAND) and finishes in
+DONE once PX4 reports landed and disarmed.
+
+## DroneHacks course trajectory (SITL, GPS on)
+
+Start `./scripts/dev run comp --headless` (GPS on), configure the Offboard-loss
+parameters below, then:
+
+```bash
+ros2 launch flight_executive dronehacks.launch.py            # 1.0 m/s cap
+ros2 launch flight_executive dronehacks.launch.py max_speed:=0.5
+```
+
+`flight_executive/dronehacks_course.py` holds the route (launch, corridor,
+maze, Gate A, tunnel, chicane, Gate B, pad) and the wall map taken from the
+course mesh. `flight_executive/trajectory.py` turns waypoints into straight
+lines joined by arcs, applies speed and acceleration limits, and smooths the
+result in time so acceleration is continuous and jerk is bounded. Each tick
+publishes position with velocity and acceleration feedforward, plus yaw and
+yawspeed feedforward.
+
+Yaw defaults to `yaw_mode:=tangent`: the vehicle faces along the path, the
+speed profile keeps yaw rate under `max_yaw_rate` (default 1.0 rad/s), and the
+same smoothing makes yaw rate continuous. The route starts facing north; the
+executive refuses to arm if the vehicle heading is more than 20 degrees off.
+`yaw_mode:=fixed` holds the takeoff heading instead.
+
+The route is anchored to PX4's local position at takeoff and assumes the
+vehicle starts on the launch mark with course north equal to true north. A
+horizontal or vertical error over `max_tracking_error` (default 0.4 m) enters
+ERROR, and PX4's Offboard-loss action lands. Route clearance is only about
+0.07 to 0.15 m from the prop tips at Gate A, Gate B, and maze wall ends; this
+needs centimetre-level localization and is not a plan for a real GPS receiver.
 
 ## Build in the Dev Container
 
@@ -98,7 +131,8 @@ The ascent deadline is 20 seconds from armed confirmation. Reaching HOLD require
 1 continuous second within 0.15 m vertically, 0.25 m horizontally, and vertical
 speed below 0.2 m/s. HOLD streams the final target indefinitely.
 
-Status, landed, or local-position telemetry older than 1 second, invalid position or
+Status or local-position telemetry older than 1 second, landed telemetry older than
+2.5 seconds (PX4 publishes it at 1 Hz), invalid position or
 heading, estimator resets, a control-timer gap over 0.5 seconds after preparation,
 PX4 failsafe, unexpected disarm, or mode takeover all enter terminal ERROR.
 Loss of preflight readiness before arming is also terminal. A timer gap during initial
