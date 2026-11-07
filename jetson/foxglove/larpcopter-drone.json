@@ -2,12 +2,12 @@
   "configById": {
     "Image!left": {
       "imageMode": {
-        "imageTopic": "/viz/oak/left/image_raw/compressed"
+        "imageTopic": "/viz/oak/left/image_rect/compressed"
       }
     },
     "Image!right": {
       "imageMode": {
-        "imageTopic": "/viz/oak/right/image_raw/compressed"
+        "imageTopic": "/viz/oak/right/image_rect/compressed"
       }
     },
     "Plot!accel": {
@@ -121,6 +121,11 @@
           "pointSize": 3
         }
       }
+    },
+    "Image!depth": {
+      "imageMode": {
+        "imageTopic": "/viz/oak/stereo/image_raw/compressed"
+      }
     }
   },
   "globalVariables": {},
@@ -133,9 +138,14 @@
     "splitPercentage": 40,
     "first": {
       "direction": "column",
-      "splitPercentage": 50,
-      "first": "Image!left",
-      "second": "Image!right"
+      "splitPercentage": 66,
+      "first": {
+        "direction": "column",
+        "splitPercentage": 50,
+        "first": "Image!left",
+        "second": "Image!right"
+      },
+      "second": "Image!depth"
     },
     "second": {
       "direction": "column",

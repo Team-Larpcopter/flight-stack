@@ -8,7 +8,8 @@
 #   * The left/right RAW sockets are no longer sent to the host. skybeta sent them
 #     as bgr8 (3 bytes/px for a mono sensor): 118 MB/s of the ~143 MB/s USB/XLink
 #     ceiling, which left no room for depth. Instead StereoDepth's RECTIFIED
-#     left/right outputs are published (mono8, 1 byte/px) and cuVSLAM reads those
+#     left/right outputs are published on /oak/{left,right}/image_rect (mono8,
+#     1 byte/px) and cuVSLAM reads those
 #     (rectified_images: true in our oakd_vslam.launch.py).
 #   * Budget at 1024x640 @ 30: rect L+R 2 x 19.7 MB/s + depth (uint16) 39.3 MB/s
 #     = ~79 MB/s, about half of what skybeta's raw pair alone used.
@@ -41,10 +42,19 @@
 
     stereo:
       i_enable_lazy_publisher: false # cuVSLAM subscribes late; publish from t=0
-      # Rectified mono8 pair for cuVSLAM: /oak/left_rect/image_rect, /oak/right_rect/image_rect
+      # Rectified mono8 pair for cuVSLAM. Measured topic names on this driver:
+      # /oak/left/image_rect + /oak/left/camera_info (and right).
       i_left_rect_publish_topic: true
       i_right_rect_publish_topic: true
-      # Depth: /oak/stereo/image_raw (uint16, mm) + /oak/stereo/camera_info
+      # StereoDepth output size. The driver default is 640x400 (measured), which
+      # also shrank the rectified pair cuVSLAM gets; keep skybeta's 1024x640.
+      i_width: 1024
+      i_height: 640
+      # Depth: /oak/stereo/image_raw (uint16, mm) + /oak/stereo/camera_info.
+      # Measured 320x200 with only the preset set; force decimation to 1x so
+      # depth matches the rectified pair.
+      i_enable_decimation_filter: true
+      i_decimation_filter_decimation_factor: 1
       i_depth_preset: DEFAULT
       i_lr_check: true # drop pixels where left->right and right->left disagree
       i_subpixel: false

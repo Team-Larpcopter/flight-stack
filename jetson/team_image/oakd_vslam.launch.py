@@ -8,7 +8,7 @@ Three differences from skybeta's version, all from enabling on-device depth
 (see oakd_vslam.yaml next to this file):
 
   1. cuVSLAM reads the OAK's RECTIFIED mono8 pair from StereoDepth
-     (/oak/left_rect/image_rect, /oak/right_rect/image_rect) instead of the raw
+     (/oak/left/image_rect, /oak/right/image_rect) instead of the raw
      bgr8 sockets, so ``rectified_images`` is True.
   2. The two bgr8 -> mono8 ImageFormatConverterNodes are gone: the device
      already sends mono8.
@@ -50,10 +50,10 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_observations_view", default_value="False"),
         DeclareLaunchArgument("path_max_size", default_value="1024"),
         # ---- Larpcopter: rectified mono8 inputs from StereoDepth -----------------
-        DeclareLaunchArgument("left_image", default_value="/oak/left_rect/image_rect"),
-        DeclareLaunchArgument("left_info", default_value="/oak/left_rect/camera_info"),
-        DeclareLaunchArgument("right_image", default_value="/oak/right_rect/image_rect"),
-        DeclareLaunchArgument("right_info", default_value="/oak/right_rect/camera_info"),
+        DeclareLaunchArgument("left_image", default_value="/oak/left/image_rect"),
+        DeclareLaunchArgument("left_info", default_value="/oak/left/camera_info"),
+        DeclareLaunchArgument("right_image", default_value="/oak/right/image_rect"),
+        DeclareLaunchArgument("right_info", default_value="/oak/right/camera_info"),
     ]
 
     base_to_oak_tf = Node(

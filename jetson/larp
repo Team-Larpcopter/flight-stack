@@ -63,7 +63,7 @@ larp fox stop | status
   --depth-topics T,...  depth Image (16UC1 mm / 32FC1 m) topics, colourised
   --depth-range MIN,MAX colour scale for depth in metres (default 0.3,6)
                 Default sources are detected: our team image (on-device depth)
-                -> /oak/left_rect/image_rect, /oak/right_rect/image_rect,
+                -> /oak/left/image_rect, /oak/right/image_rect,
                    /oak/stereo/image_raw;
                 skybeta's image -> /oak/{left,right}/image_raw/compressed.
                 Output: /viz/<topic>[/compressed]
@@ -119,8 +119,10 @@ fox() {
           echo exited; sleep infinity"'
       if [[ $images == 1 ]]; then
         if [[ $explicit == 0 ]]; then
-          if in_ros "ros2 topic list" | grep -qx /oak/left_rect/image_rect; then
-            raw_topics="/oak/left_rect/image_rect,/oak/right_rect/image_rect"
+          # Capture first: `cmd | grep -q` under pipefail fails when grep exits early.
+          local live; live="$(in_ros "ros2 topic list" 2>/dev/null || true)"
+          if grep -qx /oak/stereo/image_raw <<< "$live"; then
+            raw_topics="/oak/left/image_rect,/oak/right/image_rect"
             depth_topics="/oak/stereo/image_raw"
           else
             topics="/oak/left/image_raw/compressed,/oak/right/image_raw/compressed"
