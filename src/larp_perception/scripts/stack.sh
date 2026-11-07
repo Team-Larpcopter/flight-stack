@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# One command per part of the native stack. Run on the drone (Jetson host); each
-# runs in the foreground (Ctrl-C stops it), in container larp-depth (started if needed).
+# One command per part of the native stack. Run on the drone (Jetson host). Each
+# starts its part in the BACKGROUND in container larp-depth (started if needed) and
+# returns; running a part again restarts it (e.g. to switch depth mode).
 #
 #   stack.sh camera [camera|neural|both|off]
 #       OAK stereo + IMU, plus depth:
@@ -17,7 +18,11 @@
 #       raw and neural depth, pose, path, IMU, feature clouds), throttled, newest only.
 #       --tracks adds sqrtVINS's feature-track image (costs sqrtVINS a few Hz).
 #       Layout: jetson/foxglove/larpcopter-autonomy-localization.json
-#   stack.sh stop          stop everything (removes container larp-depth)
+#   stack.sh status        which parts run, last log line of each
+#   stack.sh logs PART     follow a part's log (camera, vio, fox); Ctrl-C leaves it running
+#   stack.sh stop [PART]   stop one part, or everything (removes container larp-depth)
+#
+# Logs: $DEPTH_WS/logs/<part>.log
 #
 # Paths (override with env): DEPTH_WS ~/depth_ws (this branch, built with
 # depth_ws.sh build), INTEGRATION ~/flight_integration_ws_20261107, NEURAL_WS
@@ -54,10 +59,29 @@ ensure_container() {
     --entrypoint sleep "$IMAGE" infinity >/dev/null
   echo "started container $NAME (ROS_DOMAIN_ID=$DOMAIN)"
 }
-# run a script in the container, foreground; Ctrl-C stops everything it started
-in_container() { docker exec -it "$NAME" bash -c "$ENV
-trap 'kill -INT -- \$(jobs -p) 2>/dev/null; sleep 2; kill -- \$(jobs -p) 2>/dev/null' INT TERM EXIT
-$1"; }
+PARTS="camera vio fox"
+running() { docker exec "$NAME" bash -c "p=\$(cat /tmp/stack-$1.pid 2>/dev/null) && kill -0 \$p 2>/dev/null" 2>/dev/null; }
+stop_part() {  # INT the part's whole process group, then TERM/KILL what is left
+  running "$1" || return 0
+  docker exec "$NAME" bash -c "g=\$(cat /tmp/stack-$1.pid); kill -INT -- -\$g 2>/dev/null
+    for i in \$(seq 1 20); do kill -0 \$g 2>/dev/null || break; sleep 0.5; done
+    kill -TERM -- -\$g 2>/dev/null; sleep 1; kill -KILL -- -\$g 2>/dev/null; rm -f /tmp/stack-$1.pid" || true
+  echo "stopped $1"
+}
+# start a part in the background: own process group (pid file), output to its log
+start_part() {
+  local part="$1" script="$2"
+  stop_part "$part"
+  mkdir -p "$DEPTH_WS/logs"
+  docker exec -d "$NAME" setsid bash -c "echo \$\$ > /tmp/stack-$part.pid; exec > /depth_ws/logs/$part.log 2>&1
+$ENV
+$script
+wait"
+  sleep "${3:-8}"
+  echo "--- $part started (log: $DEPTH_WS/logs/$part.log; stack logs $part)"
+  tail -n "${4:-4}" "$DEPTH_WS/logs/$part.log" | cut -c1-200
+  running "$part" || echo "!! $part is not running: see the log"
+}
 
 case "${1:-}" in
   camera)
@@ -76,7 +100,7 @@ case "${1:-}" in
     [[ $mode == camera || $mode == both ]] && filter="ros2 run larp_perception depth_filter &"
     [[ $mode == neural ]] && neural="ros2 launch larp_neural_depth neural_depth.launch.py engine_path:=$ENGINE publish_as_primary:=true &"
     [[ $mode == both ]] && neural="ros2 launch larp_neural_depth neural_depth.launch.py engine_path:=$ENGINE publish_as_primary:=false &"
-    in_container "mkdir -p /integration/evidence; run=\$(mktemp -d /integration/evidence/localization-XXXXXXXX)
+    start_part camera "mkdir -p /integration/evidence; run=\$(mktemp -d /integration/evidence/localization-XXXXXXXX)
 echo \"camera (depth: $mode). Calibration export: \$run\"
 ros2 run larp_hardware oak_native_node --ros-args -p connect_device:=true -p publish_images:=true \
   -p align_imu:=true -p imu_calibration_file:=\${IMU_CALIBRATION_FILE:-/integration/evidence/imu_calibration.json} \
@@ -84,8 +108,7 @@ ros2 run larp_hardware oak_native_node --ros-args -p connect_device:=true -p pub
   -p max_exposure_us:=5000 -p capture_seconds:=0.0 -p publish_depth:=$depth_param &
 sleep 3
 $filter
-$neural
-wait -n"
+$neural" 12 5
     ;;
   vio)
     ensure_container
@@ -97,17 +120,28 @@ wait -n"
       cal="/integration${cal#"$INTEGRATION"}"
     fi
     echo "sqrtVINS with $cal (keep the drone still for a few seconds)"
-    in_container "ros2 run ov_srvins run_subscribe_msckf --ros-args -r __ns:=/autonomy \
+    start_part vio "echo 'sqrtVINS with $cal'; ros2 run ov_srvins run_subscribe_msckf --ros-args -r __ns:=/autonomy \
   -r /sim/processed/vio:=/autonomy/processed_vio -p config_path:=$cal/estimator_config.yaml \
-  -p verbosity:=\${VIO_VERBOSITY:-INFO} & wait -n"
+  -p verbosity:=\${VIO_VERBOSITY:-INFO} &" 8 3
     ;;
   fox)
     ensure_container
     tracks=false; [[ ${2:-} == --tracks ]] && tracks=true
     echo "Foxglove: ws://$(ip -4 -br addr show tailscale0 2>/dev/null | awk '{print $3}' | cut -d/ -f1):8766"
-    in_container "ros2 launch larp_perception perception.launch.py depth_filter:=false foxglove:=true \
-  viz_right:=true viz_raw_depth:=true viz_tracks:=$tracks & wait -n"
+    start_part fox "ros2 launch larp_perception perception.launch.py depth_filter:=false foxglove:=true \
+  viz_right:=true viz_raw_depth:=true viz_tracks:=$tracks &" 10 2
     ;;
-  stop) docker rm -f "$NAME" >/dev/null 2>&1 && echo "stopped $NAME" || echo "not running" ;;
-  *) sed -n '2,27p' "$0"; exit 2 ;;
+  status)
+    [[ $(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null) == true ]] || { echo "container $NAME not running"; exit 0; }
+    for part in $PARTS; do
+      if running "$part"; then state=running; else state=stopped; fi
+      printf '%-7s %-8s %s\n' "$part" "$state" "$(tail -n 1 "$DEPTH_WS/logs/$part.log" 2>/dev/null | cut -c1-140)"
+    done
+    ;;
+  logs) [[ -n ${2:-} ]] || { echo "stack logs camera|vio|fox"; exit 2; }; tail -n 30 -f "$DEPTH_WS/logs/$2.log" ;;
+  stop)
+    if [[ -n ${2:-} ]]; then stop_part "$2"
+    else for part in $PARTS; do stop_part "$part"; done; docker rm -f "$NAME" >/dev/null 2>&1 && echo "stopped $NAME" || true; fi
+    ;;
+  *) awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; exit 2 ;;
 esac
