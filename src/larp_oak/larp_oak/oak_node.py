@@ -52,6 +52,7 @@ from geometry_msgs.msg import TransformStamped
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CameraInfo, Image, Imu
+from std_msgs.msg import UInt8MultiArray
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 
 IMAGE_QOS = QoSProfile(
@@ -130,6 +131,8 @@ class OakNode(Node):
             "right_info": self.create_publisher(CameraInfo, "/oak/right/camera_info", IMAGE_QOS),
             "depth_info": self.create_publisher(CameraInfo, "/oak/stereo/camera_info", IMAGE_QOS),
             "imu": self.create_publisher(Imu, "/oak/imu/data", IMU_QOS),
+            # BNO086 report accuracy [accel, gyro] at 10 Hz: 0 unreliable, 1 low, 2 medium, 3 high
+            "imu_accuracy": self.create_publisher(UInt8MultiArray, "/oak/imu/accuracy", 10),
         }
         if self.vio_undistorted:
             for side in ("left", "right"):
@@ -433,6 +436,8 @@ class OakNode(Node):
         msg.linear_acceleration.x, msg.linear_acceleration.y, msg.linear_acceleration.z = a.x, a.y, a.z
         self.pub["imu"].publish(msg)
         self.stats["imu"] += 1
+        if self.stats["imu"] % max(1, self.imu_hz // 10) == 0:
+            self.pub["imu_accuracy"].publish(UInt8MultiArray(data=[int(a.accuracy), int(g.accuracy)]))
         if self.imu_check is not None:
             self.imu_check.append((a.x, a.y, a.z, g.x, g.y, g.z, int(a.accuracy), int(g.accuracy)))
             if len(self.imu_check) >= 5 * self.imu_hz:  # ~5 s
