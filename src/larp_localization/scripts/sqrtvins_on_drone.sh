@@ -81,7 +81,7 @@ case "${1:-}" in
       -e FASTDDS_DEFAULT_PROFILES_FILE=/etc/skybeta/fastdds.xml \
       -e ROS_DOMAIN_ID="$DOMAIN" \
       -e "FOX_TOPICS=['^(/viz/.*|(?!.*/image)(?!.*trackhist).*)\$']" -e "FOX_NONE=['^\$']" \
-      -e "VIZ_RAW=['/oak/left/image_undistorted','/oak/right/image_undistorted','/ov_srvins/trackhist']" \
+      -e "VIZ_RAW=['/oak/left/image_raw','/oak/right/image_raw','/oak/left/image_undistorted','/oak/right/image_undistorted','/ov_srvins/trackhist']" \
       -e "VIZ_JPEG=['']" \
       -e "VIZ_DEPTH=['/oak/stereo/image_raw','/oak/stereo/filtered/image']" \
       --entrypoint bash "$IMAGE" -c \
