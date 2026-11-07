@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# larp -- Team Larpcopter helper for the skybeta drone (runs on the Jetson HOST).
+#
+# The organisers' stack runs in the docker container `skybeta-stack` (tmux session
+# `skybeta`: agent, slam, bridge, competitor). ROS lives only inside that container.
+# This script wraps the common things we do against it. It never touches the
+# organisers' doctor, status services, tailscaled, drone.env identity, or /fmu/in/*.
+set -euo pipefail
+
+STACK="${STACK:-skybeta-stack}"
+SKYBETA="${SKYBETA:-$HOME/skybeta}"
+FOX_PORT="${FOX_PORT:-8765}"
+
+die() { printf 'larp: %s\n' "$*" >&2; exit 1; }
+need_stack() { docker inspect -f '{{.State.Running}}' "$STACK" 2>/dev/null | grep -q true \
+  || die "container $STACK is not running (sudo systemctl status skybeta-stack)"; }
+# Run a command inside the stack with the ROS env (domain, DDS profile, overlays).
+in_ros() { need_stack; docker exec "$STACK" bash -c "source skybeta_env.sh; $*"; }
+in_ros_it() { need_stack; docker exec -it "$STACK" bash -c "source skybeta_env.sh; $*"; }
+
+usage() {
+  cat <<EOF
+Usage: larp COMMAND
+
+  status            hostname, Wi-Fi IP, containers, VIO state, /skybeta/state
+  attach            attach to the stack's tmux (agent/slam/bridge/competitor). Ctrl-b d to leave
+  shell             bash inside the stack container (ROS sourced)
+  ros CMD...        run one ROS command in the stack, e.g.  larp ros ros2 topic list
+  fox [start|stop|status]
+                    Foxglove bridge on ws://<drone-ip>:${FOX_PORT}, READ-ONLY
+                    (no client publish / services / params -- rule 5.5)
+  build             colcon-build ~/team_ws inside the stack (team_build.sh)
+  bag [ARGS]        record the flight-debug topic set (organisers' host/run.sh bag)
+  doctor            organisers' health check (host/doctor.sh)
+  restart           restart the stack (WARNING: power-cycle the FC afterwards, bug #15)
+  work              host tmux session "larp" for dev work (survives SSH drops)
+  portal            press ACCEPT on the Stanford Visitor guest portal (Cisco web-auth),
+                    when HTTPS stops working on that network
+EOF
+}
+
+fox() {
+  need_stack
+  case "${1:-start}" in
+    start)
+      if docker exec "$STACK" tmux list-windows -t skybeta -F '#W' | grep -qx foxglove; then
+        echo "foxglove already running"; return
+      fi
+      # Read-only: drop clientPublish/parameters/services; whitelist nothing for client writes.
+      docker exec "$STACK" tmux new-window -d -t skybeta -n foxglove \
+        "bash -c 'source skybeta_env.sh; ros2 launch foxglove_bridge foxglove_bridge_launch.xml \
+          port:=${FOX_PORT} address:=0.0.0.0 \
+          capabilities:=\"[connectionGraph,assets]\" \
+          client_topic_whitelist:=\"[\\\"^\$\\\"]\" service_whitelist:=\"[\\\"^\$\\\"]\" \
+          param_whitelist:=\"[\\\"^\$\\\"]\"; echo exited; sleep infinity'"
+      echo "foxglove starting -> connect Foxglove to:"
+      ips
+      ;;
+    stop) docker exec "$STACK" tmux kill-window -t skybeta:foxglove 2>/dev/null && echo stopped || echo "not running" ;;
+    status) docker exec "$STACK" tmux list-windows -t skybeta -F '#W' | grep -qx foxglove \
+              && echo running || echo "not running" ;;
+    *) die "fox start|stop|status" ;;
+  esac
+}
+
+ips() {
+  local w; w="$(ip -4 -br addr show wlP1p1s0 2>/dev/null | awk '{print $3}' | cut -d/ -f1)"
+  [[ -n "$w" ]] && echo "  Wi-Fi: ws://$w:${FOX_PORT}"
+  echo "  USB:   ws://192.168.55.1:${FOX_PORT}"
+}
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  status)
+    echo "host: $(hostname)   drone.env: $(grep -E '^(DRONE_ID|ROS_DOMAIN_ID|COMPETITOR_PKG|COMPETITOR_LAUNCH)=' /etc/skybeta/drone.env | tr '\n' ' ')"
+    ip -4 -br addr show wlP1p1s0 2>/dev/null || true
+    docker ps --format '  {{.Names}}  {{.Image}}  {{.Status}}'
+    echo "foxglove: $(fox status 2>/dev/null || echo '?')"
+    in_ros "timeout 5 ros2 topic echo --once /visual_slam/status 2>/dev/null | grep -E 'vo_state' || echo '  vo_state: no sample'; \
+            timeout 5 ros2 topic echo --once /skybeta/state 2>/dev/null | head -3 || echo '  /skybeta/state: no sample'"
+    ;;
+  attach)  need_stack; docker exec -it "$STACK" tmux attach -t skybeta ;;
+  shell)   need_stack; docker exec -it "$STACK" bash ;;
+  ros)     [[ $# -gt 0 ]] || die "larp ros <command>"; in_ros_it "$*" ;;
+  fox)     fox "$@" ;;
+  build)   in_ros_it "team_build.sh" ;;
+  bag)     cd "$SKYBETA" && host/run.sh bag "$@" ;;
+  doctor)  "$SKYBETA/host/doctor.sh" ;;
+  restart)
+    echo "Restarting $STACK. Known PX4 v1.16.2 bug #15: the FC's TELEM2 goes silent after"
+    echo "any stack stop -- POWER-CYCLE THE FLIGHT CONTROLLER afterwards. Keep the drone still."
+    read -r -p "Continue? [y/N] " a; [[ "$a" == y || "$a" == Y ]] || exit 1
+    docker rm -f "$STACK" >/dev/null; echo "removed; systemd restarts it in ~10 s" ;;
+  work)
+    command -v tmux >/dev/null || die "host tmux missing: run jetson/install.sh"
+    tmux new-session -A -s larp -c "$HOME/team_ws" ;;
+  portal)
+    loc="$(curl -sS --max-time 10 -D - -o /dev/null http://neverssl.com | awk 'tolower($1)=="location:"{print $2}' | tr -d '\r')"
+    if [[ -z "$loc" ]]; then echo "no portal redirect -- already online?"; else
+      portal_host="$(printf '%s' "$loc" | sed -E 's#^(https?://[^/]+).*#\1#')"
+      curl -sS --max-time 15 -o /dev/null -w "portal POST %{http_code}\n" -X POST "${portal_host}/login.html" \
+        --data "buttonClicked=4&err_flag=0&err_msg=&info_flag=0&info_msg=&redirect_url=http%3A%2F%2Fneverssl.com%2F"
+    fi
+    curl -sS -o /dev/null -w "https check: %{http_code} in %{time_total}s\n" --max-time 15 https://github.com ;;
+  help|-h|--help) usage ;;
+  *) usage; exit 1 ;;
+esac
