@@ -29,20 +29,17 @@ class Flight:
     def mode_request(self):
         self.tick()
         for _ in range(40):
-            output = self.tick()
+            assert self.tick().command is None
+        self.status = replace(self.status, armed=True)
+        assert self.tick().command is None
+        self.status = replace(self.status, in_position=True)
+        output = self.tick()
         assert output.command == Command.OFFBOARD
         return output
 
-    def arm_request(self):
-        self.mode_request()
-        self.status = replace(self.status, offboard=True)
-        output = self.tick()
-        assert output.command == Command.ARM
-        return output
-
     def ascend(self):
-        self.arm_request()
-        self.status = replace(self.status, armed=True)
+        self.mode_request()
+        self.status = replace(self.status, offboard=True, in_position=False)
         output = self.tick()
         assert output.setpoint.z == 6.0
         return output
@@ -64,16 +61,15 @@ def test_nonzero_origin_sequence_and_hold_target():
     assert output.setpoint.z == 7.0
     assert output.setpoint.yaw == 0.8
     for _ in range(40):
-        output = f.tick()
-    assert output.command == Command.OFFBOARD
+        assert f.tick().command is None
+    f.status = replace(f.status, armed=True)
+    assert f.tick().command is None
+    f.status = replace(f.status, in_position=True)
+    assert f.tick().command == Command.OFFBOARD
     f.c.acknowledge(Command.OFFBOARD.value, 0)
     assert f.tick().command is None
     assert f.c.phase == Phase.MODE
-    f.status = replace(f.status, offboard=True)
-    assert f.tick().command == Command.ARM
-    f.c.acknowledge(Command.ARM.value, 0)
-    assert f.tick().setpoint.z == 7.0
-    f.status = replace(f.status, armed=True)
+    f.status = replace(f.status, offboard=True, in_position=False)
     target = f.tick().setpoint
     assert (target.x, target.y, target.z, target.yaw) == (3.0, -2.0, 6.0, 0.8)
     f.position = replace(f.position, z=6.0)
@@ -142,9 +138,9 @@ def test_command_retries_are_bounded_and_accepted_ack_is_not_confirmation():
         f.c.acknowledge(Command.OFFBOARD.value, 0)
         if f.tick().command is not None:
             sent += 1
-    assert sent == 3
+    assert sent == 4
     assert f.c.state == State.ERROR
-    assert '3 attempts' in f.c.reason
+    assert '2 seconds' in f.c.reason
     for _ in range(20):
         assert f.tick().setpoint is None
 
@@ -152,20 +148,20 @@ def test_command_retries_are_bounded_and_accepted_ack_is_not_confirmation():
 @pytest.mark.parametrize('result', [1, 2, 3, 4, 6])
 def test_matching_ack_rejection_is_terminal(result):
     f = Flight()
-    f.arm_request()
-    f.c.acknowledge(Command.OFFBOARD.value, result)
+    f.mode_request()
+    f.c.acknowledge(400, result)
     assert f.c.state == State.TAKEOFF
-    f.c.acknowledge(Command.ARM.value, result)
+    f.c.acknowledge(Command.OFFBOARD.value, result)
     assert f.tick().setpoint is None
     assert f.c.state == State.ERROR
 
 
 def test_unsolicited_ack_does_not_fail_waiting_or_hold():
     f = Flight()
-    f.c.acknowledge(Command.ARM.value, 2)
+    f.c.acknowledge(400, 2)
     assert f.c.state == State.WAITING
     f.hold()
-    f.c.acknowledge(Command.ARM.value, 2)
+    f.c.acknowledge(400, 2)
     assert f.tick().setpoint is not None
     assert f.c.state == State.HOLD
 
@@ -232,6 +228,10 @@ def test_timer_gap_restarts_prepare_but_aborts_active_flight():
     f.tick(0.6)
     for _ in range(39):
         assert f.tick().command is None
+    assert f.tick().command is None
+    f.status = replace(f.status, armed=True)
+    f.tick()
+    f.status = replace(f.status, in_position=True)
     assert f.tick().command == Command.OFFBOARD
     f = Flight()
     f.ascend()
@@ -395,3 +395,74 @@ def test_optional_trajectory_yaw_overrides_hold_heading():
     output = f.tick()
     assert output.setpoint.yaw == .8
     assert output.setpoint.yawspeed != output.setpoint.yawspeed  # NaN: no feedforward
+
+
+def test_arming_in_position_requires_leaving_and_reentering():
+    f = Flight()
+    f.tick()
+    f.status = replace(f.status, in_position=True)
+    for _ in range(45):
+        assert f.tick().command is None
+    f.status = replace(f.status, armed=True)
+    for _ in range(45):
+        assert f.tick().command is None
+    f.status = replace(f.status, in_position=False)
+    assert f.tick().command is None
+    f.status = replace(f.status, in_position=True)
+    assert f.tick().command == Command.OFFBOARD
+
+
+def test_early_position_switch_does_not_defer_a_request():
+    f = Flight()
+    f.tick()
+    f.status = replace(f.status, armed=True)
+    f.tick()
+    f.status = replace(f.status, in_position=True)
+    for _ in range(60):
+        assert f.tick().command is None
+    assert f.c.state == State.ERROR
+
+
+@pytest.mark.parametrize('failure', ['disarm', 'mode', 'airborne', 'invalid', 'gap'])
+def test_every_mode_retry_rechecks_pilot_and_ground_conditions(failure):
+    f = Flight()
+    f.mode_request()
+    if failure == 'disarm':
+        f.status = replace(f.status, armed=False)
+    elif failure == 'mode':
+        f.status = replace(f.status, in_position=False)
+    elif failure == 'airborne':
+        f.landed = replace(f.landed, landed=False)
+    elif failure == 'invalid':
+        f.position = replace(f.position, valid=False)
+    output = f.tick(.6 if failure == 'gap' else .5)
+    assert output.command is None
+    assert output.setpoint is None
+    assert f.c.state == State.ERROR
+    f.status = replace(f.status, armed=True, in_position=True)
+    for _ in range(60):
+        assert f.tick().command is None
+
+
+def test_hold_tracks_pose_until_offboard_then_captures_ascent_origin():
+    f = Flight()
+    f.mode_request()
+    f.position = replace(f.position, x=4, y=5, z=8, yaw=1)
+    target = f.tick().setpoint
+    assert (target.x, target.y, target.z, target.yaw) == (4, 5, 8, 1)
+    f.status = replace(f.status, offboard=True, in_position=False)
+    target = f.tick().setpoint
+    assert (target.x, target.y, target.z, target.yaw) == (4, 5, 7, 1)
+    assert all(command.value != 400 for command in Command)
+
+
+@pytest.mark.parametrize('snapshot', ['status', 'position', 'landed'])
+def test_stale_telemetry_prevents_mode_retry(snapshot):
+    f = Flight()
+    f.mode_request()
+    age = 2.51 if snapshot == 'landed' else 1.01
+    setattr(f.c, snapshot, replace(getattr(f.c, snapshot), received_at=f.now - age))
+    output = f.c.tick(f.now)
+    assert output.setpoint is None
+    assert output.command is None
+    assert f.c.state == State.ERROR

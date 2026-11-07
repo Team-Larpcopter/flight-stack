@@ -24,7 +24,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('cruise_height', default_value=CRUISE_HEIGHT),
-        DeclareLaunchArgument('max_speed', default_value='1.0'),
+        DeclareLaunchArgument('max_speed', default_value='0.3'),
         DeclareLaunchArgument('yaw_mode', default_value='tangent',
                               description='tangent (face along path) or fixed'),
         DeclareLaunchArgument('max_yaw_rate', default_value='1.0'),
