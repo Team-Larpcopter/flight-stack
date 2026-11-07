@@ -59,6 +59,8 @@ class NativeOak final:public rclcpp::Node {
     const auto calibration_out=declare_parameter<std::string>("factory_calibration_out","");
     publish_depth_=declare_parameter<bool>("publish_depth",true);
     publish_rectified_=declare_parameter<bool>("publish_rectified",true);
+    // The on-camera stereo engine runs if either output is wanted (it is free for the Jetson).
+    const bool stereo_engine=publish_depth_ || publish_rectified_;
     const int depth_width=declare_parameter<int>("depth_width",800),depth_height=declare_parameter<int>("depth_height",500);
     const auto depth_preset=declare_parameter<std::string>("depth_preset","ROBOTICS");
     const bool depth_subpixel=declare_parameter<bool>("depth_subpixel",true);
@@ -88,7 +90,7 @@ class NativeOak final:public rclcpp::Node {
       }
       calibrated_imu_=create_publisher<sensor_msgs::msg::Imu>("/autonomy/imu/data",rclcpp::SensorDataQoS().keep_last(512));
     }
-    if(publish_depth_ && (depth_width<=0 || depth_height<=0 || depth_width>width || depth_height>height))
+    if(stereo_engine && (depth_width<=0 || depth_height<=0 || depth_width>width || depth_height>height))
       throw std::invalid_argument("invalid depth size");
     pipeline_=std::make_unique<dai::Pipeline>();
     {
@@ -114,14 +116,14 @@ class NativeOak final:public rclcpp::Node {
       if(exposure>0)cam->initialControl.setAutoExposureLimit(exposure);
       auto vio=cam->requestOutput({uint32_t(width),uint32_t(height)},dai::ImgFrame::Type::GRAY8,dai::ImgResizeMode::CROP,float(fps),true);
       images_[i]=vio->createOutputQueue(8,false);
-      if(publish_depth_)  // not undistorted: StereoDepth rectifies with the full calibration itself
+      if(stereo_engine)  // not undistorted: StereoDepth rectifies with the full calibration itself
         stereo_inputs[i]=cam->requestOutput({uint32_t(depth_width),uint32_t(depth_height)},dai::ImgFrame::Type::GRAY8,
                                             dai::ImgResizeMode::CROP,float(fps));
       const std::string side=i==0?"left":"right";
       image_pub_[i]=create_publisher<sensor_msgs::msg::Image>("/native_oak/"+side+"/image_undistorted",rclcpp::SensorDataQoS());
       info_pub_[i]=create_publisher<sensor_msgs::msg::CameraInfo>("/native_oak/"+side+"/camera_info",rclcpp::SensorDataQoS());
     }
-    if(publish_depth_) {
+    if(stereo_engine) {
       static const std::map<std::string,dai::node::StereoDepth::PresetMode> presets{
         {"DEFAULT",dai::node::StereoDepth::PresetMode::DEFAULT},{"ROBOTICS",dai::node::StereoDepth::PresetMode::ROBOTICS},
         {"HIGH_DETAIL",dai::node::StereoDepth::PresetMode::HIGH_DETAIL},{"DENSITY",dai::node::StereoDepth::PresetMode::DENSITY},
@@ -138,7 +140,7 @@ class NativeOak final:public rclcpp::Node {
       if(!depth_subpixel)pp.median=dai::StereoDepthConfig::MedianFilter::KERNEL_7x7;
       pp.decimationFilter.decimationFactor=1;
       pp.spatialFilter.enable=false;pp.temporalFilter.enable=false;pp.speckleFilter.enable=false;
-      depth_=stereo->depth.createOutputQueue(4,false);
+      if(publish_depth_)depth_=stereo->depth.createOutputQueue(4,false);
       if(publish_rectified_) {
         rect_[0]=stereo->rectifiedLeft.createOutputQueue(4,false);
         rect_[1]=stereo->rectifiedRight.createOutputQueue(4,false);
@@ -159,8 +161,9 @@ class NativeOak final:public rclcpp::Node {
       // For checking the depth frame's own (rectified) intrinsics on first frame.
       const auto kl=calibration.getCameraIntrinsics(dai::CameraBoardSocket::CAM_B,depth_width,depth_height);
       depth_factory_k_={kl[0][0],kl[1][1],kl[0][2],kl[1][2]};
-      RCLCPP_INFO(get_logger(),"Depth on the camera: %dx%d %s, subpixel %d, baseline %.4f m, auto calibration %s",
-                  depth_width,depth_height,depth_preset.c_str(),int(depth_subpixel),depth_baseline_m_,auto_calibration.c_str());
+      RCLCPP_INFO(get_logger(),"Stereo engine on the camera: %dx%d %s, subpixel %d, baseline %.4f m, auto calibration %s; "
+                  "publishing depth %d, rectified pair %d",depth_width,depth_height,depth_preset.c_str(),int(depth_subpixel),
+                  depth_baseline_m_,auto_calibration.c_str(),int(publish_depth_),int(publish_rectified_));
     }
     auto imu=pipeline_->create<dai::node::IMU>();
     imu->enableIMUSensor(dai::IMUSensor::ACCELEROMETER_RAW,accel_hz);

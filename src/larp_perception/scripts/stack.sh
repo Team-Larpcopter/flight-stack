@@ -9,9 +9,10 @@
 #         ffs    Fast-FoundationStereo, TensorRT on the Jetson (larp_neural_depth)
 #         las    Lite Any Stereo V2, TensorRT on the Jetson (larp_liteanystereo)
 #         off    no depth
-#       The OAK's own depth stays on for ffs/las (free; its camera_info carries the
-#       rectification the neural nodes need). If the camera node cannot start
-#       (camera owned by another process) the whole part stops.
+#       ffs/las take the camera's own rectified, hardware-synced pair
+#       (/native_oak/rectified/*, 800x500) and the camera publishes no depth of its
+#       own: one depth source. If the camera node cannot start (camera owned by
+#       another process) the whole part stops.
 #   stack.sh vio [CALIBRATION_DIR]
 #       sqrtVINS. Default calibration: CALIBRATION_DIR env, else the newest
 #       generated one in the evidence folder. Keep the drone still while it starts.
@@ -101,21 +102,31 @@ case "${1:-}" in
       docker exec "$NAME" bash -c "test -d /neural_ws/install/$pkg" \
         || { echo "$pkg not built in $NEURAL_WS, or $NAME was started without it: $0 stop, then retry"; exit 1; }
     fi
-    depth_param=true; [[ $mode == off ]] && depth_param=false
+    depth_param=false; rect_param=false
+    [[ $mode == depth ]] && depth_param=true
+    [[ $mode == ffs || $mode == las ]] && rect_param=true
+    rect="-p left_topic:=/native_oak/rectified/left/image -p right_topic:=/native_oak/rectified/right/image \
+-p left_info_topic:=/native_oak/rectified/left/camera_info -p right_info_topic:=/native_oak/rectified/right/camera_info \
+-p rectify_stereo:=false -p publish_as_primary:=true"
     backend=""
     [[ $mode == depth ]] && backend="ros2 run larp_perception depth_filter &"
-    [[ $mode == ffs ]] && backend="ros2 launch larp_neural_depth neural_depth.launch.py engine_path:=$engine publish_as_primary:=true &"
-    [[ $mode == las ]] && backend="ros2 launch larp_liteanystereo las_depth.launch.py engine_path:=$engine publish_as_primary:=true &"
+    [[ $mode == ffs ]] && backend="ros2 run larp_neural_depth neural_stereo_node --ros-args -p engine_path:=$engine \
+-p normalize_input:=true $rect &"
+    [[ $mode == las ]] && backend="ros2 launch larp_liteanystereo las_depth.launch.py engine_path:=$engine input:=rectified publish_as_primary:=true &"
     start_part camera "mkdir -p /integration/evidence; run=\$(mktemp -d /integration/evidence/localization-XXXXXXXX)
 echo \"camera (depth: $mode). Calibration export: \$run\"
 ros2 run larp_hardware oak_native_node --ros-args -p connect_device:=true -p publish_images:=true \
   -p align_imu:=true -p imu_calibration_file:=\${IMU_CALIBRATION_FILE:-/integration/evidence/imu_calibration.json} \
   -p factory_calibration_out:=\$run/factory.json -p accel_hz:=500 -p gyro_hz:=400 \
-  -p max_exposure_us:=5000 -p capture_seconds:=0.0 -p publish_depth:=$depth_param &
+  -p max_exposure_us:=5000 -p capture_seconds:=0.0 -p publish_depth:=$depth_param -p publish_rectified:=$rect_param &
 cam=\$!
-sleep 6
-# no camera -> no depth node either (a neural node on someone else's camera has no rectification)
-kill -0 \$cam 2>/dev/null || { echo '!! camera node exited (camera owned by another process?): stopping'; exit 1; }
+# no camera -> no depth node either: wait until the camera node is up (or gone)
+for i in \$(seq 1 40); do
+  kill -0 \$cam 2>/dev/null || { echo '!! camera node exited (camera owned by another process?): stopping'; exit 1; }
+  grep -q 'Stereo engine on the camera' /depth_ws/logs/camera.log && break
+  sleep 0.5
+done
+sleep 2; kill -0 \$cam 2>/dev/null || { echo '!! camera node exited: stopping'; exit 1; }
 $backend" 14 5
     ;;
   vio)

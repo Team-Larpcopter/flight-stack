@@ -246,6 +246,10 @@ class NeuralStereoNode(Node):
 
     def _on_right_info(self, msg: CameraInfo):
         self.right_info = msg
+        # A rectified right camera_info carries the baseline (P[0][3] = -fx * B), so no
+        # depth camera_info is needed when the camera's rectified pair is the input.
+        if self.depth_info is None and msg.k[0] > 0 and msg.p[3] != 0:
+            self.baseline_m = abs(float(msg.p[3]) / float(msg.k[0]))
 
     def _on_depth_info(self, msg: CameraInfo):
         self.depth_info = msg
