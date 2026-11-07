@@ -26,14 +26,14 @@ identity, PX4 parameters, or `/fmu/in/*`.
 | `larp ros CMD` | one ROS command inside the stack |
 | `larp attach` | the stack's tmux (`Ctrl-b d` to leave) |
 | `larp build` | `team_build.sh` (colcon build of `~/team_ws`) inside the stack |
-| `larp fox [start\|stop\|status]` | read-only Foxglove bridge on port 8765 (no client publish, services or params, rule 5.5) |
+| `larp fox [start\|stop\|status]` | read-only Foxglove bridge on port 8766 (no client publish, services or params, rule 5.5). Camera images are not served: one stream exceeds the Wi-Fi uplink |
 | `larp bag` | organisers' `host/run.sh bag` |
 | `larp doctor` | organisers' `host/doctor.sh` |
 | `larp restart` | restart the stack. **Power-cycle the flight controller afterwards** (skybeta bug #15) |
 | `larp work` | host tmux session `larp` for dev work |
 | `larp portal` | press ACCEPT on the Stanford Visitor guest portal when HTTPS stops working |
 
-Foxglove: `ws://<tailscale-or-wifi-ip>:8765`. It stops whenever the stack
+Foxglove: `ws://<tailscale-or-wifi-ip>:8766` (8765 belongs to the organisers' skybeta-status agent). It stops whenever the stack
 restarts; run `larp fox start` again.
 
 ## Setup on a fresh drone

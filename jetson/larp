@@ -9,7 +9,7 @@ set -euo pipefail
 
 STACK="${STACK:-skybeta-stack}"
 SKYBETA="${SKYBETA:-$HOME/skybeta}"
-FOX_PORT="${FOX_PORT:-8765}"
+FOX_PORT="${FOX_PORT:-8766}"  # 8765 is taken by the organisers' skybeta-status agent on the Tailscale IP
 
 die() { printf 'larp: %s\n' "$*" >&2; exit 1; }
 need_stack() { docker inspect -f '{{.State.Running}}' "$STACK" 2>/dev/null | grep -q true \
@@ -26,7 +26,7 @@ Usage: larp COMMAND
   attach            attach to the stack's tmux (agent/slam/bridge/competitor). Ctrl-b d to leave
   shell             bash inside the stack container (ROS sourced)
   ros CMD...        run one ROS command in the stack, e.g.  larp ros ros2 topic list
-  fox [start|stop|status]
+  fox [start|stop|status]  (no camera images: too big for Wi-Fi)
                     Foxglove bridge on ws://<drone-ip>:${FOX_PORT}, READ-ONLY
                     (no client publish / services / params -- rule 5.5)
   build             colcon-build ~/team_ws inside the stack (team_build.sh)
@@ -46,13 +46,19 @@ fox() {
       if docker exec "$STACK" tmux list-windows -t skybeta -F '#W' | grep -qx foxglove; then
         echo "foxglove already running"; return
       fi
-      # Read-only: drop clientPublish/parameters/services; whitelist nothing for client writes.
+      # Read-only (rule 5.5): drop clientPublish/parameters/services, whitelist no client writes.
+      # No camera images: one OAK JPEG stream is ~60 Mbit/s, more than the Wi-Fi uplink, and
+      # copying them cost the bridge ~50% CPU. Everything else (IMU, VIO, PX4, state) stays.
+      # Values go in via tmux -e so the regexes need no nested shell quoting.
       docker exec "$STACK" tmux new-window -d -t skybeta -n foxglove \
-        "bash -c 'source skybeta_env.sh; ros2 launch foxglove_bridge foxglove_bridge_launch.xml \
-          port:=${FOX_PORT} address:=0.0.0.0 \
-          capabilities:=\"[connectionGraph,assets]\" \
-          client_topic_whitelist:=\"[\\\"^\$\\\"]\" service_whitelist:=\"[\\\"^\$\\\"]\" \
-          param_whitelist:=\"[\\\"^\$\\\"]\"; echo exited; sleep infinity'"
+        -e "FOX_PORT=${FOX_PORT}" \
+        -e "FOX_TOPICS=['^(?!/oak/(left|right)/image).*\$']" \
+        -e "FOX_NONE=['^\$']" \
+        'bash -c "source skybeta_env.sh; ros2 launch foxglove_bridge foxglove_bridge_launch.xml \
+          port:=\$FOX_PORT address:=0.0.0.0 capabilities:=\"[connectionGraph,assets]\" \
+          topic_whitelist:=\"\$FOX_TOPICS\" client_topic_whitelist:=\"\$FOX_NONE\" \
+          service_whitelist:=\"\$FOX_NONE\" param_whitelist:=\"\$FOX_NONE\"; \
+          echo exited; sleep infinity"'
       echo "foxglove starting -> connect Foxglove to:"
       ips
       ;;
