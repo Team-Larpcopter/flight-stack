@@ -2,11 +2,12 @@
 # One-command VIO test on the drone: fresh sqrtVINS start, record sqrtVINS and
 # cuVSLAM side by side, print drift and the aligned comparison.
 #
-#   vio_test.sh NAME SECONDS [--no-fox-reset] [--fixed-calib]
-#     e.g.  vio_test.sh lift2 20 --fixed-calib
+#   vio_test.sh NAME SECONDS [--no-fox-reset] [--online-calib]
+#     e.g.  vio_test.sh lift3 20
 #
-# --fixed-calib: use estimator_config_fixedcalib.yaml (trust the factory camera
-# calibration; no online camera intrinsics/extrinsics refinement).
+# Default config is estimator_config_fixedcalib.yaml (factory camera calibration
+# kept fixed: lift2 matched cuVSLAM to 1.1 cm RMS). --online-calib uses
+# estimator_config.yaml, which refines it online (lift1 diverged by metres).
 #
 # By default it also resets Foxglove first (restarts the bridge + image relay via
 # `larp fox`), so the viewer starts clean; Foxglove reconnects by itself.
@@ -23,10 +24,12 @@ SECS="${2:-60}"
 HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 OUT="${NAME}_$(date +%H%M%S)"
 FOX_RESET=1
+export SQRTVINS_CONFIG=estimator_config_fixedcalib.yaml
 for arg in "${@:3}"; do
   case "$arg" in
     --no-fox-reset) FOX_RESET=0 ;;
-    --fixed-calib) export SQRTVINS_CONFIG=estimator_config_fixedcalib.yaml ;;
+    --fixed-calib) ;;  # default now, kept for old commands
+    --online-calib) export SQRTVINS_CONFIG=estimator_config.yaml ;;
     *) echo "unknown option: $arg"; exit 2 ;;
   esac
 done
@@ -54,5 +57,6 @@ IN_C "python3 /root/sqrtvins_ws/src/larp_localization/tools/compare_vio.py \
   /root/sqrtvins_ws/results/$OUT/ov_srvins_odomimu.csv \
   /root/sqrtvins_ws/results/$OUT/visual_slam_tracking_odometry.csv \
   --names sqrtVINS cuVSLAM --out /root/sqrtvins_ws/results/$OUT/compare.json"
-docker logs larp-sqrtvins > "$HOME/team_ws/sqrtvins_ws/results/$OUT/sqrtvins.log" 2>&1 || true
+# results dir is root-owned (written from the container), so save the log from inside it
+docker logs larp-sqrtvins 2>&1 | docker exec -i larp-sqrtvins tee "/root/sqrtvins_ws/results/$OUT/sqrtvins.log" >/dev/null || true
 echo "results: ~/team_ws/sqrtvins_ws/results/$OUT/"
