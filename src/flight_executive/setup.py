@@ -17,7 +17,7 @@ setup(
     zip_safe=True,
     maintainer="Team Larpcopter",
     maintainer_email="team@larpcopter.local",
-    description="Simulation-only automatic PX4 takeoff and hold executive.",
+    description="Simulation-only PX4 takeoff, hold, and trajectory tracking executive.",
     license="Apache-2.0",
     tests_require=["pytest"],
     entry_points={

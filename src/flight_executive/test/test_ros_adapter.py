@@ -7,7 +7,11 @@ import pytest
 import rclpy
 from px4_msgs.msg import VehicleCommandAck, VehicleLocalPosition, VehicleStatus
 
-from flight_executive.controller import Command, Landed, Phase, State, Status
+from flight_executive.model import (
+    Command, Landed, Phase, Position, Setpoint, State, Status,
+)
+from flight_executive.extensions.takeoff import Takeoff
+from flight_executive_msgs.msg import TrajectorySetpoint as LarperTrajectorySetpoint
 from flight_executive.flight_executive_node import FlightExecutiveNode, topic_name
 
 
@@ -16,14 +20,17 @@ def node():
     rclpy.init(args=[
         '--ros-args', '-p', 'simulation_only:=true',
         '-p', 'px4_topic_prefix:=/executive_unit_test/fmu',
+        '-p', 'trajectory_topic:=/executive_unit_test/larper/trajectory_in',
         '-r', '__ns:=/executive_unit_test',
     ])
     instance = FlightExecutiveNode()
     try:
         yield instance
     finally:
-        instance.destroy_node()
-        rclpy.shutdown()
+        try:
+            instance.destroy_node()
+        finally:
+            rclpy.shutdown()
 
 
 def test_versioned_topic_names():
@@ -33,10 +40,11 @@ def test_versioned_topic_names():
 
 
 def test_px4_ack_without_external_flag_is_processed(node):
-    c = node.controller
+    c = node.state_machine
     c.state = State.TAKEOFF
-    c.phase = Phase.ARM
-    c.attempts = 1
+    c.takeoff = Takeoff(Setpoint(0, 0, 0, 0), 1, monotonic())
+    c.takeoff.phase = Phase.ARM
+    c.takeoff.attempts = 1
     ack = VehicleCommandAck()
     ack.command = Command.ARM.value
     ack.result = VehicleCommandAck.VEHICLE_CMD_RESULT_DENIED
@@ -48,10 +56,11 @@ def test_px4_ack_without_external_flag_is_processed(node):
 
 
 def test_ack_for_another_controller_is_ignored(node):
-    c = node.controller
+    c = node.state_machine
     c.state = State.TAKEOFF
-    c.phase = Phase.ARM
-    c.attempts = 1
+    c.takeoff = Takeoff(Setpoint(0, 0, 0, 0), 1, monotonic())
+    c.takeoff.phase = Phase.ARM
+    c.takeoff.attempts = 1
     ack = VehicleCommandAck()
     ack.command = Command.ARM.value
     ack.result = VehicleCommandAck.VEHICLE_CMD_RESULT_DENIED
@@ -79,8 +88,8 @@ def test_actual_messages_select_position_and_disable_unused_feedforward(node):
     # PX4's magnetometer final alignment can complete only after takeoff.
     position.heading_good_for_control = False
     node._position(position)
-    node.controller.status = Status(monotonic(), False, False, True)
-    node.controller.landed = Landed(monotonic(), True)
+    node.state_machine.status = Status(monotonic(), False, False, True)
+    node.state_machine.landed = Landed(monotonic(), True)
     node.mode_pub = Publications()
     node.setpoint_pub = Publications()
     node.command_pub = Publications()
@@ -94,7 +103,7 @@ def test_actual_messages_select_position_and_disable_unused_feedforward(node):
     assert all(isnan(v) for v in target.acceleration)
     assert isnan(target.yawspeed)
     assert not node.command_pub.messages
-    assert len(node.controller.position.reset_counters) == 5
+    assert len(node.state_machine.position.reset_counters) == 5
 
 
 def test_vehicle_identity_mismatch_fails_closed(node):
@@ -102,4 +111,70 @@ def test_vehicle_identity_mismatch_fails_closed(node):
     status.system_id = 42
     status.component_id = node.target_component
     node._status(status)
-    assert node.controller.state == State.ERROR
+    assert node.state_machine.state == State.ERROR
+
+
+def input_trajectory():
+    msg = LarperTrajectorySetpoint()
+    msg.header.frame_id = 'local_ned'
+    msg.position.x, msg.position.y, msg.position.z = 3.0, -2.0, -1.0
+    msg.velocity.x, msg.velocity.y, msg.velocity.z = .2, -.3, .4
+    msg.acceleration.x, msg.acceleration.y, msg.acceleration.z = .1, .2, -.1
+    return msg
+
+
+def test_tracking_input_preserves_px4_ned_axes(node):
+    machine = node.state_machine
+    machine.state = State.HOLD
+    node._trajectory(input_trajectory())
+    sample = machine.tracking.latest
+    assert sample.position == (3, -2, -1)
+    assert sample.velocity == (.2, -.3, .4)
+    assert sample.acceleration == (.1, .2, -.1)
+
+
+@pytest.mark.parametrize('invalid', ['frame', 'nan', 'inf', 'overflow'])
+def test_invalid_trajectory_does_not_refresh_sample(node, invalid):
+    machine = node.state_machine
+    machine.state = State.HOLD
+    node._trajectory(input_trajectory())
+    previous = machine.tracking.latest
+    msg = input_trajectory()
+    if invalid == 'frame':
+        msg.header.frame_id = 'map'
+    else:
+        msg.acceleration.z = {'nan': float('nan'), 'inf': float('inf'),
+                              'overflow': 1e100}[invalid]
+    node._trajectory(msg)
+    assert machine.tracking.latest is previous
+
+
+def test_tracking_input_during_takeoff_is_discarded(node):
+    node.state_machine.state = State.TAKEOFF
+    node._trajectory(input_trajectory())
+    assert node.state_machine.tracking.latest is None
+
+
+def test_tracking_publishes_full_nonzero_ned_vectors(node):
+    now = monotonic()
+    machine = node.state_machine
+    machine.state = State.HOLD
+    machine.status = Status(now, True, True, True)
+    machine.position = Position(now, 1, 2, -1, .8, 0)
+    machine.landed = Landed(now, False)
+    machine.resets = (0, 0, 0)
+    machine.hold_target = Setpoint(1, 2, -1, .8, (0, 0, 0), (0, 0, 0))
+    node.mode_pub = Publications()
+    node.setpoint_pub = Publications()
+    node.command_pub = Publications()
+    node._trajectory(input_trajectory())
+    node._tick()
+    assert machine.state == State.TRACKING
+    target = node.setpoint_pub.messages[0]
+    assert list(target.position) == [3, -2, -1]
+    assert list(target.velocity) == pytest.approx([.2, -.3, .4])
+    assert list(target.acceleration) == pytest.approx([.1, .2, -.1])
+    assert target.yaw == pytest.approx(.8)
+    assert node.mode_pub.messages[0].position
+    assert not node.mode_pub.messages[0].velocity
+    assert not node.command_pub.messages
