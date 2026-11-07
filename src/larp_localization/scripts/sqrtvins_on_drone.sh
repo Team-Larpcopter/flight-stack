@@ -8,6 +8,9 @@
 #   sqrtvins_on_drone.sh logs      follow its log
 #   sqrtvins_on_drone.sh status    rates of /ov_srvins/odomimu + CPU of each process
 #   sqrtvins_on_drone.sh stop      remove the container (the flight stack is untouched)
+#   sqrtvins_on_drone.sh camera    camera node ALONE (container larp-camera), for when the
+#                                  stack is not running. Stop it before starting the stack.
+#   sqrtvins_on_drone.sh camerastop
 #   sqrtvins_on_drone.sh bag DIR   record a test bag (container larp-bag) into
 #                                  ~/team_ws/sqrtvins_ws/results/DIR/bag (mcap)
 #   sqrtvins_on_drone.sh bagstop   stop the recording cleanly
@@ -50,6 +53,20 @@ case "${1:-}" in
     docker top "$NAME" -eo pid,pcpu,rss,args | awk 'NR==1 || /run_subscribe|undistort/' | cut -c1-110
     ;;
   stop) docker rm -f "$NAME" >/dev/null 2>&1 && echo "stopped $NAME" || echo "not running" ;;
+  camera)
+    docker ps --format '{{.Names}}' | grep -qx skybeta-stack && { echo "the stack is running: it already runs the camera"; exit 1; }
+    docker rm -f larp-camera >/dev/null 2>&1 || true
+    docker run -d --name larp-camera --privileged --network host --ipc host \
+      -v /dev/bus/usb:/dev/bus/usb -v "$HOME/team_ws:/root/team_ws" -v "$DDS:/etc/skybeta/fastdds.xml:ro" \
+      -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/skybeta/fastdds.xml \
+      -e FASTDDS_DEFAULT_PROFILES_FILE=/etc/skybeta/fastdds.xml \
+      -e ROS_DOMAIN_ID="$DOMAIN" \
+      --entrypoint bash "$IMAGE" -c \
+      "set +u; source /opt/ros/humble/setup.bash; source /root/skybeta_ws/install/setup.bash; \
+       source /root/team_ws/install/setup.bash; exec ros2 run larp_oak oak_node --ros-args -r __node:=oak" >/dev/null
+    echo "started larp-camera (logs: docker logs -f larp-camera)"
+    ;;
+  camerastop) docker rm -f larp-camera >/dev/null 2>&1 && echo "stopped larp-camera" || echo "not running" ;;
   bag)
     DIR="${2:?usage: bag DIR}"
     docker rm -f larp-bag >/dev/null 2>&1 || true
