@@ -104,3 +104,7 @@ host environment. `WORKSPACE`, `INSTALL_PREFIX`, `SDK_PREFIX`, and
 bench container described in [autonomy integration](../docs/autonomy-integration.md).
 The helper copied into the container comes from this checkout, so it does not rely
 on an older manually installed `localization_pane.sh`.
+
+## External vision launcher
+
+See [Launch external vision in tmux](external_visionlaunch.md) for the four-pane camera, sqrtVINS, DDS agent, and PX4 bridge launcher, including verified stop controls.
