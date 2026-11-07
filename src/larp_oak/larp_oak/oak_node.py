@@ -107,9 +107,14 @@ class OakNode(Node):
         # "raw" (default): BNO086 RAW accel/gyro, in the sensor axes the device's
         # factory IMU->camera extrinsics are defined for (used for the IMU TF below).
         # "calibrated" outputs the same values with y and z negated (measured on
-        # skybeta-15) and the same |g| (9.16 m/s^2 at rest, ~7% low: an accelerometer
-        # scale error the filter must absorb), so it does NOT match those extrinsics.
+        # skybeta-15) and the same |g| (9.16 m/s^2 upright: an accelerometer
+        # bias, corrected below from imu_calibration_file), so it does NOT match those extrinsics.
         self.imu_mode = dp("imu_mode", "raw").value
+        # Accelerometer calibration (RAW axes), applied as a = (a_raw - bias) / scale.
+        # From tools/imu_six_face.py; a missing file means no correction.
+        self.imu_cal_file = dp("imu_calibration_file", "/root/team_ws/imu_cal/imu_calibration.json").value
+        self.acc_bias, self.acc_scale = np.zeros(3), np.ones(3)
+        self._load_imu_calibration()
         self.imu_check = []  # first ~5 s of IMU samples for the start-up gravity check
         self.r_left_imu = None  # rotation IMU -> left optical, for that check
         self.parent = dp("parent_frame", "oak_parent_frame").value
@@ -426,20 +431,44 @@ class OakNode(Node):
         self.get_logger().info(f"depth {w}x{h} fx={fx:.1f} baseline={baseline_m * 100:.2f} cm")
         return info
 
+    def _load_imu_calibration(self):
+        import json
+        import os
+
+        if not self.imu_cal_file or not os.path.exists(self.imu_cal_file):
+            self.get_logger().warn(f"no IMU calibration ({self.imu_cal_file}): publishing uncorrected accel")
+            return
+        try:
+            c = json.load(open(self.imu_cal_file))
+            if c.get("axes", "raw") != "raw" or self.imu_mode != "raw":
+                self.get_logger().warn(
+                    f"IMU calibration is for {c.get('axes')} axes, imu_mode is {self.imu_mode}: NOT applied"
+                )
+                return
+            self.acc_bias, self.acc_scale = np.array(c["accel_bias"], float), np.array(c["accel_scale"], float)
+            self.get_logger().info(
+                f"IMU calibration {self.imu_cal_file}: accel bias {np.round(self.acc_bias, 4)} m/s^2, "
+                f"scale {np.round(self.acc_scale, 4)}"
+            )
+        except Exception as e:  # noqa: BLE001
+            self.get_logger().error(f"bad IMU calibration file {self.imu_cal_file}: {e}: NOT applied")
+            self.acc_bias, self.acc_scale = np.zeros(3), np.ones(3)
+
     def _publish_imu(self, pkt):
         a, g = pkt.acceleroMeter, pkt.gyroscope
+        ax, ay, az = (np.array([a.x, a.y, a.z]) - self.acc_bias) / self.acc_scale
         msg = Imu()
         msg.header.stamp = self._ros_stamp(g.getTimestamp())
         msg.header.frame_id = self.frames["imu"]
         msg.orientation_covariance[0] = -1.0  # no orientation
         msg.angular_velocity.x, msg.angular_velocity.y, msg.angular_velocity.z = g.x, g.y, g.z
-        msg.linear_acceleration.x, msg.linear_acceleration.y, msg.linear_acceleration.z = a.x, a.y, a.z
+        msg.linear_acceleration.x, msg.linear_acceleration.y, msg.linear_acceleration.z = ax, ay, az
         self.pub["imu"].publish(msg)
         self.stats["imu"] += 1
         if self.stats["imu"] % max(1, self.imu_hz // 10) == 0:
             self.pub["imu_accuracy"].publish(UInt8MultiArray(data=[int(a.accuracy), int(g.accuracy)]))
         if self.imu_check is not None:
-            self.imu_check.append((a.x, a.y, a.z, g.x, g.y, g.z, int(a.accuracy), int(g.accuracy)))
+            self.imu_check.append((ax, ay, az, g.x, g.y, g.z, int(a.accuracy), int(g.accuracy)))
             if len(self.imu_check) >= 5 * self.imu_hz:  # ~5 s
                 self._gravity_check(np.array(self.imu_check))
                 self.imu_check = None

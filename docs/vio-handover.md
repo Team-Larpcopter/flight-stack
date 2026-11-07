@@ -164,14 +164,34 @@ at start-up, and remaining sensor errors are estimated online by the filter.
   the optical-frame value should be ≈ (0, −9.2, 0) (optical y points down, so
   gravity reads −y). Seen: `[-0.355 -9.149 0.282]`.
 
-### Accelerometer scale and bias
+### Accelerometer calibration (bias, not scale)
 
-- |g| reads **9.16 instead of 9.81** (7% low) in both modes. Not corrected by us.
-- sqrtVINS absorbs it as an accelerometer **bias** (≈ −0.65 m/s², estimated at
-  init and updated online, stable across runs). It can also estimate a scale
-  matrix online (`calib_imu_intrinsics: true`, not enabled yet).
-- The real fix is an IMU calibration: a multi-position accelerometer
-  calibration and an Allan-variance run (also gives real noise values).
+- Upright, |a| read 9.16 instead of 9.80. This looked like a 7% scale error but
+  is an **offset**: the six-face run (`src/larp_oak/tools/imu_six_face.py`) read
+  |a| from 9.16 to 10.39 depending on which side was up, low on one side of
+  each axis and high on the other. Fit over all six full vectors:
+  **bias (−0.351, −0.610, −0.171) m/s², scale (1.002, 0.996, 1.003)** (raw axes).
+- Before the correction, sqrtVINS estimated an accel bias of −0.645 on y on its
+  own, matching the −0.61 found here (with the drone upright only the y bias is
+  observable).
+- **Applied in larp_oak:** `a = (a_raw − bias) / scale`, loaded at start-up from
+  `imu_calibration_file` (default `/root/team_ws/imu_cal/imu_calibration.json`,
+  i.e. `~/team_ws/imu_cal/` on the drone; a copy for skybeta-15 is in
+  `src/larp_oak/config/imu_calibration_skybeta15.json`). Missing file = no
+  correction (logged). Only applied in `imu_mode: raw`. Both VIOs get the
+  corrected data. After it: upright |a| = 9.788, and sqrtVINS starts with an
+  accel bias of ≈ 0.
+- Quality: hand-held, faces tilted up to 10°. The full-vector fit does not need
+  level faces (verified in simulation with 10° tilts), but 6 faces for 6
+  unknowns leaves no redundancy. Redo it with the drone propped still on a box,
+  ideally with more than six orientations.
+- Gyro bias (~0.0045 rad/s on y) is not corrected: hand-held faces were not still
+  enough to measure it, and both VIOs estimate it online.
+- To redo: `docker exec -it skybeta-stack bash -c "source skybeta_env.sh; python3
+  /root/team_ws/src/flight-stack/src/larp_oak/tools/imu_six_face.py --mode raw"`
+  with larp_oak in raw mode and **no** calibration file (move it aside first,
+  or the fit is of already-corrected data), then copy the printed json to
+  `imu_calibration.json` and restart the camera node.
 
 ### IMU noise values
 
@@ -436,11 +456,11 @@ the timestamp fix and divergence detection below). Check
 1. **Fair comparison**: measure cuVSLAM rate per configuration; rerun square with
    images off in Foxglove so cuVSLAM is not starved.
 2. **Offline replay** of the square2 bag on a laptop to tune sqrtVINS (noise,
-   features, `calib_imu_intrinsics` for the 7% scale) without new hand tests.
-3. **IMU calibration**: Allan variance (noise) and multi-position accelerometer
-   calibration (scale, bias).
+   features) without new hand tests.
+3. **IMU calibration**: redo the six-face run propped still (done once
+   hand-held); Allan variance for the noise values.
 4. **sqrtVINS for flight**: fix output stamps, divergence detection + auto-reset,
    publish in the frame and rate PX4's vision input expects.
 5. **Image integration** (section 9): sqrtVINS into the team image, one git
    checkout on the drone, rebuild the image so its larp_oak is current.
-6. Height drift (0.32 m in square2): check after the IMU scale work.
+6. Height drift (0.32 m in square2): recheck now that the accel bias is corrected.

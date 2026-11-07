@@ -77,8 +77,9 @@ and makes the node exit with "unable to parse all parameters".
   larp_oak publishes as the oak_imu_frame TF (raw IMU axes). The earlier nominal
   URDF pose had gravity flipped relative to the cameras and made sqrtVINS drift
   ~1.1 m while still; with the factory pose a 3-minute static test drifted 2.5 mm.
-- **Accelerometer scale:** |g| reads 9.16 m/s^2 at rest (~7% low). sqrtVINS
-  absorbs it as an accelerometer bias; a proper IMU calibration is the real fix.
+- **Accelerometer:** upright |a| read 9.16 m/s^2. It is a bias, not a scale error
+  (six-face calibration); larp_oak now corrects it from a calibration file. See
+  docs/vio-handover.md section 4.
 - **Output stamps:** sqrtVINS runs in float32 and its odometry header stamps are
   quantised to 128 s at current Unix time. Positions are fine; fix the stamps
   before feeding PX4.

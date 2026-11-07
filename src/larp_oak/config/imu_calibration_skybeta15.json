@@ -1,0 +1,9 @@
+{
+  "axes": "raw",
+  "accel_scale": [1.0022, 0.9958, 1.0025],
+  "accel_bias": [-0.3509, -0.6096, -0.1705],
+  "g": 9.7996,
+  "source": "imu_six_face_20261107_173117.json (hand-held, faces tilted up to 10 deg), full-vector least-squares fit",
+  "device": "OAK-D S2 on skybeta-15",
+  "note": "gyro bias not applied: the faces were hand-held, not still enough; the VIOs estimate it online"
+}

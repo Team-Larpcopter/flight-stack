@@ -113,20 +113,32 @@ def main():
         still_g.append(w[:, 4:7])
         done = sorted(f"{f['sign']}{'xyz'[f['axis']]}" for f in faces)
         print(f"  ok ({len(faces)}/6 done: {', '.join(done)})")
-    # fit
+    # fit: per-axis start values from the up/down pairs, then a least-squares fit of
+    # |(a - b) / s| = g over the FULL vectors of all faces (does not assume the faces
+    # were level, so hand-held tilt does not bias it)
     s, b = np.ones(3), np.zeros(3)
     for ax in range(3):
         up = [f["mean"][ax] for f in faces if f["axis"] == ax and f["sign"] == "+"]
         dn = [f["mean"][ax] for f in faces if f["axis"] == ax and f["sign"] == "-"]
-        if not up or not dn:
-            print(f"axis {'xyz'[ax]}: missing its up or down face, cannot fit"); continue
-        s[ax] = (up[0] - dn[0]) / (2 * a.g)
-        b[ax] = (up[0] + dn[0]) / 2
+        if up and dn:
+            s[ax], b[ax] = (up[0] - dn[0]) / (2 * a.g), (up[0] + dn[0]) / 2
+    A = np.array([f["mean"] for f in faces])
+    p = np.r_[s, b]
+
+    def resid(p):
+        return np.linalg.norm((A - p[3:]) / p[:3], axis=1) - a.g
+
+    for _ in range(50):
+        r = resid(p)
+        J = np.stack([(resid(p + d) - r) / 1e-6 for d in np.eye(6) * 1e-6], axis=1)
+        p = p - np.linalg.lstsq(J, r, rcond=None)[0]
+    s, b = p[:3], p[3:]
     gyro_bias = np.concatenate(still_g).mean(0)
     print("\n=== result (raw IMU axes) ===")
     print(f"accel scale  s = {np.round(s, 4)}   (1.0 = perfect; true = (reading - b) / s)")
     print(f"accel bias   b = {np.round(b, 4)} m/s^2")
-    print(f"gyro bias      = {np.round(gyro_bias, 5)} rad/s = {np.round(np.degrees(gyro_bias), 3)} deg/s")
+    print(f"gyro bias      = {np.round(gyro_bias, 5)} rad/s = {np.round(np.degrees(gyro_bias), 3)} deg/s"
+          "  (only meaningful if the faces were really still; the VIOs estimate it online)")
     print("face   |a| before  |a| after   (target %.4f)" % a.g)
     for f in faces:
         m = np.array(f["mean"])
@@ -138,6 +150,7 @@ def main():
                "gyro_bias": gyro_bias.tolist(), "faces": faces, "final_accuracy": list(node.acc)},
               open(path, "w"), indent=2)
     print("saved", path)
+    print(f"to use it: cp {path} {os.path.join(a.out, 'imu_calibration.json')} and restart larp_oak (raw mode)")
 
 
 if __name__ == "__main__":
