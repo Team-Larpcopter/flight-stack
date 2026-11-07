@@ -66,7 +66,8 @@ and makes the node exit with "unable to parse all parameters".
 | `init_max_reproj` / `init_min_feat` | 2.0 / 30 | values the euroc config recommends for stereo |
 | `record_init_pose` / `record_init_timing` | false | do not write logs to /tmp on the drone |
 | `try_zupt` / `zupt_only_at_beginning` | true / true | zero-velocity updates on the pad |
-| `calib_cam_extrinsics` / `_intrinsics` / `_timeoffset` | true | refine the nominal IMU pose and timing online |
+| `calib_cam_extrinsics` / `_intrinsics` | false | keep the factory camera calibration (online refinement diverged in lift1) |
+| `calib_cam_timeoffset` | true | estimate the camera-IMU time offset online |
 
 ## Known gaps
 
