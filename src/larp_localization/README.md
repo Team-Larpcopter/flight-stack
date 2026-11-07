@@ -40,7 +40,7 @@ frame, so the camera-IMU extrinsics are unchanged.
 | `config/oak_d_s2/oak_calib_skybeta15.json` | Factory calibration of the skybeta-15 OAK-D S2 (K, D, TF) |
 | `config/oak_d_s2/kalibr_imucam_chain.yaml` | Generated: cameras (pinhole, zero distortion, undistorted topics) and T_cam_imu |
 | `config/oak_d_s2/kalibr_imu_chain.yaml` | Generated: IMU noise (**starting guesses**, see below) |
-| `config/oak_d_s2/estimator_config.yaml` | sqrtVINS settings, from sqrtVINS `config/rs_d455` with the overrides below |
+| `config/oak_d_s2/estimator_config.yaml` | sqrtVINS settings, from sqrtVINS `config/euroc_mav` with the overrides below |
 | `tools/dump_oak_calib.py` | Read K, D and TF from the running ROS graph (read-only) into a JSON |
 | `tools/oak_to_kalibr.py` | JSON -> Kalibr-format configs; `--undistorted` for the node above |
 
@@ -51,7 +51,11 @@ python3 tools/dump_oak_calib.py oak_calib.json      # with larp_oak running; rea
 python3 tools/oak_to_kalibr.py oak_calib.json config/oak_d_s2 --undistorted
 ```
 
-## Settings (vs sqrtVINS `rs_d455`)
+## Settings (vs sqrtVINS `euroc_mav`)
+
+`euroc_mav` is the maintained config for this sqrtVINS version; `rs_d455` is
+missing required keys (`use_imuavg`, `use_rk4int`, the `init_*` initializer set)
+and makes the node exit with "unable to parse all parameters".
 
 | Key | Value | Why |
 |---|---|---|
@@ -59,7 +63,8 @@ python3 tools/oak_to_kalibr.py oak_calib.json config/oak_d_s2 --undistorted
 | `track_frequency` | 31 | camera at 30 Hz |
 | `downsample_cameras` | false | 1280x800; set true (640x400) if CPU-bound |
 | `num_opencv_threads` | 2 | leave cores for the rest of the stack |
-| `init_dyn_use` / `init_imu_thresh` | false / 1.0 | static start: the drone sits still on the pad |
+| `init_max_reproj` / `init_min_feat` | 2.0 / 30 | values the euroc config recommends for stereo |
+| `record_init_pose` / `record_init_timing` | false | do not write logs to /tmp on the drone |
 | `try_zupt` / `zupt_only_at_beginning` | true / true | zero-velocity updates on the pad |
 | `calib_cam_extrinsics` / `_intrinsics` / `_timeoffset` | true | refine the nominal IMU pose and timing online |
 
@@ -70,7 +75,12 @@ python3 tools/oak_to_kalibr.py oak_calib.json config/oak_d_s2 --undistorted
   recommends. Replace with an Allan-variance calibration of this BNO086.
 - **IMU extrinsics are nominal.** `T_parent_imu` is the depthai URDF pose, not a
   calibrated one; `calib_cam_extrinsics: true` lets sqrtVINS refine it.
-- **Not yet run on drone data.** Only built and configured.
+- **Not yet run on drone data.** Built (x86 laptop) and started with this config:
+  subscribes to `/oak/imu/data` and `/oak/{left,right}/image_undistorted`, publishes
+  `/ov_srvins/{odomimu,poseimu,pathimu,points_slam,points_msckf,trackhist}`.
+- **Known upstream issue:** `run_subscribe_msckf` segfaults while shutting down
+  (`~ROS2Visualizer` / image_transport). Harmless at exit, but it hides error
+  messages; run it with `stdbuf -o0` when debugging start-up.
 
 ## Building
 
