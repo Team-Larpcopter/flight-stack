@@ -72,11 +72,62 @@ def relay(context):
     ]
 
 
+def depth_backend_nodes(context):
+    on = lambda name: LaunchConfiguration(name).perform(context).lower() == "true"  # noqa: E731
+    if not on("depth_filter"):
+        return []
+    method = LaunchConfiguration("depth_method").perform(context).strip().lower()
+    nodes = []
+    if method in ("oak_filter", "both"):
+        nodes.append(
+            Node(
+                package="larp_perception",
+                executable="depth_filter",
+                name="depth_filter",
+                output="screen",
+                respawn=True,
+                respawn_delay=3.0,
+            )
+        )
+    if method in ("neural", "both"):
+        nodes.append(
+            Node(
+                package="larp_neural_depth",
+                executable="neural_stereo_node",
+                name="neural_stereo_node",
+                output="screen",
+                respawn=True,
+                respawn_delay=3.0,
+                parameters=[
+                    {
+                        "engine_path": LaunchConfiguration("neural_engine_path").perform(context),
+                        "target_height": int(LaunchConfiguration("neural_height").perform(context)),
+                        "target_width": int(LaunchConfiguration("neural_width").perform(context)),
+                        "publish_as_primary": method == "neural",
+                        "viz_rate_hz": float(LaunchConfiguration("viz_rate_hz").perform(context)),
+                    }
+                ],
+            )
+        )
+    return nodes
+
+
 def generate_launch_description():
     arg = LaunchConfiguration
     return LaunchDescription(
         [
             DeclareLaunchArgument("depth_filter", default_value="true"),
+            DeclareLaunchArgument(
+                "depth_method",
+                default_value="oak_filter",
+                description="Depth backend: 'oak_filter' (default), 'neural' (Fast-FoundationStereo TRT -> /stereo/depth/image), or 'both' (side-by-side comparison)",
+            ),
+            DeclareLaunchArgument(
+                "neural_engine_path",
+                default_value="/models/fast_foundationstereo_320x480_fp16.engine",
+            ),
+            DeclareLaunchArgument("neural_height", default_value="320"),
+            DeclareLaunchArgument("neural_width", default_value="480"),
             DeclareLaunchArgument("foxglove", default_value="true"),
             DeclareLaunchArgument("port", default_value="8766"),
             DeclareLaunchArgument("viz_rate_hz", default_value="5.0"),
@@ -85,15 +136,7 @@ def generate_launch_description():
             DeclareLaunchArgument("viz_right", default_value="false"),
             DeclareLaunchArgument("viz_raw_depth", default_value="false"),
             DeclareLaunchArgument("viz_tracks", default_value="false"),
-            Node(
-                package="larp_perception",
-                executable="depth_filter",
-                name="depth_filter",
-                output="screen",
-                respawn=True,
-                respawn_delay=3.0,
-                condition=IfCondition(arg("depth_filter")),
-            ),
+            OpaqueFunction(function=depth_backend_nodes),
             GroupAction([OpaqueFunction(function=relay)], condition=IfCondition(arg("foxglove"))),
             IncludeLaunchDescription(
                 AnyLaunchDescriptionSource(

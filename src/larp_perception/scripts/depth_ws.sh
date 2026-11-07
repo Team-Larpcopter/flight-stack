@@ -30,14 +30,17 @@ case "${1:-}" in
       --entrypoint bash "$IMAGE" -c "set +u; $ENV_SETUP; cd /depth_ws; \
         export CMAKE_PREFIX_PATH=/integration/sdk_install:\${CMAKE_PREFIX_PATH:-}; \
         MAKEFLAGS=-j2 nice -n 10 colcon build --base-paths src --build-base build --install-base install \
-          --packages-select larp_hardware larp_perception larp_autonomy \
+          --packages-select larp_hardware larp_perception larp_neural_depth larp_autonomy \
           --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF"
     ;;
   start)
     docker rm -f "$NAME" >/dev/null 2>&1 || true
+    mkdir -p "$HOME/neural_depth_ws/models"
     docker run -d --name "$NAME" --init --network host --ipc host --runtime nvidia \
       --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb \
-      -v "$INTEGRATION:/integration" -v "$DEPTH_WS:/depth_ws" -v "$DDS:/etc/skybeta/fastdds.xml:ro" \
+      -v "$INTEGRATION:/integration" -v "$DEPTH_WS:/depth_ws" \
+      -v "$HOME/neural_depth_ws/models:/models" \
+      -v "$DDS:/etc/skybeta/fastdds.xml:ro" \
       -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/skybeta/fastdds.xml -e FASTDDS_DEFAULT_PROFILES_FILE=/etc/skybeta/fastdds.xml \
       -e ROS_DOMAIN_ID="$DOMAIN" -e WORKSPACE=/integration -e OVERLAY_PREFIX=/depth_ws/install \
       -e PERCEPTION_SRC=/depth_ws/src/larp_perception -e OPENBLAS_NUM_THREADS=1 -e OMP_NUM_THREADS=1 \

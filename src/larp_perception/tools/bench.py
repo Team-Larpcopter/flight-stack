@@ -33,14 +33,16 @@ DEFAULT_TOPICS = [
     "/native_oak/right/image_undistorted",
     "/native_oak/depth/image_raw",
     "/stereo/depth/image",
+    "/neural_depth/depth/image_raw",
     "/autonomy/imu/data",
     "/native_oak/acceleration_raw",
     "/native_oak/gyro_raw",
     "/autonomy/poseimu",
     "/viz/native_oak/left/image_undistorted/compressed",
     "/viz/stereo/depth/image/compressed",
+    "/viz/neural_depth/depth/image/compressed",
 ]
-PROCESSES = ["oak_native_node", "depth_filter", "viz_relay", "foxglove_bridge", "run_subscribe_msckf"]
+PROCESSES = ["oak_native_node", "depth_filter", "neural_stereo_node", "viz_relay", "foxglove_bridge", "run_subscribe_msckf"]
 MAX_DEPTH_FRAMES = 150  # frames kept per depth topic for the noise estimate
 
 

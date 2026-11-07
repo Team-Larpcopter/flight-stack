@@ -1,0 +1,234 @@
+{
+  "configById": {
+    "Image!left": {
+      "imageMode": {
+        "imageTopic": "/viz/native_oak/left/image_undistorted/compressed"
+      }
+    },
+    "Image!oak_depth": {
+      "imageMode": {
+        "imageTopic": "/viz/stereo/depth/image/compressed"
+      }
+    },
+    "Image!neural_depth": {
+      "imageMode": {
+        "imageTopic": "/viz/neural_depth/depth/image/compressed"
+      }
+    },
+    "Image!neural_disp": {
+      "imageMode": {
+        "imageTopic": "/viz/neural_depth/disparity/image/compressed"
+      }
+    },
+    "3D!sqrtvins": {
+      "followTf": "global",
+      "followMode": "follow-none",
+      "scene": {
+        "transforms": {
+          "showLabel": false,
+          "axisScale": 0.5
+        },
+        "backgroundColor": "#101418"
+      },
+      "transforms": {},
+      "topics": {
+        "/viz/autonomy/poseimu/path": {
+          "visible": true,
+          "lineWidth": 0.03,
+          "color": "#ff7a45ff"
+        },
+        "/viz/autonomy/odomimu": {
+          "visible": true,
+          "type": "arrow",
+          "arrowScale": [
+            0.3,
+            0.06,
+            0.06
+          ],
+          "color": "#ff7a45ff"
+        },
+        "/viz/autonomy/points_slam": {
+          "visible": true,
+          "pointSize": 5,
+          "colorMode": "flat",
+          "flatColor": "#ffd166ff"
+        },
+        "/viz/autonomy/points_msckf": {
+          "visible": true,
+          "pointSize": 3,
+          "colorMode": "flat",
+          "flatColor": "#ffb38a88"
+        }
+      },
+      "layers": {
+        "grid": {
+          "layerId": "foxglove.Grid",
+          "visible": true,
+          "frameId": "global",
+          "size": 10,
+          "divisions": 20,
+          "lineWidth": 1,
+          "color": "#3a4450ff",
+          "instanceId": "f1d0abad-53ac-437d-92ad-a0f2a7bbac55"
+        }
+      },
+      "cameraState": {
+        "perspective": true,
+        "distance": 6.0,
+        "phi": 55,
+        "thetaOffset": 45,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOffset": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "fovy": 45,
+        "near": 0.01,
+        "far": 500
+      }
+    },
+    "RawMessages!sqrtvins": {
+      "topicPath": "/viz/autonomy/poseimu.pose.pose",
+      "diffEnabled": false,
+      "expansion": "all"
+    },
+    "Plot!sqrtvins_pos": {
+      "title": "sqrtVINS IMU position, global (m)",
+      "paths": [
+        {
+          "value": "/viz/autonomy/poseimu.pose.pose.position.x",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/viz/autonomy/poseimu.pose.pose.position.y",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/viz/autonomy/poseimu.pose.pose.position.z",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        }
+      ],
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 20
+    },
+    "Plot!accel": {
+      "title": "Corrected acceleration, raw IMU axes (m/s²)",
+      "paths": [
+        {
+          "value": "/viz/autonomy/imu/data.linear_acceleration.x",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/viz/autonomy/imu/data.linear_acceleration.y",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/viz/autonomy/imu/data.linear_acceleration.z",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        }
+      ],
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 20
+    },
+    "Plot!gyro": {
+      "title": "Angular velocity, raw IMU axes (rad/s)",
+      "paths": [
+        {
+          "value": "/viz/autonomy/imu/data.angular_velocity.x",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/viz/autonomy/imu/data.angular_velocity.y",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/viz/autonomy/imu/data.angular_velocity.z",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        }
+      ],
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 20
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {
+    "speed": 1
+  },
+  "layout": {
+    "direction": "row",
+    "first": {
+      "direction": "column",
+      "first": {
+        "direction": "row",
+        "first": "Image!left",
+        "second": "Image!oak_depth",
+        "splitPercentage": 50
+      },
+      "second": {
+        "direction": "row",
+        "first": "Image!neural_depth",
+        "second": "Image!neural_disp",
+        "splitPercentage": 50
+      },
+      "splitPercentage": 50
+    },
+    "second": {
+      "direction": "column",
+      "first": {
+        "direction": "row",
+        "first": "3D!sqrtvins",
+        "second": "RawMessages!sqrtvins",
+        "splitPercentage": 75
+      },
+      "second": {
+        "direction": "row",
+        "first": "Plot!sqrtvins_pos",
+        "second": {
+          "direction": "column",
+          "first": "Plot!accel",
+          "second": "Plot!gyro",
+          "splitPercentage": 50
+        },
+        "splitPercentage": 50
+      },
+      "splitPercentage": 60
+    },
+    "splitPercentage": 45
+  }
+}
