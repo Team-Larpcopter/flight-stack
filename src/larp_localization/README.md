@@ -93,7 +93,8 @@ git -C sqrtVINS checkout 30fafc8
 git -C sqrtVINS apply ../../src/larp_localization/patches/sqrtvins-30fafc8-fstream.patch   # see below
 cd .. && source /opt/ros/humble/setup.bash
 MAKEFLAGS=-j1 colcon build --executor sequential --packages-up-to ov_srvins \
-  --cmake-args -DCMAKE_BUILD_TYPE=Release -DENABLE_ARUCO_TAGS=OFF
+  --cmake-args -DCMAKE_BUILD_TYPE=Release -DENABLE_ARUCO_TAGS=OFF \
+  -DBoost_DIR=/usr/lib/cmake/Boost-1.80.0    # on the drone (skybeta image), see below
 ```
 
 `patches/sqrtvins-30fafc8-fstream.patch` adds `#include <fstream>` to four
@@ -101,6 +102,12 @@ sqrtVINS files that use `std::ofstream` without it. x86 builds pick the header u
 transitively; the Jetson (aarch64, L4T R36) build fails with "aggregate
 'std::ofstream outfile' has incomplete type". This is our only change to
 sqrtVINS (LGPL-3.0: the modification is published here).
+
+The NVIDIA base image ships Boost 1.80 headers in /usr/include and Boost 1.80
+libraries in /usr/lib, next to Ubuntu's 1.74 libraries and CMake config. CMake
+picks 1.74 by default and the executables then fail to link
+(`undefined reference to boost::filesystem::path::find_parent_path_size()`).
+Build on the drone with `-DBoost_DIR=/usr/lib/cmake/Boost-1.80.0`.
 
 On a laptop without swap, run this inside a memory-capped container
 (`docker run --memory=4g --memory-swap=4g ...`): two parallel compiler jobs

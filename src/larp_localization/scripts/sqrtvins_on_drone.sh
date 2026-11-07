@@ -23,7 +23,8 @@ case "${1:-}" in
   start)
     [[ -f "$WS/install/setup.bash" ]] || { echo "not built: see README (Building on the drone)"; exit 1; }
     docker rm -f "$NAME" >/dev/null 2>&1 || true
-    docker run -d --name "$NAME" --network host --ipc host \
+    # Capped so it can never starve the flight stack (sqrtVINS is single-threaded by design).
+    docker run -d --name "$NAME" --network host --ipc host --cpus=2 --memory=1536m \
       -v "$WS:/root/sqrtvins_ws" -v "$DDS:/etc/skybeta/fastdds.xml:ro" \
       -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/skybeta/fastdds.xml \
       -e FASTDDS_DEFAULT_PROFILES_FILE=/etc/skybeta/fastdds.xml \
