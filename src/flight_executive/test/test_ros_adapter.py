@@ -178,3 +178,20 @@ def test_tracking_publishes_full_nonzero_ned_vectors(node):
     assert node.mode_pub.messages[0].position
     assert not node.mode_pub.messages[0].velocity
     assert not node.command_pub.messages
+
+
+def test_tracking_input_yaw_is_used_only_when_flagged(node):
+    machine = node.state_machine
+    machine.state = State.HOLD
+    msg = input_trajectory()
+    msg.yaw, msg.yawspeed = 1.2, -0.4
+    node._trajectory(msg)
+    assert machine.tracking.latest.yaw is None
+    msg.yaw_valid = True
+    node._trajectory(msg)
+    assert (machine.tracking.latest.yaw, machine.tracking.latest.yawspeed) == pytest.approx(
+        (1.2, -0.4))
+    previous = machine.tracking.latest
+    msg.yawspeed = float('nan')
+    node._trajectory(msg)
+    assert machine.tracking.latest is previous

@@ -106,7 +106,8 @@ The ascent deadline is 20 seconds from armed confirmation. Reaching HOLD require
 1 continuous second within 0.15 m vertically, 0.25 m horizontally, and vertical
 speed below 0.2 m/s. HOLD streams the final target indefinitely.
 
-Status, landed, or local-position telemetry older than 1 second, invalid position or
+Status or local-position telemetry older than 1 second, landed telemetry older
+than 2.5 seconds (PX4 publishes it only on change or at 1 Hz), invalid position or
 heading, estimator resets, a control-timer gap over 0.5 seconds after preparation,
 PX4 failsafe, unexpected disarm, or mode takeover all enter terminal ERROR.
 Loss of preflight readiness before arming is also terminal. A timer gap during initial
@@ -137,6 +138,9 @@ std_msgs/Header header
 geometry_msgs/Point position
 geometry_msgs/Vector3 velocity
 geometry_msgs/Vector3 acceleration
+bool yaw_valid
+float32 yaw
+float32 yawspeed
 ```
 
 Set `header.frame_id` to `local_ned`. All vectors use exactly PX4's local NED
@@ -144,7 +148,9 @@ frame and estimator origin, in metres, metres/second, and metres/second squared.
 There is no axis conversion, sign flip, origin translation, or TF lookup.
 Position is absolute in this local frame, not an offset from takeoff.
 The source stamp is informational; freshness uses monotonic receipt time.
-All nine components must be finite and representable as PX4 float32 values.
+All nine vector components must be finite and representable as PX4 float32
+values. When `yaw_valid` is true, `yaw` (PX4 heading in radians, clockwise from
+north) and `yawspeed` (rad/s feedforward) must be too; otherwise they are ignored.
 Invalid samples are ignored and do not refresh the accepted sample's deadline.
 
 For example, after HOLD, stream a stationary target one metre above PX4's local
@@ -156,14 +162,23 @@ ros2 topic pub --rate 10 /larper/trajectory_in flight_executive_msgs/msg/Traject
 
 The executive repeats the latest accepted position, velocity, and acceleration
 unchanged at 20 Hz while its age is at most 1 second. Position control remains
-selected; velocity and acceleration are feedforward terms. Yaw stays at the
-HOLD target's yaw because the input does not contain a yaw command.
+selected; velocity and acceleration are feedforward terms. With `yaw_valid`
+false, yaw stays at the HOLD target's yaw and yawspeed is unset. With it true, the
+executive forwards the sample's yaw and yawspeed.
 
 If no accepted sample arrives for more than 1 second, TRACKING returns to HOLD.
 It captures the current measured position and yaw once and publishes that fixed
 pose with zero velocity and acceleration. A new valid sample can resume tracking.
 Existing telemetry, estimator-reset, mode-takeover, disarm, and failsafe checks
 apply during tracking. Tracking never requests arming or a mode change.
+
+## Fly the hard-coded DroneHacks course
+
+`ros2 launch flight_executive dronehacks.launch.py` starts this executive with
+`takeoff_height` equal to the course cruise height, plus the
+`flight_trajectory` course node that publishes on `/larper/trajectory_in`. See
+[flight_trajectory](../flight_trajectory/README.md) for setup, arguments, and
+behaviour.
 
 ## Code structure
 

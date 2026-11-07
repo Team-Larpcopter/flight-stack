@@ -66,6 +66,7 @@ class Setpoint:
     yaw: float
     velocity: tuple = (float("nan"),) * 3
     acceleration: tuple = (float("nan"),) * 3
+    yawspeed: float = float("nan")
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,8 @@ class Trajectory:
     position: tuple
     velocity: tuple
     acceleration: tuple
+    yaw: Optional[float] = None
+    yawspeed: Optional[float] = None
 
 
 @dataclass(frozen=True)

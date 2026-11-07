@@ -21,4 +21,6 @@ class Tracking:
         if not self.latest.received_at <= now <= self.latest.received_at + 1.0:
             return None
         t = self.latest
-        return Setpoint(*t.position, yaw, t.velocity, t.acceleration)
+        if t.yaw is None:
+            return Setpoint(*t.position, yaw, t.velocity, t.acceleration)
+        return Setpoint(*t.position, t.yaw, t.velocity, t.acceleration, t.yawspeed)

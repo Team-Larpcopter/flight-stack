@@ -4,7 +4,9 @@ from math import isfinite
 
 from flight_executive.extensions.takeoff import Takeoff
 from flight_executive.extensions.tracking import Tracking
-from flight_executive.model import Output, Phase, Setpoint, State, Trajectory
+from flight_executive.model import Landed, Output, Phase, Setpoint, State, Trajectory
+
+LANDED_TIMEOUT = 2.5
 
 
 class StateMachine:
@@ -48,7 +50,10 @@ class StateMachine:
 
     @staticmethod
     def _fresh(snapshot, now: float) -> bool:
-        return snapshot is not None and 0 <= now - snapshot.received_at <= 1.0
+        # PX4 publishes vehicle_land_detected only on change or at 1 Hz, so a
+        # 1 s limit trips on ordinary jitter; allow that topic 2.5 s.
+        limit = LANDED_TIMEOUT if isinstance(snapshot, Landed) else 1.0
+        return snapshot is not None and 0 <= now - snapshot.received_at <= limit
 
     def _hold(self, target: Setpoint) -> Output:
         self.hold_target = Setpoint(target.x, target.y, target.z, target.yaw,

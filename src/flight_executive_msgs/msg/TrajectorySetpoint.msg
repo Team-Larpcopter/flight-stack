@@ -4,3 +4,8 @@ std_msgs/Header header
 geometry_msgs/Point position
 geometry_msgs/Vector3 velocity
 geometry_msgs/Vector3 acceleration
+# Optional PX4 heading (radians, clockwise from north) and its rate (rad/s).
+# When yaw_valid is false the executive keeps the HOLD heading.
+bool yaw_valid
+float32 yaw
+float32 yawspeed

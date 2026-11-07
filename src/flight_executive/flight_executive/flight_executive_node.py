@@ -117,12 +117,14 @@ class FlightExecutiveNode(Node):
             return
         vectors = tuple(tuple(getattr(v, axis) for axis in ('x', 'y', 'z'))
                         for v in (msg.position, msg.velocity, msg.acceleration))
-        if not all(isfinite(v) and abs(v) <= 3.4028234663852886e38
-                   for vector in vectors for v in vector):
+        yaw = (msg.yaw, msg.yawspeed) if msg.yaw_valid else (None, None)
+        values = [v for vector in vectors for v in vector]
+        values += [v for v in yaw if v is not None]
+        if not all(isfinite(v) and abs(v) <= 3.4028234663852886e38 for v in values):
             self.get_logger().warning(
                 'Ignoring trajectory: invalid PX4 float32 component', throttle_duration_sec=1.0)
             return
-        self.state_machine.accept_trajectory(Trajectory(monotonic(), *vectors))
+        self.state_machine.accept_trajectory(Trajectory(monotonic(), *vectors, *yaw))
 
     def _report(self):
         c = self.state_machine
@@ -155,7 +157,7 @@ class FlightExecutiveNode(Node):
         setpoint.acceleration = list(target.acceleration)
         setpoint.jerk = [nan, nan, nan]
         setpoint.yaw = target.yaw
-        setpoint.yawspeed = nan
+        setpoint.yawspeed = float(target.yawspeed)
         self.setpoint_pub.publish(setpoint)
         if output.command is not None:
             command = VehicleCommand()
