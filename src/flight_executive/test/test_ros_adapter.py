@@ -117,6 +117,7 @@ def test_vehicle_identity_mismatch_fails_closed(node):
 def input_trajectory():
     msg = LarperTrajectorySetpoint()
     msg.header.frame_id = 'local_ned'
+    msg.trajectory_id = 'test-trajectory'
     msg.position.x, msg.position.y, msg.position.z = 3.0, -2.0, -1.0
     msg.velocity.x, msg.velocity.y, msg.velocity.z = .2, -.3, .4
     msg.acceleration.x, msg.acceleration.y, msg.acceleration.z = .1, .2, -.1
@@ -195,3 +196,36 @@ def test_tracking_input_yaw_is_used_only_when_flagged(node):
     msg.yawspeed = float('nan')
     node._trajectory(msg)
     assert machine.tracking.latest is previous
+
+
+def test_land_command_can_publish_without_an_offboard_setpoint(node):
+    from flight_executive.model import Output
+
+    node.state_machine.tick = lambda now: Output(command=Command.LAND)
+    node.mode_pub = Publications()
+    node.setpoint_pub = Publications()
+    node.command_pub = Publications()
+    node._tick()
+    assert not node.mode_pub.messages and not node.setpoint_pub.messages
+    command = node.command_pub.messages[0]
+    assert command.command == 21
+    assert command.param1 == 0 and command.param2 == 0
+    assert all(isnan(v) for v in (command.param4, command.param5,
+                                  command.param6, command.param7))
+    assert command.from_external
+
+
+@pytest.mark.parametrize('invalid', ['empty_id', 'moving_final', 'other_id'])
+def test_invalid_completion_does_not_refresh_accepted_sample(node, invalid):
+    node.state_machine.state = State.HOLD
+    node._trajectory(input_trajectory())
+    old = node.state_machine.tracking.latest
+    msg = input_trajectory()
+    if invalid == 'empty_id':
+        msg.trajectory_id = ''
+    elif invalid == 'other_id':
+        msg.trajectory_id = 'previous-flight'
+    else:
+        msg.is_final = True
+    node._trajectory(msg)
+    assert node.state_machine.tracking.latest is old

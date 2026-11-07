@@ -52,13 +52,15 @@ degrees of its start heading (north). It then publishes one
 `flight_executive_msgs/TrajectorySetpoint` at 50 Hz in PX4 local NED, with
 position, velocity, acceleration, and optional yaw and yawspeed. The first
 sample switches the executive to TRACKING. At the end it keeps publishing the
-stationary end point above the landing pad. Landing is not automated; use
-PX4 Land from QGroundControl.
+stationary endpoint with `is_final=true` and its per-process trajectory UUID.
+The executive verifies measured arrival and settling, then requests PX4 Land.
+The publisher stops when the executive reports LAND or DONE.
 
 The node stops publishing (ABORTED) if the start checks fail, local position
 is stale, the vehicle is more than `max_tracking_error` from the reference, or
 the executive enters ERROR. The executive then returns to HOLD at the measured
-pose after its 1 second input deadline, or follows its own ERROR behaviour.
+pose after its 1 second input deadline. After 5 more seconds without accepted
+input, it requests Land, or follows its own ERROR behaviour for telemetry faults.
 
 ## Trajectory
 
@@ -79,3 +81,9 @@ Route clearance at Gate A, Gate B, and maze wall ends is only about 0.07 to
 0.15 m from the prop tips. One SITL run at 1 m/s clipped a maze wall end, so
 start at `max_speed:=0.5`. This needs centimetre-level localization and is not
 a plan for a real GPS receiver or vehicle.
+
+The first planner sample must arrive during the executive's 5-second HOLD grace
+period. The DroneHacks launch exposes `hold_timeout` and `landing_timeout` for
+this behavior. A different planner must publish the same custom message with a
+nonempty trajectory ID and a stationary final sample; completion does not depend
+on `/course_trajectory/status`. Rebuild both packages after message changes.

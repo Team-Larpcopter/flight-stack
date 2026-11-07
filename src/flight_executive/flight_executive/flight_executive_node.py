@@ -19,6 +19,7 @@ from std_msgs.msg import String
 
 from flight_executive.model import Command, Landed, Position, Status, Trajectory
 from flight_executive.state_machine import StateMachine
+from flight_executive.extensions.tracking import stationary
 
 
 def topic_name(prefix, name, message_type):
@@ -36,7 +37,9 @@ class FlightExecutiveNode(Node):
         if not self.declare_parameter('simulation_only', False).value:
             raise ValueError('Use the simulation launch file; hardware is not supported')
         height = self.declare_parameter('takeoff_height', 1.0).value
-        self.state_machine = StateMachine(monotonic(), height)
+        hold_timeout = self.declare_parameter('hold_timeout', 5.0).value
+        landing_timeout = self.declare_parameter('landing_timeout', 45.0).value
+        self.state_machine = StateMachine(monotonic(), height, hold_timeout, landing_timeout)
         self.prefix = self.declare_parameter('px4_topic_prefix', '/fmu').value.rstrip('/')
         if not self.prefix.startswith('/') or self.prefix == '':
             raise ValueError('px4_topic_prefix must be an absolute nonempty topic prefix')
@@ -93,14 +96,16 @@ class FlightExecutiveNode(Node):
         self.state_machine.status = Status(
             monotonic(), msg.arming_state == VehicleStatus.ARMING_STATE_ARMED,
             msg.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD,
-            msg.pre_flight_checks_pass, msg.failsafe)
+            msg.pre_flight_checks_pass, msg.failsafe,
+            msg.nav_state == VehicleStatus.NAVIGATION_STATE_AUTO_LAND)
 
     def _position(self, msg):
         self.state_machine.position = Position(
             monotonic(), msg.x, msg.y, msg.z, msg.heading, msg.vz,
             msg.xy_valid and msg.z_valid and msg.v_z_valid,
             (msg.xy_reset_counter, msg.z_reset_counter, msg.heading_reset_counter,
-             msg.vxy_reset_counter, msg.vz_reset_counter))
+             msg.vxy_reset_counter, msg.vz_reset_counter),
+            msg.vx, msg.vy, msg.v_xy_valid and msg.v_z_valid)
 
     def _landed(self, msg):
         self.state_machine.landed = Landed(monotonic(), msg.landed)
@@ -124,7 +129,17 @@ class FlightExecutiveNode(Node):
             self.get_logger().warning(
                 'Ignoring trajectory: invalid PX4 float32 component', throttle_duration_sec=1.0)
             return
-        self.state_machine.accept_trajectory(Trajectory(monotonic(), *vectors, *yaw))
+        if not msg.trajectory_id.strip():
+            self.get_logger().warning('Ignoring trajectory: trajectory_id is required',
+                                      throttle_duration_sec=1.0)
+            return
+        trajectory = Trajectory(monotonic(), *vectors, *yaw,
+                                msg.trajectory_id, msg.is_final)
+        if trajectory.is_final and not stationary(trajectory):
+            self.get_logger().warning('Ignoring nonstationary final trajectory sample',
+                                      throttle_duration_sec=1.0)
+            return
+        self.state_machine.accept_trajectory(trajectory)
 
     def _report(self):
         c = self.state_machine
@@ -142,29 +157,32 @@ class FlightExecutiveNode(Node):
     def _tick(self):
         output = self.state_machine.tick(monotonic())
         self._report()
-        if output.setpoint is None:
-            return
         timestamp = self.get_clock().now().nanoseconds // 1000
-        mode = OffboardControlMode()
-        mode.timestamp = timestamp
-        mode.position = True
-        self.mode_pub.publish(mode)
-        target = output.setpoint
-        setpoint = TrajectorySetpoint()
-        setpoint.timestamp = timestamp
-        setpoint.position = [target.x, target.y, target.z]
-        setpoint.velocity = list(target.velocity)
-        setpoint.acceleration = list(target.acceleration)
-        setpoint.jerk = [nan, nan, nan]
-        setpoint.yaw = target.yaw
-        setpoint.yawspeed = float(target.yawspeed)
-        self.setpoint_pub.publish(setpoint)
+        if output.setpoint is not None:
+            mode = OffboardControlMode()
+            mode.timestamp = timestamp
+            mode.position = True
+            self.mode_pub.publish(mode)
+            target = output.setpoint
+            setpoint = TrajectorySetpoint()
+            setpoint.timestamp = timestamp
+            setpoint.position = [target.x, target.y, target.z]
+            setpoint.velocity = list(target.velocity)
+            setpoint.acceleration = list(target.acceleration)
+            setpoint.jerk = [nan, nan, nan]
+            setpoint.yaw = target.yaw
+            setpoint.yawspeed = float(target.yawspeed)
+            self.setpoint_pub.publish(setpoint)
         if output.command is not None:
             command = VehicleCommand()
             command.timestamp = timestamp
             command.command = output.command.value
-            command.param1 = 1.0
-            command.param2 = 6.0 if output.command == Command.OFFBOARD else 0.0
+            if output.command == Command.LAND:
+                command.param1 = command.param2 = 0.0
+                command.param4 = command.param5 = command.param6 = command.param7 = nan
+            else:
+                command.param1 = 1.0
+                command.param2 = 6.0 if output.command == Command.OFFBOARD else 0.0
             command.target_system = self.target_system
             command.target_component = self.target_component
             command.source_system = self.source_system

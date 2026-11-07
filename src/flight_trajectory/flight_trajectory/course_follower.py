@@ -7,7 +7,7 @@ returning samples, the executive returns to HOLD at the measured pose after
 its 1 second input deadline.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from math import atan2, cos, hypot, pi, sin
 from typing import Optional
@@ -17,6 +17,7 @@ class Phase(Enum):
     WAITING = 'WAITING'      # no landed anchor yet, or executive not in HOLD
     TRACKING = 'TRACKING'    # streaming the course
     COMPLETE = 'COMPLETE'    # streaming the final, stationary end point
+    FINISHED = 'FINISHED'
     ABORTED = 'ABORTED'      # stopped streaming; the executive will hold
 
 
@@ -39,6 +40,7 @@ class Sample:
     acceleration: tuple
     yaw: Optional[float] = None
     yawspeed: Optional[float] = None
+    is_final: bool = False
 
 
 def wrap(angle: float) -> float:
@@ -87,6 +89,8 @@ class CourseFollower:
 
     def update_executive_state(self, state: str) -> None:
         self.executive_state = state
+        if state in ('LAND', 'DONE') and self.phase != Phase.ABORTED:
+            self.phase = Phase.FINISHED
         if state == 'ERROR' and self.phase in (Phase.TRACKING, Phase.COMPLETE):
             self.abort('Flight executive entered ERROR')
 
@@ -129,7 +133,7 @@ class CourseFollower:
 
     def tick(self, now: float) -> Optional[Sample]:
         """Return this tick's sample, or None to publish nothing."""
-        if self.phase == Phase.ABORTED:
+        if self.phase in (Phase.ABORTED, Phase.FINISHED):
             return None
         if self.phase == Phase.WAITING:
             if self.executive_state != 'HOLD':
@@ -147,4 +151,5 @@ class CourseFollower:
             return None
         if elapsed >= self.trajectory.duration:
             self.phase = Phase.COMPLETE
+            sample = replace(sample, is_final=True)
         return sample

@@ -3,7 +3,7 @@
 This Python ROS 2 node automatically enters Offboard, arms, climbs 1 m above its
 initial local position, and holds. It is a one-shot SITL prototype for PX4 v1.17
 and the pinned `px4_msgs` release. TRACKING follows custom local NED trajectory
-samples. LAND remains reserved without an implementation. HOLD keeps PX4 in
+samples. LAND hands control to PX4 and DONE confirms touchdown and disarm. HOLD keeps PX4 in
 Offboard; it does not select PX4's native Hold mode.
 
 ## Build in the Dev Container
@@ -104,7 +104,8 @@ the mission still aborts the executive.
 
 The ascent deadline is 20 seconds from armed confirmation. Reaching HOLD requires
 1 continuous second within 0.15 m vertically, 0.25 m horizontally, and vertical
-speed below 0.2 m/s. HOLD streams the final target indefinitely.
+speed below 0.2 m/s. HOLD streams its captured target for up to `hold_timeout` (5 seconds by default),
+then requests PX4 Land if no valid setpoint arrives.
 
 Status or local-position telemetry older than 1 second, landed telemetry older
 than 2.5 seconds (PX4 publishes it only on change or at 1 Hz), invalid position or
@@ -135,6 +136,8 @@ The custom message contains these fields:
 
 ```text
 std_msgs/Header header
+string trajectory_id
+bool is_final
 geometry_msgs/Point position
 geometry_msgs/Vector3 velocity
 geometry_msgs/Vector3 acceleration
@@ -157,7 +160,7 @@ For example, after HOLD, stream a stationary target one metre above PX4's local
 origin. Adjust the position to match the current local origin before publishing.
 
 ```bash
-ros2 topic pub --rate 10 /larper/trajectory_in flight_executive_msgs/msg/TrajectorySetpoint "{header: {frame_id: local_ned}, position: {x: 0.0, y: 0.0, z: -1.0}, velocity: {x: 0.0, y: 0.0, z: 0.0}, acceleration: {x: 0.0, y: 0.0, z: 0.0}}"
+ros2 topic pub --rate 10 /larper/trajectory_in flight_executive_msgs/msg/TrajectorySetpoint "{header: {frame_id: local_ned}, trajectory_id: manual-flight-1, is_final: false, position: {x: 0.0, y: 0.0, z: -1.0}, velocity: {x: 0.0, y: 0.0, z: 0.0}, acceleration: {x: 0.0, y: 0.0, z: 0.0}}"
 ```
 
 The executive repeats the latest accepted position, velocity, and acceleration
@@ -168,7 +171,8 @@ executive forwards the sample's yaw and yawspeed.
 
 If no accepted sample arrives for more than 1 second, TRACKING returns to HOLD.
 It captures the current measured position and yaw once and publishes that fixed
-pose with zero velocity and acceleration. A new valid sample can resume tracking.
+pose with zero velocity and acceleration. A new valid sample for the active trajectory can resume tracking during the
+5-second HOLD grace period. If none arrives, the executive requests Land.
 Existing telemetry, estimator-reset, mode-takeover, disarm, and failsafe checks
 apply during tracking. Tracking never requests arming or a mode change.
 
@@ -205,3 +209,50 @@ Hardware operation is outside this prototype's validation scope.
 See PX4's [Offboard requirements](https://docs.px4.io/v1.17/en/flight_modes/offboard),
 [ROS 2 example](https://docs.px4.io/v1.17/en/ros2/offboard_control), and
 [arming configuration](https://docs.px4.io/v1.17/en/advanced_config/prearm_arm_disarm).
+
+## Complete a trajectory and land
+
+The custom message also contains `string trajectory_id` and `bool is_final`.
+Use one nonempty ID for the entire flight. The first accepted sample claims that
+ID; samples from another ID do not replace or refresh the active trajectory.
+Set `is_final=true` only for the stationary endpoint, with zero velocity,
+acceleration, and yaw rate. Repeat that final sample until the executive reports
+LAND. Completion is a property of the common message, not the planner's name.
+
+The executive requires the final position to remain within 0.25 m horizontally
+and 0.15 m vertically, with measured 3D speed below 0.2 m/s, for 1 second of fresh
+final samples. A changed endpoint, a nonfinal sample, invalid speed, or stale
+input resets the dwell. The course publisher supplies a UUID for its process,
+marks its COMPLETE endpoint final, and stops streaming when LAND or DONE arrives.
+
+Every HOLD entry starts a monotonic `hold_timeout` deadline. The default is
+5 seconds, including after takeoff while waiting for a planner. Stale TRACKING
+input first repeats its latest sample through age 1 second, then captures HOLD
+at the measured pose; another 5 seconds without accepted input starts LAND.
+Receiving valid input before that deadline resumes TRACKING. This timeout lands
+even when the planner aborted, so loss of input is not reported as successful
+trajectory completion.
+
+LAND sends `VEHICLE_CMD_NAV_LAND` for the current location. It repeats the request
+at most three times, 1 second apart, while holding position in Offboard. Accepted
+ACKs alone do not complete the handoff. After telemetry confirms PX4 Land mode,
+the executive permanently stops its Offboard heartbeat and setpoints for that
+mission. It waits for fresh landed and disarmed telemetry, then reports DONE.
+No airborne disarm, rearming, or mode reacquisition is attempted. The overall
+landing deadline is `landing_timeout`, default 45 seconds. Rejection, timeout,
+stale required telemetry, or takeover produces terminal ERROR.
+
+Both launch files expose these deadlines:
+
+```bash
+ros2 launch flight_executive dronehacks.launch.py hold_timeout:=5.0 landing_timeout:=45.0
+```
+
+`extensions/land.py` owns command retries, mode confirmation, and landing
+completion. Landed telemetry remains required during descent; local position
+resets after confirmed PX4 handoff or disarm do not invalidate landing success.
+This implementation is simulation-only. It does not add the bonus return flight
+or persistent mission-frame offsets.
+
+After this interface change, rebuild `flight_executive_msgs`, `flight_executive`,
+and `flight_trajectory`, then source the new overlay in every ROS terminal.
