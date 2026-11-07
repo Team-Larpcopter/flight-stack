@@ -80,7 +80,7 @@ class FlightExecutiveNode(Node):
         self.timer = self.create_timer(
             0.05, self._tick, clock=Clock(clock_type=ClockType.STEADY_TIME))
         self.get_logger().warning(
-            'SITL ONLY: automatic arming and takeoff enabled. '
+            'SITL ONLY: pilot arming then Position authorizes automatic takeoff. '
             'simulation_only is operator acknowledgement, not vehicle identification.')
         self._report()
 
@@ -97,7 +97,8 @@ class FlightExecutiveNode(Node):
             monotonic(), msg.arming_state == VehicleStatus.ARMING_STATE_ARMED,
             msg.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD,
             msg.pre_flight_checks_pass, msg.failsafe,
-            msg.nav_state == VehicleStatus.NAVIGATION_STATE_AUTO_LAND)
+            msg.nav_state == VehicleStatus.NAVIGATION_STATE_AUTO_LAND,
+            msg.nav_state == VehicleStatus.NAVIGATION_STATE_POSCTL)
 
     def _position(self, msg):
         self.state_machine.position = Position(
@@ -192,7 +193,7 @@ class FlightExecutiveNode(Node):
                 command.param4 = command.param5 = command.param6 = command.param7 = nan
             else:
                 command.param1 = 1.0
-                command.param2 = 6.0 if output.command == Command.OFFBOARD else 0.0
+                command.param2 = 6.0
             command.target_system = self.target_system
             command.target_component = self.target_component
             command.source_system = self.source_system

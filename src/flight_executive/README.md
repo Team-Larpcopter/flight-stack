@@ -1,7 +1,7 @@
 # Simulate takeoff, hold, and trajectory tracking
 
-This Python ROS 2 node automatically enters Offboard, arms, climbs 1 m above its
-initial local position, and holds. It is a one-shot SITL prototype for PX4 v1.17
+This Python ROS 2 node waits for the pilot to arm and then switch to Position,
+enters Offboard, climbs 1 m above its handoff position, and holds. It is a one-shot SITL prototype for PX4 v1.17
 and the pinned `px4_msgs` release. TRACKING follows custom local NED trajectory
 samples. LAND hands control to PX4 and DONE confirms touchdown and disarm. HOLD keeps PX4 in
 Offboard; it does not select PX4's native Hold mode.
@@ -59,8 +59,9 @@ ROS-ready container shell with this workspace's overlay sourced:
 ros2 launch flight_executive simulation.launch.py
 ```
 
-Launching immediately enables automatic arming and ascent once readiness checks
-pass. Observe `/flight_executive/state` for WAITING, TAKEOFF, then HOLD. Phase
+After launch, allow at least 2 seconds of heartbeat streaming, arm in SITL,
+then switch to Position to authorize Offboard and ascent. The node never arms.
+Arming while already in Position requires leaving Position and switching back. Observe `/flight_executive/state` for WAITING, TAKEOFF, then HOLD. Phase
 changes and rejection reasons appear in the node logs.
 
 ```bash
@@ -68,8 +69,8 @@ ros2 topic echo /flight_executive/state
 ros2 topic echo /fmu/out/vehicle_local_position_v1 --qos-reliability best_effort
 ```
 
-The target is `(initial_x, initial_y, initial_z - takeoff_height)` in PX4's NED
-frame. It preserves initial yaw. The default height is 1 m, independent of the
+The target is `(handoff_x, handoff_y, handoff_z - takeoff_height)` in PX4's NED
+frame. It preserves yaw at Offboard confirmation. The default height is 1 m, independent of the
 estimator's initial z origin; it is not a terrain-relative altitude estimate.
 PX4's position controller supplies ascent limits and smoothing.
 
@@ -91,28 +92,29 @@ and XRCE agent isolated from hardware. No hardware launch path is provided.
 
 The controller waits up to 30 seconds for fresh disarmed/landed telemetry,
 passing preflight checks, and finite valid local position, vertical velocity,
-and heading. It streams the initial pose and position-control heartbeat at
-20 Hz for 2 seconds, requests Offboard, waits for status confirmation, requests
-arming, and waits for armed status before commanding ascent. Each command has
-three attempts separated by 1 second; any matching rejection is terminal.
-Acknowledgement alone never confirms mode entry or arming.
+and heading. It streams the current pose and position-control heartbeat at
+20 Hz while waiting for pilot arming, then a subsequent switch into Position.
+The switch requires at least 2 seconds of continuous heartbeat; an early switch
+is refused terminally. Offboard requests repeat every 0.5 seconds for up to
+2 seconds while armed, landed, and in Position. A matching rejection is terminal.
+Only observed Offboard confirmation starts ascent and captures its origin.
 
 Heading readiness uses a finite reported heading and PX4's preflight result.
 It does not require `heading_good_for_control`, which PX4's magnetometer path
 can assert only after its final alignment in flight. A heading reset during
 the mission still aborts the executive.
 
-The ascent deadline is 20 seconds from armed confirmation. Reaching HOLD requires
+The ascent deadline is 20 seconds from Offboard confirmation. Reaching HOLD requires
 1 continuous second within 0.15 m vertically, 0.25 m horizontally, and vertical
 speed below 0.2 m/s. HOLD streams its captured target for up to `hold_timeout` (5 seconds by default),
 then requests PX4 Land if no valid setpoint arrives.
 
 Status or local-position telemetry older than 1 second, landed telemetry older
 than 2.5 seconds (PX4 publishes it only on change or at 1 Hz), invalid position or
-heading, estimator resets, a control-timer gap over 0.5 seconds after preparation,
+heading, estimator resets, a control-timer gap over 0.5 seconds after requesting Offboard,
 PX4 failsafe, unexpected disarm, or mode takeover all enter terminal ERROR.
-Loss of preflight readiness before arming is also terminal. A timer gap during initial
-preparation restarts the 2-second preparation interval. The watchdog uses a
+Loss of preflight readiness before Offboard confirmation is also terminal. A timer
+gap while waiting for the pilot restarts the 2-second heartbeat warmup. The watchdog uses a
 steady clock even when ROS simulated time pauses.
 
 ERROR stops heartbeat, setpoints, and command publications. The node never
@@ -188,7 +190,8 @@ behaviour.
 
 `flight_executive/state_machine.py` owns mission transitions and shared health
 checks. `model.py` contains ROS-independent values. `extensions/takeoff.py` owns
-preparation, mode and arm acknowledgments/retries, ascent, and settling.
+heartbeat preparation, pilot authorization, mode acknowledgments/retries, ascent,
+and settling.
 `extensions/tracking.py` owns the latest trajectory and its receipt deadline.
 `flight_executive_node.py` handles ROS subscriptions and PX4 publication.
 The separate `flight_executive_msgs` package generates the input message.

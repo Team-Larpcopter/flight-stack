@@ -186,7 +186,7 @@ def test_land_retries_are_bounded_and_accepted_ack_is_not_confirmation():
 def test_land_rejection_and_deadline_are_terminal():
     r = Rig()
     r.request_land()
-    r.machine.acknowledge(Command.ARM.value, 2)
+    r.machine.acknowledge(400, 2)
     assert r.machine.state == State.LAND
     r.machine.acknowledge(Command.LAND.value, 2)
     assert r.tick().setpoint is None

@@ -19,13 +19,14 @@ class State(Enum):
 class Phase(Enum):
     PREPARE = 'PREPARE'
     MODE = 'MODE'
-    ARM = 'ARM'
+    WAIT_ARM = 'WAIT_ARM'
+    ARMED_IN_POSITION = 'ARMED_IN_POSITION'
+    WAIT_POSITION = 'WAIT_POSITION'
     ASCEND = 'ASCEND'
 
 
 class Command(Enum):
     OFFBOARD = 176
-    ARM = 400
     LAND = 21
 
 
@@ -37,6 +38,7 @@ class Status:
     preflight_ok: bool
     failsafe: bool = False
     auto_land: bool = False
+    in_position: bool = False
 
 
 @dataclass(frozen=True)

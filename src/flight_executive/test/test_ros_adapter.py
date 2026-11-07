@@ -43,10 +43,10 @@ def test_px4_ack_without_external_flag_is_processed(node):
     c = node.state_machine
     c.state = State.TAKEOFF
     c.takeoff = Takeoff(Setpoint(0, 0, 0, 0), 1, monotonic())
-    c.takeoff.phase = Phase.ARM
+    c.takeoff.phase = Phase.MODE
     c.takeoff.attempts = 1
     ack = VehicleCommandAck()
-    ack.command = Command.ARM.value
+    ack.command = Command.OFFBOARD.value
     ack.result = VehicleCommandAck.VEHICLE_CMD_RESULT_DENIED
     ack.target_system = node.source_system
     ack.target_component = node.source_component
@@ -59,10 +59,10 @@ def test_ack_for_another_controller_is_ignored(node):
     c = node.state_machine
     c.state = State.TAKEOFF
     c.takeoff = Takeoff(Setpoint(0, 0, 0, 0), 1, monotonic())
-    c.takeoff.phase = Phase.ARM
+    c.takeoff.phase = Phase.MODE
     c.takeoff.attempts = 1
     ack = VehicleCommandAck()
-    ack.command = Command.ARM.value
+    ack.command = Command.OFFBOARD.value
     ack.result = VehicleCommandAck.VEHICLE_CMD_RESULT_DENIED
     ack.target_system = 42
     ack.target_component = node.source_component
@@ -229,3 +229,17 @@ def test_invalid_completion_does_not_refresh_accepted_sample(node, invalid):
         msg.is_final = True
     node._trajectory(msg)
     assert node.state_machine.tracking.latest is old
+
+
+def test_status_reports_position_mode(node):
+    status = VehicleStatus()
+    status.system_id = node.target_system
+    status.component_id = node.target_component
+    status.nav_state = VehicleStatus.NAVIGATION_STATE_POSCTL
+    node._status(status)
+    assert node.state_machine.status.in_position
+    assert not node.state_machine.status.offboard
+    status.nav_state = VehicleStatus.NAVIGATION_STATE_OFFBOARD
+    node._status(status)
+    assert not node.state_machine.status.in_position
+    assert node.state_machine.status.offboard
