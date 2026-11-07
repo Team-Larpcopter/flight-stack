@@ -32,6 +32,11 @@ Usage: larp COMMAND
                     --images adds 5 Hz half-size camera copies on /viz/*.
                     larp fox start --help for all options
   build             colcon-build ~/team_ws inside the stack (team_build.sh)
+  image build|off|status
+                    team image = skybeta + our camera/VIO overrides (on-device depth).
+                    build: install jetson/team_image/Dockerfile and run skybeta's
+                    host/run.sh build. off: move it aside (stack uses skybeta's image).
+                    Either takes effect on the next stack start (larp restart).
   bag [ARGS]        record the flight-debug topic set (organisers' host/run.sh bag)
   doctor            organisers' health check (host/doctor.sh)
   restart           restart the stack (WARNING: power-cycle the FC afterwards, bug #15)
@@ -53,8 +58,15 @@ larp fox stop | status
   --rate HZ     image rate (default 5)
   --scale S     image scale (default 0.5; 1.0 = full size)
   --quality Q   JPEG quality 1-100 (default 50)
-  --topics ...  CompressedImage topics to relay
-                (default /oak/left/image_raw/compressed,/oak/right/image_raw/compressed)
+  --topics T,...        CompressedImage (JPEG) topics to relay
+  --raw-topics T,...    Image (mono8/bgr8) topics to relay
+  --depth-topics T,...  depth Image (16UC1 mm / 32FC1 m) topics, colourised
+  --depth-range MIN,MAX colour scale for depth in metres (default 0.3,6)
+                Default sources are detected: our team image (on-device depth)
+                -> /oak/left_rect/image_rect, /oak/right_rect/image_rect,
+                   /oak/stereo/image_raw;
+                skybeta's image -> /oak/{left,right}/image_raw/compressed.
+                Output: /viz/<topic>[/compressed]
   --buffer B    bridge send buffer per client, bytes (default 131072). When the
                 link falls behind, older messages are dropped, not queued, so
                 Foxglove always shows the latest data.
@@ -69,8 +81,8 @@ fox() {
   local action="${1:-start}"; shift || true
   case "$action" in
     start)
-      local images=0 rate=5 scale=0.5 quality=50 buffer=131072
-      local topics="/oak/left/image_raw/compressed,/oak/right/image_raw/compressed"
+      local images=0 rate=5 scale=0.5 quality=50 buffer=131072 explicit=0
+      local topics="" raw_topics="" depth_topics="" depth_range="0.3,6.0"
       while [[ $# -gt 0 ]]; do
         case "$1" in
           --images) images=1; shift ;;
@@ -78,7 +90,10 @@ fox() {
           --rate) rate="${2:?}"; shift 2 ;;
           --scale) scale="${2:?}"; shift 2 ;;
           --quality) quality="${2:?}"; shift 2 ;;
-          --topics) topics="${2:?}"; images=1; shift 2 ;;
+          --topics) topics="${2:?}"; images=1; explicit=1; shift 2 ;;
+          --raw-topics) raw_topics="${2:?}"; images=1; explicit=1; shift 2 ;;
+          --depth-topics) depth_topics="${2:?}"; images=1; explicit=1; shift 2 ;;
+          --depth-range) depth_range="${2:?}"; shift 2 ;;
           -h|--help) fox_usage; return ;;
           *) fox_usage; die "unknown option $1" ;;
         esac
@@ -103,17 +118,31 @@ fox() {
           service_whitelist:=\"\$FOX_NONE\" param_whitelist:=\"\$FOX_NONE\"; \
           echo exited; sleep infinity"'
       if [[ $images == 1 ]]; then
-        local list; list="['${topics//,/\',\'}']"
+        if [[ $explicit == 0 ]]; then
+          if in_ros "ros2 topic list" | grep -qx /oak/left_rect/image_rect; then
+            raw_topics="/oak/left_rect/image_rect,/oak/right_rect/image_rect"
+            depth_topics="/oak/stereo/image_raw"
+          else
+            topics="/oak/left/image_raw/compressed,/oak/right/image_raw/compressed"
+          fi
+        fi
+        # "a,b" -> "['a','b']"; empty -> "['']" (the node skips empty names)
+        ros_list() { printf "['%s']" "${1//,/\',\'}"; }
         docker exec "$STACK" tmux new-window -d -t skybeta -n viz \
-          -e "VIZ_TOPICS=${list}" -e "VIZ_RATE=${rate}" -e "VIZ_SCALE=${scale}" \
-          -e "VIZ_QUALITY=${quality}" \
+          -e "VIZ_TOPICS=$(ros_list "$topics")" -e "VIZ_RAW=$(ros_list "$raw_topics")" \
+          -e "VIZ_DEPTH=$(ros_list "$depth_topics")" \
+          -e "VIZ_RATE=${rate}" -e "VIZ_SCALE=${scale}" -e "VIZ_QUALITY=${quality}" \
+          -e "VIZ_DMIN=${depth_range%,*}" -e "VIZ_DMAX=${depth_range#*,}" \
           'bash -c "source skybeta_env.sh; \
             if ros2 pkg prefix larp_viz >/dev/null 2>&1; then \
               ros2 run larp_viz viz_relay --ros-args -p topics:=\"\$VIZ_TOPICS\" \
-                -p rate_hz:=\$VIZ_RATE -p scale:=\$VIZ_SCALE -p jpeg_quality:=\$VIZ_QUALITY; \
+                -p raw_topics:=\"\$VIZ_RAW\" -p depth_topics:=\"\$VIZ_DEPTH\" \
+                -p rate_hz:=\$VIZ_RATE -p scale:=\$VIZ_SCALE -p jpeg_quality:=\$VIZ_QUALITY \
+                -p min_depth_m:=\$VIZ_DMIN -p max_depth_m:=\$VIZ_DMAX; \
             else echo \"larp_viz not built: run larp build\"; fi; \
             echo exited; sleep infinity"'
-        echo "images: ${topics} -> /viz/... at ${rate} Hz, scale ${scale}, quality ${quality}"
+        echo "images at ${rate} Hz, scale ${scale}, quality ${quality} -> /viz/...:"
+        echo "  jpeg: ${topics:-none} | raw: ${raw_topics:-none} | depth: ${depth_topics:-none}"
       else
         echo "images: off (larp fox start --images to add them)"
       fi
@@ -154,6 +183,33 @@ case "$cmd" in
   ros)     [[ $# -gt 0 ]] || die "larp ros <command>"; in_ros_it "$*" ;;
   fox)     fox "$@" ;;
   build)   in_ros_it "team_build.sh" ;;
+  image)
+    tdir="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)/team_image"
+    ws="${TEAM_WS:-$HOME/team_ws}"
+    tag="$(tr -d '[:space:]' < "$SKYBETA/VERSION")"
+    running="$(docker inspect -f '{{.Config.Image}}' "$STACK" 2>/dev/null || echo none)"
+    case "${1:-status}" in
+      build)
+        [[ ! -e "$ws/Dockerfile" ]] || cmp -s "$ws/Dockerfile" "$tdir/Dockerfile" \
+          || die "$ws/Dockerfile exists and differs from ours; move it aside first"
+        cp "$tdir/Dockerfile" "$ws/Dockerfile"
+        cp "$tdir/dockerignore" "$ws/.dockerignore"
+        rm -f "$ws/Dockerfile.off"
+        (cd "$SKYBETA" && host/run.sh build)
+        echo "built skybeta-team:$tag. Stack runs: $running. Takes effect on next start: larp restart"
+        ;;
+      off)
+        if [[ -e "$ws/Dockerfile" ]]; then mv "$ws/Dockerfile" "$ws/Dockerfile.off"; fi
+        echo "team image disabled; the next stack start (larp restart) uses skybeta:$tag"
+        ;;
+      status)
+        echo "running image: $running"
+        echo "Dockerfile:    $([[ -e "$ws/Dockerfile" ]] && echo present || echo absent)"
+        echo "team image:    $(docker image inspect -f '{{.Created}}' "skybeta-team:$tag" 2>/dev/null \
+          || echo 'not built')"
+        ;;
+      *) die "larp image build|off|status" ;;
+    esac ;;
   bag)     cd "$SKYBETA" && host/run.sh bag "$@" ;;
   doctor)  "$SKYBETA/host/doctor.sh" ;;
   restart)
