@@ -1,0 +1,66 @@
+{
+  "purpose": "Static-CAD full-course integration test; VIO pose, immutable geofence, no sensor map updates; not live-mapping qualification",
+  "goal_id": 4,
+  "goal": {
+    "position": [
+      -1.90688,
+      -0.47244,
+      1.0
+    ],
+    "yaw": 0.0
+  },
+  "takeoff_height_m": 1.0,
+  "startup_scan": {
+    "enabled": false,
+    "duration_s": 60.0
+  },
+  "launch_clearance": {
+    "radius_m": 0.52,
+    "min_z_m": 0.1,
+    "max_z_m": 1.5,
+    "reference": "Nominal supplied-course training fixture: 0.52 m clear radius, 0.1\u20131.5 m above initial body origin. CAD side clearance is 0.5334 m; the shifted training start has 0.6064 m rear clearance. Must be checked at each physical setup. Outside this fixture, the declared CAD prior seeds the obstacle map and sensor observations revise it."
+  },
+  "flight_envelope": {
+    "lower": [
+      -3.8124,
+      -5.2126,
+      0.4
+    ],
+    "upper": [
+      1.5836,
+      0.1834,
+      1.4
+    ],
+    "reference": "Measured-centre containment: surveyed XY boundary inset by 0.35 m (0.279686 m swept airframe plus 0.070314 m provisional localization allowance). Tracking is checked on the measured position, not double-counted as another arbitrary envelope inset. Trajectory collision radius and ROG inflation remain unchanged; altitude retains the course operating constraint."
+  },
+  "timeout_wall_s": 1800,
+  "hard_boundary": {
+    "lower": [
+      -4.1624,
+      -5.5626,
+      0.0
+    ],
+    "upper": [
+      1.9336,
+      0.5334,
+      2.95
+    ],
+    "reference": "Nominal 6.096 m square enclosure, training launch ENU (-2.5146,1.1144), yaw +90 deg; map x=north,y=west. Floor conservatively at initial body z=0; ceiling 2.95 m above body, below nominal 3.048 m roof. Hardware requires surveyed alignment."
+  },
+  "cad_prior_file": "config/course_cad_prior_fine.txt",
+  "navigation_config_file": "config/navigation_fine.yaml",
+  "takeoff_horizontal_envelope": {
+    "lower": [
+      -0.2,
+      -0.1
+    ],
+    "upper": [
+      0.2,
+      0.1
+    ],
+    "reference": "CAD training launch corridor: rear wall 0.6064 m behind body, side walls 0.5334 m each side. Centre limits reserve 0.4 m to CAD walls; forward bound conservatively mirrored. Requires verified initial placement and clear takeoff volume; no sensor-derived free-space claim. Bounds rounded inward to the 5 cm map lattice."
+  },
+  "course_validation": "cad_v3_geometric_proxy",
+  "static_cad_only": true,
+  "airfar_config_file": "config/airfar_geometry.yaml"
+}

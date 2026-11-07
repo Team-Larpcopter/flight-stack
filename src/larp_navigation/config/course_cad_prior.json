@@ -1,0 +1,30 @@
+{
+  "source": "third_party/flyx_sim/environments/dronehacks_course_v3/source/dronehacks-course-v3.obj",
+  "source_sha256": "e610bcf9666422e2a0a78cb46f542fc8c4d5a7ef9b15f6123f1abe40f5b8e9e1",
+  "map_sha256": "a7b7dd9fbd2c6f6a9c61cce525735c85b5f3f7ab477a9fb50dbc38c02130f055",
+  "resolution": 0.1,
+  "group_cells": {
+    "Tube cradle 1": 50,
+    "C2b chicane wall": 486,
+    "Barrier 3 (cut to 55 in)": 540,
+    "Barrier 2": 612,
+    "Boulder 1": 124,
+    "C1 chicane wall": 684,
+    "Tube oval 58 x 72 x 60": 1173,
+    "M1 maze divider": 648,
+    "Tube cradle 3": 50,
+    "Boulder 3": 125,
+    "C2a chicane wall (window)": 532,
+    "Barrier 1": 612,
+    "Boulder 4": 124,
+    "Boulder 5": 126,
+    "A1 approach wall": 396,
+    "Boulder 2": 119,
+    "Tube cradle 2": 25,
+    "M2 maze divider": 612,
+    "Floor 20 x 20 ft": 3844,
+    "M3 maze divider": 648
+  },
+  "alignment": "training launch ENU (-2.5146,1.1144,0.0672), heading +90 degrees; nominal setup, not live truth",
+  "semantics": "CAD-derived free and occupied prior, sensor-revisable; immutable net/geofence separate"
+}

@@ -12,3 +12,8 @@ float32 yawspeed
 # A trajectory ID is fixed for one flight; repeat the stationary final sample.
 string trajectory_id
 bool is_final
+
+# Optional absolute ROS-clock deadline, converted to monotonic time on receipt.
+# Required for planner collision certificates; false retains legacy behavior.
+bool certificate_required
+builtin_interfaces/Time valid_until

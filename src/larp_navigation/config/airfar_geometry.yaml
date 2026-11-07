@@ -1,0 +1,34 @@
+# Physics sphere plus existing ROG broad-phase stencil; no reduced clearance.
+airfar_planner:
+  ros__parameters:
+    CDetector.configuration_grid_radius: 0.4
+    CDetector.configuration_radius: 0.35
+    CDetector.filter_count_value: 3
+    CDetector.img_blur_size: 3
+    CDetector.is_inflate_image: false
+    CDetector.resize_ratio: 1.0
+    ContourGraph.pillar_perimeter_dist: 1.0
+    GPlanner.converge_distance: 0.15
+    GPlanner.free_box_dim: 0.5
+    GPlanner.goal_adjust_radius: 1.0
+    GPlanner.goal_z_tolerance: 0.3
+    Graph.move_thred: 0.1
+    Graph.node_near_dist: 0.6
+    Graph.pos_filter_margin: 0.2
+    MapHandler.ceil_length: 2.0
+    MapHandler.map_grad_max_height: 12.0
+    MapHandler.map_grid_max_length: 22.0
+    Util.nav_clear_dist: 0.4
+    is_inter_navpoint: true
+    is_simulation: true
+    is_trajectory: false
+    layer_resoltion: 0.1
+    main_run_freq: 4.0
+    neighbor_layer_num: 2
+    reproject_dist: 1.0
+    robot_dim: 0.7
+    sensor_range: 6.0
+    snapshot_mode: true
+    vehicle_height: 0.3
+    voxel_dim: 0.05
+    world_frame: map

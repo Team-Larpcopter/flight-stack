@@ -15,3 +15,20 @@ dist/
 .vscode/
 *.swp
 .env
+
+# Bench evidence and alternate isolated build trees
+references/
+evidence/
+artifacts/
+build_*/
+install_*/
+log_*/
+sdk-source/
+sdk_install/
+*.bag
+*.mcap
+core
+core.*
+
+# Upstream demo media is not needed by the vendored estimator
+src/vendor/ov_srvins/demo/

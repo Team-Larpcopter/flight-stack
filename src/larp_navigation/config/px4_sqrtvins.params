@@ -1,0 +1,81 @@
+# Derived from the supplied sky_beta_course_vio_range.params; SITL ONLY.
+# Local CAD/VIO flight needs one consistent world height through raised
+# obstacles. The supplied real-aircraft range-height doctrine is not changed.
+# GPS-DENIED, EXTERNAL VISION (VIO) — SITL ONLY. Never push to a real aircraft
+# through this tool: hardware carries its own doctrine (BEAM_OWNER, failsafes).
+# Format: sysid compid NAME VALUE TYPE  (6 = INT32, 9 = REAL32), QGC style,
+# as read by the toolkit's ACK-verified MAVLink loader.
+#
+# Source: PX4 v1.17 pinned SITL (src/modules/ekf2/params_*.yaml):
+#   EKF2_GPS_CTRL  bitmask 0 lon/lat, 1 alt, 2 3D vel, 3 dual-antenna yaw
+#   EKF2_EV_CTRL   bitmask 0 horizontal pos, 1 vertical pos, 2 3D vel, 3 yaw
+#   EKF2_HGT_REF   0 baro, 1 GPS, 2 range, 3 vision
+#   EKF2_MAG_TYPE  0 automatic, 1 heading, 5 none, 6 init-only
+#   EKF2_EV_NOISE_MD 0 = message variance with the EKF2_EV*_NOISE values as a LOWER BOUND
+#   EKF2_EV_DELAY  ms, reboot_required (applied before arming; the loader pushes at boot)
+#
+# No GNSS fusion at all (the sim sends no HIL_GPS in this mode anyway).
+1	1	EKF2_GPS_CTRL	0	6
+# Arming without a GPS lock is allowed (1 = warning only).
+1	1	COM_ARM_WO_GPS	1	6
+# sqrtVINS local-development profile: XYZ position, inertial velocity,
+# and yaw (bits 0, 1, 2 and 3).
+# Unlike frame-difference VO, sqrtVINS propagates velocity with the IMU.
+# Keep the supplied 0.10 m/s velocity noise floor; no covariance tightening.
+1	1	EKF2_EV_CTRL	15	6
+# Height reference = external vision, matching the planner's map frame.
+# Range-height aiding interpreted the 0.3048 m window sill as a new floor
+# in run038, raising true height while PX4's z stayed fixed. Range remains
+# published as a sensor, but EKF distance-to-ground validity is unavailable;
+# landing speed is explicitly bounded below instead of relying on crawl mode.
+1	1	EKF2_HGT_REF	3	6
+1	1	EKF2_RNG_CTRL	0	6
+# Indoors the magnetometer is unreliable; yaw comes from vision (EV_CTRL bit 3).
+1	1	EKF2_MAG_TYPE	5	6
+# TIME (review 2026-10-14, gps_denied/px4_clock.py): the bridge sends the CAPTURE
+# time of each vision sample (stamp_mode:=capture), so the latency is in the
+# stamp and EKF2_EV_DELAY describes only what the stamp misses (~0). It was
+# 50 ms while the bridge sent RECEIPT time, which PX4's DDS client then
+# clamped to 'now' anyway (its clock offset lagged the sim clock by 0-3.3 s).
+1	1	EKF2_EV_DELAY	0.0	9
+# Fusion horizon: EKF2_DELAY_MAX stays at PX4's DEFAULT 200 ms — it sizes the
+# buffers at boot and this toolkit pushes the file AFTER boot, so a value
+# here would not take effect. EKF2 fuses a sample at its own time while it
+# is < 200 ms old, up to 100 ms late while it is < 300 ms old, never after
+# (RingBuffer::pop_first_older_than); the bridge refuses captures > 0.3 s.
+# Measured cuVSLAM capture age on PX4's clock, parked, RTF 0.77: p50 65-73 ms,
+# p95 97-286 ms, max 372 ms (the tail is start-up).
+# Use the variances the bridge puts in the message, bounded below by these.
+1	1	EKF2_EV_NOISE_MD	0	6
+1	1	EKF2_EVP_NOISE	0.05	9
+1	1	EKF2_EVV_NOISE	0.10	9
+1	1	EKF2_EVA_NOISE	0.05	9
+# Quality gate: the bridge reports 0 when the source does not grade itself.
+1	1	EKF2_EV_QMIN	0	6
+# Indoor VIO flight envelope: slow. A VIO's error grows with optical flow rate
+# and with how far the controller runs ahead of the estimate between frames.
+1	1	MPC_XY_VEL_MAX	1.5	9
+1	1	MPC_XY_CRUISE	1.0	9
+1	1	MPC_ACC_HOR	1.0	9
+1	1	MPC_Z_VEL_MAX_UP	1.0	9
+1	1	MPC_Z_VEL_MAX_DN	0.7	9
+# DEAD-RECKONING TIMEOUT (2026-10-16): after this long with no horizontal aiding (vision /
+# flow) EKF2 reports the horizontal solution INVALID, and PX4's failsafe / AUTO_LAND fall
+# back to a level vertical descent (Descend) instead of flying position control on IMU
+# dead reckoning. The default (5 s) let a lost-vision landing run away at 4 m/s into a
+# wall in 2 s (guard_maze_r1). Indoors there is nothing to recover to within 5 s; 1 s still
+# rides through ordinary EV gaps (frames every 67 ms). Recommended for the real aircraft.
+1	1	EKF2_NOAID_TOUT	1000000	6
+
+# Local SITL cascade correction: inner XY velocity P=0.8 and attitude P=1.65
+# come from the supplied airframe. The default outer position P=0.95 gives
+# a weakly damped coupled loop. 0.35 proved too weak during liftoff;
+# 0.65 retains more takeoff disturbance rejection while improving damping. See
+# artifacts/diagnostics/position-loop-model.json; hardware is not qualified.
+1	1	MPC_XY_P	0.65	9
+# Range-height fusion is disabled, so PX4 dist_bottom_valid is false and native
+# AUTO_LAND cannot select its range-triggered crawl speed. Run050 touched down
+# at ~0.64 m/s and inverted. Bound descent independently of range availability.
+# At 0.2 m/s, translational impact energy is ~8% of the 0.7 m/s default.
+1	1	MPC_LAND_SPEED	0.2	9
+1	1	MPC_LAND_CRWL	0.1	9

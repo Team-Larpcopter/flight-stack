@@ -11,6 +11,11 @@ def stationary(trajectory):
             and (trajectory.yawspeed is None or abs(trajectory.yawspeed) <= 1e-6))
 
 
+def fresh(t, now):
+    return (t is not None and t.received_at <= now <= t.received_at + 1.0
+            and (t.valid_until is None or (isfinite(t.valid_until) and now < t.valid_until)))
+
+
 class Tracking:
     """Retain one accepted sample and verify a continuous terminal dwell."""
 
@@ -33,7 +38,7 @@ class Tracking:
     def sample(self, now: float, yaw: float):
         if self.latest is None:
             return None
-        if not self.latest.received_at <= now <= self.latest.received_at + 1.0:
+        if not fresh(self.latest, now):
             self.settled_since = None
             return None
         t = self.latest
@@ -44,7 +49,7 @@ class Tracking:
     def complete(self, now, position):
         t = self.latest
         if (t is None or not t.is_final or not stationary(t)
-                or not t.received_at <= now <= t.received_at + 1.0):
+                or not fresh(t, now)):
             self.settled_since = None
             return False
         speed_valid = position.velocity_valid and all(isfinite(v) for v in (
