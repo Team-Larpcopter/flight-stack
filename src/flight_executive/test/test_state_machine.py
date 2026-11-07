@@ -207,9 +207,23 @@ def test_active_failures_stop_all_publications_and_never_recover(failure, holdin
 def test_stale_active_telemetry_stops_publications(snapshot):
     f = Flight()
     f.ascend()
-    setattr(f.c, snapshot, replace(getattr(f.c, snapshot), received_at=f.now - 1.01))
+    age = 2.51 if snapshot == 'landed' else 1.01
+    setattr(f.c, snapshot, replace(getattr(f.c, snapshot), received_at=f.now - age))
     assert f.c.tick(f.now).setpoint is None
     assert f.c.state == State.ERROR
+
+
+def test_landed_telemetry_tolerates_px4_one_hertz_rate():
+    f = Flight()
+    f.hold()
+    stamp = f.now
+    for _ in range(30):  # 1.5 s without a land-detector update
+        f.now = round(f.now + 0.05, 6)
+        f.c.status = replace(f.status, received_at=f.now)
+        f.c.position = replace(f.position, received_at=f.now)
+        f.c.landed = replace(f.landed, received_at=stamp)
+        f.c.tick(f.now)
+    assert f.c.state == State.HOLD
 
 
 def test_timer_gap_restarts_prepare_but_aborts_active_flight():
@@ -367,3 +381,17 @@ def test_latest_sample_is_repeated_through_exactly_one_second():
     output = f.tick()
     assert f.c.state == State.HOLD
     assert output.setpoint.velocity == (0, 0, 0)
+
+
+def test_optional_trajectory_yaw_overrides_hold_heading():
+    f = Flight()
+    f.hold()
+    f.c.accept_trajectory(Trajectory(f.now, (8.0, -3.0, -2.0), (0, 0, 0), (0, 0, 0),
+                                     1.2, -0.4))
+    output = f.tick()
+    assert f.c.state == State.TRACKING
+    assert (output.setpoint.yaw, output.setpoint.yawspeed) == (1.2, -0.4)
+    f.c.accept_trajectory(trajectory(f.now))
+    output = f.tick()
+    assert output.setpoint.yaw == .8
+    assert output.setpoint.yawspeed != output.setpoint.yawspeed  # NaN: no feedforward
