@@ -2,7 +2,10 @@
 # One-command VIO test on the drone: fresh sqrtVINS start, record sqrtVINS and
 # cuVSLAM side by side, print drift and the aligned comparison.
 #
-#   vio_test.sh NAME SECONDS        e.g.  vio_test.sh square1 90
+#   vio_test.sh NAME SECONDS [--no-fox-reset]     e.g.  vio_test.sh square1 90
+#
+# By default it also resets Foxglove first (restarts the bridge + image relay via
+# `larp fox`), so the viewer starts clean; Foxglove reconnects by itself.
 #
 # 1. restarts sqrtVINS so its track starts at 0 (keep the drone STILL until it
 #    prints "GO"), 2. records SECONDS of /ov_srvins/odomimu and
@@ -17,6 +20,10 @@ HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 OUT="${NAME}_$(date +%H%M%S)"
 IN_C() { docker exec larp-sqrtvins bash -c "set +u; source /opt/ros/humble/setup.bash; source /root/sqrtvins_ws/install/setup.bash; $*"; }
 
+if [[ "${3:-}" != "--no-fox-reset" ]] && command -v "$HOME/.local/bin/larp" >/dev/null; then
+  "$HOME/.local/bin/larp" fox stop >/dev/null 2>&1 || true
+  "$HOME/.local/bin/larp" fox start --images >/dev/null 2>&1 && echo "Foxglove reset (it reconnects by itself)"
+fi
 "$HERE/sqrtvins_on_drone.sh" start >/dev/null
 echo "sqrtVINS restarting -- keep the drone STILL"
 for i in $(seq 1 30); do
