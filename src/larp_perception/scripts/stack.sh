@@ -3,13 +3,15 @@
 # starts its part in the BACKGROUND in container larp-depth (started if needed) and
 # returns; running a part again restarts it (e.g. to switch depth mode).
 #
-#   stack.sh camera [camera|neural|both|off]
-#       OAK stereo + IMU, plus depth:
-#         camera  (default) depth computed on the OAK, filtered on the Jetson GPU
-#         neural  Fast-FoundationStereo (TensorRT) on the Jetson from the stereo pair
-#         both    both side by side (camera depth stays the primary)
-#         off     no depth
-#       Depth for the planner is always /stereo/depth/image.
+#   stack.sh camera [depth|ffs|las|off]
+#       OAK stereo + IMU, plus depth for the planner on /stereo/depth/image from:
+#         depth  (default) computed on the OAK, filtered on the Jetson GPU
+#         ffs    Fast-FoundationStereo, TensorRT on the Jetson (larp_neural_depth)
+#         las    Lite Any Stereo V2, TensorRT on the Jetson (larp_liteanystereo)
+#         off    no depth
+#       The OAK's own depth stays on for ffs/las (free; its camera_info carries the
+#       rectification the neural nodes need). If the camera node cannot start
+#       (camera owned by another process) the whole part stops.
 #   stack.sh vio [CALIBRATION_DIR]
 #       sqrtVINS. Default calibration: CALIBRATION_DIR env, else the newest
 #       generated one in the evidence folder. Keep the drone still while it starts.
@@ -26,8 +28,9 @@
 #
 # Paths (override with env): DEPTH_WS ~/depth_ws (this branch, built with
 # depth_ws.sh build), INTEGRATION ~/flight_integration_ws_20261107, NEURAL_WS
-# ~/neural_depth_ws (larp_neural_depth build + models/), NEURAL_ENGINE
-# /models/fast_foundationstereo_320x480_fp16.engine.
+# ~/neural_depth_ws (larp_neural_depth + larp_liteanystereo build, models/),
+# FFS_ENGINE /models/fast_foundationstereo_320x480_fp16.engine,
+# LAS_ENGINE /models/las2_m_320x480_d192_fp16.engine.
 set -euo pipefail
 HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 DEPTH_WS="${DEPTH_WS:-$HOME/depth_ws}"
@@ -36,7 +39,8 @@ NEURAL_WS="${NEURAL_WS:-$HOME/neural_depth_ws}"
 IMAGE="${IMAGE:-larp-integration:20261107}"
 DDS="${DDS_PROFILE:-$HOME/skybeta/host/dds/fastdds_localhost.xml}"
 DOMAIN="${ROS_DOMAIN_ID:-$(grep -E '^ROS_DOMAIN_ID=' /etc/skybeta/drone.env 2>/dev/null | cut -d= -f2)}"
-ENGINE="${NEURAL_ENGINE:-/models/fast_foundationstereo_320x480_fp16.engine}"
+FFS_ENGINE="${FFS_ENGINE:-${NEURAL_ENGINE:-/models/fast_foundationstereo_320x480_fp16.engine}}"
+LAS_ENGINE="${LAS_ENGINE:-/models/las2_m_320x480_d192_fp16.engine}"
 NAME=larp-depth
 ENV='set +u; source /opt/ros/humble/setup.bash
 [[ -f /root/skybeta_ws/install/local_setup.bash ]] && source /root/skybeta_ws/install/local_setup.bash
@@ -85,30 +89,34 @@ wait"
 
 case "${1:-}" in
   camera)
-    mode="${2:-camera}"
-    [[ $mode =~ ^(camera|neural|both|off)$ ]] || { echo "depth must be camera, neural, both or off"; exit 2; }
+    mode="${2:-depth}"
+    case $mode in camera) mode=depth ;; neural) mode=ffs ;; esac  # old names
+    [[ $mode =~ ^(depth|ffs|las|off)$ ]] || { echo "depth must be depth, ffs, las or off"; exit 2; }
     ensure_container
-    if [[ $mode == neural || $mode == both ]]; then
-      docker exec "$NAME" test -f "$ENGINE" || { echo "neural engine missing: $ENGINE (build it: neural_depth_ws.sh build-engine)"; exit 1; }
-      docker exec "$NAME" test -f /neural_ws/install/setup.bash \
-        || { echo "larp_neural_depth not built in $NEURAL_WS, or $NAME was started without it: $0 stop, then retry"; exit 1; }
+    engine=""; pkg=""
+    [[ $mode == ffs ]] && engine=$FFS_ENGINE && pkg=larp_neural_depth
+    [[ $mode == las ]] && engine=$LAS_ENGINE && pkg=larp_liteanystereo
+    if [[ -n $engine ]]; then
+      docker exec "$NAME" test -f "$engine" || { echo "engine missing: $engine (ffs: neural_depth_ws.sh build-engine; las: las_ws.sh export + engine)"; exit 1; }
+      docker exec "$NAME" bash -c "test -d /neural_ws/install/$pkg" \
+        || { echo "$pkg not built in $NEURAL_WS, or $NAME was started without it: $0 stop, then retry"; exit 1; }
     fi
     depth_param=true; [[ $mode == off ]] && depth_param=false
-    # The OAK's own depth stays on for 'neural' too: it is free and its camera_info
-    # carries the stereo baseline the neural node uses.
-    filter=""; neural=""
-    [[ $mode == camera || $mode == both ]] && filter="ros2 run larp_perception depth_filter &"
-    [[ $mode == neural ]] && neural="ros2 launch larp_neural_depth neural_depth.launch.py engine_path:=$ENGINE publish_as_primary:=true &"
-    [[ $mode == both ]] && neural="ros2 launch larp_neural_depth neural_depth.launch.py engine_path:=$ENGINE publish_as_primary:=false &"
+    backend=""
+    [[ $mode == depth ]] && backend="ros2 run larp_perception depth_filter &"
+    [[ $mode == ffs ]] && backend="ros2 launch larp_neural_depth neural_depth.launch.py engine_path:=$engine publish_as_primary:=true &"
+    [[ $mode == las ]] && backend="ros2 launch larp_liteanystereo las_depth.launch.py engine_path:=$engine publish_as_primary:=true &"
     start_part camera "mkdir -p /integration/evidence; run=\$(mktemp -d /integration/evidence/localization-XXXXXXXX)
 echo \"camera (depth: $mode). Calibration export: \$run\"
 ros2 run larp_hardware oak_native_node --ros-args -p connect_device:=true -p publish_images:=true \
   -p align_imu:=true -p imu_calibration_file:=\${IMU_CALIBRATION_FILE:-/integration/evidence/imu_calibration.json} \
   -p factory_calibration_out:=\$run/factory.json -p accel_hz:=500 -p gyro_hz:=400 \
   -p max_exposure_us:=5000 -p capture_seconds:=0.0 -p publish_depth:=$depth_param &
-sleep 3
-$filter
-$neural" 12 5
+cam=\$!
+sleep 6
+# no camera -> no depth node either (a neural node on someone else's camera has no rectification)
+kill -0 \$cam 2>/dev/null || { echo '!! camera node exited (camera owned by another process?): stopping'; exit 1; }
+$backend" 14 5
     ;;
   vio)
     ensure_container
