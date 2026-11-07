@@ -1,7 +1,11 @@
 %YAML:1.0 # need to specify the file type at the top!
-# Larpcopter: sqrtVINS for the skybeta OAK-D S2, derived from sqrtVINS config/euroc_mav
-# (LGPL-3.0, rpng/sqrtVINS 30fafc8; the rs_d455 config is outdated for this version).
-# Overrides vs that template: see README. Images come from larp_undistort.
+# Larpcopter: THE sqrtVINS config for the skybeta OAK-D S2 (the only one; used by
+# sqrtvins_on_drone.sh, vio_test.sh and the launch file). Derived from sqrtVINS
+# config/euroc_mav (LGPL-3.0, rpng/sqrtVINS 30fafc8); overrides: see README.
+# Images: undistorted on the camera (larp_oak /oak/*/image_undistorted), pinhole.
+# Camera intrinsics and camera-IMU extrinsics are the factory calibration and are
+# NOT refined online (online refinement moved the cameras ~6 cm in lift1 and
+# diverged); the camera-IMU time offset is estimated.
 
 verbosity: "INFO" # ALL, DEBUG, INFO, WARNING, ERROR, SILENT
 
@@ -13,8 +17,8 @@ max_cameras: 2 # how many cameras we have 1: mono, 2: stereo, >2: binocular (all
 use_imuavg: true
 use_rk4int: true
 
-calib_cam_extrinsics: true # if the transform between camera and IMU should be optimized R_ItoC, p_CinI
-calib_cam_intrinsics: true # if camera intrinsics should be optimized (focal, center, distortion)
+calib_cam_extrinsics: false # if the transform between camera and IMU should be optimized R_ItoC, p_CinI
+calib_cam_intrinsics: false # if camera intrinsics should be optimized (focal, center, distortion)
 calib_cam_timeoffset: true # if timeoffset between camera and IMU should be optimized
 calib_imu_intrinsics: false # if imu intrinsics should be calibrated (rotation and skew-scale matrix)
 calib_imu_g_sensitivity: false # if gyroscope gravity sensitivity (Tg) should be calibrated

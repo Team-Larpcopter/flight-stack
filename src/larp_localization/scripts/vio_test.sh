@@ -2,12 +2,8 @@
 # One-command VIO test on the drone: fresh sqrtVINS start, record sqrtVINS and
 # cuVSLAM side by side, print drift and the aligned comparison.
 #
-#   vio_test.sh NAME SECONDS [--no-fox-reset] [--online-calib] [--no-bag]
+#   vio_test.sh NAME SECONDS [--no-fox-reset] [--no-bag]
 #     e.g.  vio_test.sh lift3 20
-#
-# Default config is estimator_config_fixedcalib.yaml (factory camera calibration
-# kept fixed: lift2 matched cuVSLAM to 1.1 cm RMS). --online-calib uses
-# estimator_config.yaml, which refines it online (lift1 diverged by metres).
 #
 # It records a rosbag (undistorted stereo, IMU, both odometries, calibration) to
 # results/<NAME>_<time>/bag so a run can be replayed offline; --no-bag skips it.
@@ -28,13 +24,10 @@ HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 OUT="${NAME}_$(date +%H%M%S)"
 FOX_RESET=1
 BAG=1
-export SQRTVINS_CONFIG=estimator_config_fixedcalib.yaml
 for arg in "${@:3}"; do
   case "$arg" in
     --no-fox-reset) FOX_RESET=0 ;;
     --no-bag) BAG=0 ;;
-    --fixed-calib) ;;  # default now, kept for old commands
-    --online-calib) export SQRTVINS_CONFIG=estimator_config.yaml ;;
     *) echo "unknown option: $arg"; exit 2 ;;
   esac
 done
@@ -49,7 +42,7 @@ if [[ $BAG == 1 ]]; then  # start before sqrtVINS so the bag includes its initia
   trap '"$HERE/sqrtvins_on_drone.sh" bagstop' EXIT
   sleep 2
 fi
-"$HERE/sqrtvins_on_drone.sh" start | grep -o "config=[^ ]*"
+"$HERE/sqrtvins_on_drone.sh" start >/dev/null
 echo "sqrtVINS restarting -- keep the drone STILL"
 for i in $(seq 1 30); do
   sleep 2

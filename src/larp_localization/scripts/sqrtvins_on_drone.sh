@@ -14,8 +14,8 @@
 #
 # Images: larp_oak undistorts on the camera (/oak/*/image_undistorted). Set
 # SQRTVINS_HOST_UNDISTORT=true to run the old host-side Python undistorter instead
-# (only if larp_oak runs with vio_undistorted:=false). SQRTVINS_CONFIG picks a
-# config file from config/oak_d_s2.
+# (only if larp_oak runs with vio_undistorted:=false). The config is always
+# config/oak_d_s2/estimator_config.yaml, read from src so edits need no rebuild.
 #
 # It joins the stack's DDS domain with the same local-only profile, so nothing
 # goes over Wi-Fi, and it never publishes to /fmu or /skybeta.
@@ -39,8 +39,8 @@ case "${1:-}" in
       -e ROS_DOMAIN_ID="$DOMAIN" \
       --entrypoint bash "$IMAGE" -c \
       "set +u; source /opt/ros/humble/setup.bash; source /root/sqrtvins_ws/install/setup.bash; \
-       exec stdbuf -o0 ros2 launch larp_localization sqrtvins.launch.py undistort:=${SQRTVINS_HOST_UNDISTORT:-false} ${SQRTVINS_CONFIG:+config:=/root/sqrtvins_ws/src/larp_localization/config/oak_d_s2/$SQRTVINS_CONFIG}" >/dev/null
-    echo "started $NAME config=${SQRTVINS_CONFIG:-estimator_config.yaml} (keep the drone still for a few seconds while it initialises)"
+       exec stdbuf -o0 ros2 launch larp_localization sqrtvins.launch.py undistort:=${SQRTVINS_HOST_UNDISTORT:-false} config:=/root/sqrtvins_ws/src/larp_localization/config/oak_d_s2/estimator_config.yaml" >/dev/null
+    echo "started $NAME (keep the drone still for a few seconds while it initialises)"
     ;;
   logs) docker logs -f --tail 50 "$NAME" ;;
   status)

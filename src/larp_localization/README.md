@@ -40,7 +40,7 @@ frame, so the camera-IMU extrinsics are unchanged.
 | `config/oak_d_s2/oak_calib_skybeta15.json` | Factory calibration of the skybeta-15 OAK-D S2 (K, D, TF) |
 | `config/oak_d_s2/kalibr_imucam_chain.yaml` | Generated: cameras (pinhole, zero distortion, undistorted topics) and T_cam_imu |
 | `config/oak_d_s2/kalibr_imu_chain.yaml` | Generated: IMU noise (**starting guesses**, see below) |
-| `config/oak_d_s2/estimator_config.yaml` | sqrtVINS settings, from sqrtVINS `config/euroc_mav` with the overrides below |
+| `config/oak_d_s2/estimator_config.yaml` | the only sqrtVINS config, from sqrtVINS `config/euroc_mav` with the overrides below (online camera calibration off) |
 | `tools/dump_oak_calib.py` | Read K, D and TF from the running ROS graph (read-only) into a JSON |
 | `tools/oak_to_kalibr.py` | JSON -> Kalibr-format configs; `--undistorted` for the node above |
 

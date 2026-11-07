@@ -164,6 +164,19 @@ at start-up, and remaining sensor errors are estimated online by the filter.
   the optical-frame value should be ≈ (0, −9.2, 0) (optical y points down, so
   gravity reads −y). Seen: `[-0.355 -9.149 0.282]`.
 
+### Checking the axes (IMU->camera flips) with real motion
+
+`tools/check_imu_camera_rotation.py BAG --chain kalibr_imucam_chain.yaml` measures
+the camera rotation from the images (KLT + essential matrix) and the IMU
+rotation from the integrated gyro over the same intervals, and fits the
+IMU->camera rotation between them: no calibration file involved. On the square2
+bag it measured diag(1, −1, −1) (x→x, y→−y, z→−z), 1.96° from the configured
+T_cam_imu, residual 0.37° median, camera-IMU time offset ≈ −5 ms. A wrong flip
+would show 90-180°. For a fresh check with rotation about all three axes:
+`scripts/axis_check.sh 30` (records a bag while you roll/pitch/yaw the drone,
+then runs the check). The BNO086 "calibrated" mode negates y and z, i.e. it is
+180° off about x with these extrinsics; only raw mode matches.
+
 ### Accelerometer calibration (bias, not scale)
 
 - Upright, |a| read 9.16 instead of 9.80. This looked like a 7% scale error but
@@ -205,8 +218,7 @@ measured. An Allan-variance recording of the still drone (2-3 h) replaces them.
   `tools/dump_oak_calib.py` (reads `/oak/*/camera_info` + TF from the running
   stack into `oak_calib_<drone>.json`) and `tools/oak_to_kalibr.py --undistorted`
   (writes `kalibr_imucam_chain.yaml` etc.). Re-run both for another drone/camera.
-- **Online camera calibration is OFF** (`estimator_config_fixedcalib.yaml`, the
-  default). With it on (lift1), sqrtVINS moved both cameras ~6 cm at its first
+- **Online camera calibration is OFF** (`estimator_config.yaml`, the only config). With it on (lift1), sqrtVINS moved both cameras ~6 cm at its first
   update (implied baseline 16 cm instead of 7.5 cm), triangulated points behind
   the camera and diverged. The factory calibration is good (0.0 px vertical
   stereo error measured), so we trust it. The camera-IMU **time offset** is still
@@ -219,8 +231,7 @@ Package `src/larp_localization`:
 | Path | What |
 |---|---|
 | `launch/sqrtvins.launch.py` | sqrtVINS (`ov_srvins run_subscribe_msckf`, namespace `ov_srvins`); `undistort:=true` adds the old Python undistorter |
-| `config/oak_d_s2/estimator_config_fixedcalib.yaml` | **default**: factory calibration fixed |
-| `config/oak_d_s2/estimator_config.yaml` | same, but online camera calibration on (do not use) |
+| `config/oak_d_s2/estimator_config.yaml` | **the** sqrtVINS config (factory calibration fixed, time offset estimated) |
 | `config/oak_d_s2/kalibr_imucam_chain.yaml` / `kalibr_imu_chain.yaml` | cameras + IMU, generated (section 4) |
 | `patches/` | two patches against sqrtVINS 30fafc8 (below) |
 | `scripts/sqrtvins_on_drone.sh` | start / stop / logs / status / bag / bagstop on the drone |
@@ -264,8 +275,8 @@ docker run --rm --memory=4g -v ~/team_ws/sqrtvins_ws:/root/sqrtvins_ws --entrypo
 
 Python-only changes (larp_localization tools, scripts, configs) need no rebuild:
 copy the file into `~/team_ws/sqrtvins_ws/src/larp_localization/...` (the
-container mounts the workspace; `vio_test.sh` and `SQRTVINS_CONFIG` read configs
-from `src`, a plain `start` uses the installed share copy).
+container mounts the workspace; the scripts always read
+`src/larp_localization/config/oak_d_s2/estimator_config.yaml`).
 
 ### Running
 
@@ -275,7 +286,6 @@ $S/sqrtvins_on_drone.sh start      # container larp-sqrtvins (2 CPU, 1.5 GB cap)
 $S/sqrtvins_on_drone.sh status     # odometry rate + CPU per process
 $S/sqrtvins_on_drone.sh logs
 $S/sqrtvins_on_drone.sh stop
-SQRTVINS_CONFIG=estimator_config.yaml $S/sqrtvins_on_drone.sh start   # pick another config
 ```
 
 ## 6. Testing VIO
@@ -286,7 +296,6 @@ One command does everything:
 ~/team_ws/sqrtvins_ws/src/larp_localization/scripts/vio_test.sh NAME SECONDS [options]
 #   --no-fox-reset   keep the Foxglove session (default: restart bridge + image relay)
 #   --no-bag         skip the rosbag
-#   --online-calib   use the online-camera-calibration config (for comparison only)
 ```
 
 1. Starts a rosbag (`larp-bag` container), resets Foxglove, restarts sqrtVINS.

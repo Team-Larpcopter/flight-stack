@@ -1,6 +1,8 @@
-"""sqrtVINS on the OAK-D S2: larp_undistort + ov_srvins run_subscribe_msckf.
+"""sqrtVINS on the OAK-D S2: ov_srvins run_subscribe_msckf.
 
-Inputs (from larp_oak): /oak/{left,right}/image_raw + camera_info, /oak/imu/data
+Inputs (from larp_oak): /oak/{left,right}/image_undistorted (undistorted on the
+camera), /oak/imu/data. undistort:=true adds the old host-side Python undistorter
+(only if larp_oak runs with vio_undistorted:=false: both publish the same topics).
 Outputs (namespace ov_srvins): odomimu (nav_msgs/Odometry), poseimu, pathimu,
 points_msckf / points_slam (feature clouds)
 
@@ -30,7 +32,7 @@ def generate_launch_description():
             DeclareLaunchArgument("config", default_value=default_config),
             DeclareLaunchArgument("namespace", default_value="ov_srvins"),
             DeclareLaunchArgument("verbosity", default_value="INFO"),
-            DeclareLaunchArgument("undistort", default_value="true"),
+            DeclareLaunchArgument("undistort", default_value="false"),
             Node(
                 package="larp_localization",
                 executable="undistort",
