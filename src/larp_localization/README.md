@@ -91,6 +91,19 @@ and makes the node exit with "unable to parse all parameters".
 
 ## Testing on the drone
 
+Images: larp_oak undistorts on the camera (`vio_undistorted`, default on) and
+publishes `/oak/{left,right}/image_undistorted` (pinhole, D = 0, K unchanged)
+at the full 30 Hz from one synced capture (left/right stamps within ~0.02 ms).
+Checked against OpenCV's full rational-model undistortion: within ~0.25 px in
+the centre, ~1-1.5 px in the corners (device warp mesh). The host-side Python
+undistorter (`undistort:=true`, `SQRTVINS_HOST_UNDISTORT=true`) is kept only as
+a fallback: it ran at ~17 Hz and dropped different frames on each side, which
+broke sqrtVINS on fast turns (square1).
+
+Each vio_test.sh run records `results/<name>_<time>/bag` (mcap: undistorted
+stereo, camera_info, IMU, tf_static, both odometries; ~56 MB/s) for offline
+replay; `--no-bag` skips it.
+
 ```bash
 ~/team_ws/sqrtvins_ws/src/larp_localization/scripts/vio_test.sh square1 90
 ```

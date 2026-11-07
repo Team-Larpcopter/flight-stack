@@ -12,6 +12,14 @@ Camera pipeline (on the OAK):
                 inputs, so a slow depth stage can never stall output A)
                 -> depth uint16 mm, aligned to the rectified left camera
                                                          /oak/stereo/image_raw
+      output C (vio_undistorted, default on): vio size GRAY8, undistorted ON the
+                device (warp engine, full rational model) -> host
+                                                         /oak/{left,right}/image_undistorted
+                pinhole camera_info, D = 0, K from the frame's own transformation.
+                Left/right come from the same synced sensor capture, so the pair
+                stays in step (the host-side Python undistorter dropped different
+                frames on each side and ran at ~17 Hz). If the device rejects it,
+                the node logs an error and restarts without output C.
     IMU accelerometer + gyroscope @ imu_hz               /oak/imu/data
 
 StereoDepth: preset (default ROBOTICS) with hardware left-right check and 7x7
@@ -106,6 +114,7 @@ class OakNode(Node):
         self.parent = dp("parent_frame", "oak_parent_frame").value
         self.prefix = dp("tf_prefix", "oak").value
         self.publish_depth = bool(dp("publish_depth", True).value)
+        self.vio_undistorted = bool(dp("vio_undistorted", True).value)
         f = self.prefix
         self.frames = {
             "rgb": f"{f}_rgb_camera_optical_frame",
@@ -122,9 +131,18 @@ class OakNode(Node):
             "depth_info": self.create_publisher(CameraInfo, "/oak/stereo/camera_info", IMAGE_QOS),
             "imu": self.create_publisher(Imu, "/oak/imu/data", IMU_QOS),
         }
+        if self.vio_undistorted:
+            for side in ("left", "right"):
+                self.pub[f"{side}_u"] = self.create_publisher(Image, f"/oak/{side}/image_undistorted", IMAGE_QOS)
+                self.pub[f"{side}_u_info"] = self.create_publisher(
+                    CameraInfo, f"/oak/{side}/image_undistorted/camera_info", IMAGE_QOS
+                )
         self.tf = StaticTransformBroadcaster(self)
-        self.stats = {k: 0 for k in ("left", "right", "depth", "imu")}
+        keys = ("left", "right", "left_u", "right_u", "depth", "imu") if self.vio_undistorted else (
+            "left", "right", "depth", "imu")
+        self.stats = {k: 0 for k in keys}
         self.failed = None
+        self._offset_ns, self._offset_at = 0, -(10**18)
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
@@ -133,8 +151,13 @@ class OakNode(Node):
     # ------------------------------------------------------------------ helpers
     def _ros_stamp(self, ts):
         """depthai host timestamp (timedelta on CLOCK_MONOTONIC) -> builtin Time."""
-        offset_ns = self.get_clock().now().nanoseconds - time.monotonic_ns()
-        ns = int(ts.total_seconds() * 1e9) + offset_ns
+        # Offset refreshed once a second, not per message: per-message clock reads add
+        # microseconds of jitter, so left/right frames of one capture got different stamps.
+        now_mono = time.monotonic_ns()
+        if now_mono - self._offset_at > 1_000_000_000:
+            self._offset_ns = self.get_clock().now().nanoseconds - time.monotonic_ns()
+            self._offset_at = now_mono
+        ns = int(ts.total_seconds() * 1e9) + self._offset_ns
         return rclpy.time.Time(nanoseconds=ns).to_msg()
 
     def _camera_info(self, calib, socket, size, frame):
@@ -231,7 +254,10 @@ class OakNode(Node):
             cams[side] = (
                 cam.requestOutput(self.vio_size, type=dai.ImgFrame.Type.GRAY8, fps=self.fps),
                 cam.requestOutput(self.stereo_size, type=dai.ImgFrame.Type.GRAY8, fps=self.fps),
-            )
+            ) + ((
+                cam.requestOutput(self.vio_size, type=dai.ImgFrame.Type.GRAY8, fps=self.fps,
+                                  enableUndistortion=True),
+            ) if self.vio_undistorted else ())  # fmt: skip
         preset = getattr(dai.node.StereoDepth.PresetMode, self.preset)
         st = p.create(dai.node.StereoDepth).build(cams["left"][1], cams["right"][1], presetMode=preset)
         st.setLeftRightCheck(True)
@@ -260,9 +286,48 @@ class OakNode(Node):
             "depth": st.depth.createOutputQueue(maxSize=2, blocking=False),
             "imu": imu.out.createOutputQueue(maxSize=50, blocking=False),
         }
+        if self.vio_undistorted:
+            for side in ("left", "right"):
+                q[f"{side}_u"] = cams[side][2].createOutputQueue(maxSize=2, blocking=False)
         return q
 
+    def _undistorted_info(self, m, frame):
+        """Pinhole CameraInfo from an undistorted frame's own transformation."""
+        tr = m.getTransformation()
+        k = [[float(x) for x in row] for row in tr.getIntrinsicMatrix()]
+        d = [float(x) for x in tr.getDistortionCoefficients()]
+        if any(abs(x) > 1e-9 for x in d):
+            self.get_logger().warn(f"undistorted frame reports distortion {d[:8]}: publishing D=0 anyway")
+        info = CameraInfo()
+        info.header.frame_id = frame
+        info.width, info.height = m.getWidth(), m.getHeight()
+        info.distortion_model = "plumb_bob"
+        info.d = [0.0] * 5
+        info.k = [x for row in k for x in row]
+        info.r = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+        info.p = [k[0][0], k[0][1], k[0][2], 0.0, k[1][0], k[1][1], k[1][2], 0.0, 0.0, 0.0, 1.0, 0.0]
+        self.get_logger().info(
+            f"{frame} undistorted on device: {info.width}x{info.height} "
+            f"fx={k[0][0]:.3f} fy={k[1][1]:.3f} cx={k[0][2]:.3f} cy={k[1][2]:.3f}"
+        )
+        return info
+
     def _run(self):
+        # self.failed is what main() watches; set it only once we give up
+        err = self._run_once()
+        if err and self.vio_undistorted and not self.stop.is_set() and not self.got_undistorted:
+            self.get_logger().error(f"pipeline with on-device undistortion failed ({err}); retrying without it")
+            self.vio_undistorted = False
+            self.stats = {k: 0 for k in ("left", "right", "depth", "imu")}
+            err = self._run_once()
+        if err:
+            self.get_logger().error(f"OAK device error, exiting for respawn: {err}")
+            self.failed = err
+
+    def _run_once(self):
+        """Run the pipeline until stopped; returns an error string or None."""
+        self.got_undistorted = False
+        err = None
         try:
             with dai.Pipeline() as p:
                 q = self._build(p)
@@ -279,6 +344,7 @@ class OakNode(Node):
                     "right": self._camera_info(calib, dai.CameraBoardSocket.CAM_C, self.vio_size, self.frames["right"]),
                 }  # fmt: skip
                 depth_info = None
+                u_infos = {}
                 while not self.stop.is_set() and p.isRunning():
                     busy = False
                     for side in ("left", "right"):
@@ -292,6 +358,20 @@ class OakNode(Node):
                             infos[side].header.stamp = stamp
                             self.pub[f"{side}_info"].publish(infos[side])
                             self.stats[side] += 1
+                    for side in ("left", "right") if self.vio_undistorted else ():
+                        for m in q[f"{side}_u"].tryGetAll():
+                            busy = True
+                            self.got_undistorted = True
+                            stamp = self._ros_stamp(m.getTimestamp())
+                            img = m.getFrame()
+                            if side not in u_infos:
+                                u_infos[side] = self._undistorted_info(m, self.frames[side])
+                            self.pub[f"{side}_u"].publish(
+                                self._image(img, stamp, self.frames[side], "mono8", img.shape[1])
+                            )
+                            u_infos[side].header.stamp = stamp
+                            self.pub[f"{side}_u_info"].publish(u_infos[side])
+                            self.stats[f"{side}_u"] += 1
                     for m in q["depth"].tryGetAll():
                         busy = True
                         if not self.publish_depth:
@@ -313,11 +393,10 @@ class OakNode(Node):
                     if not busy:
                         time.sleep(0.001)
                 if not self.stop.is_set():
-                    self.failed = "pipeline stopped running"
+                    err = "pipeline stopped running"
         except Exception as e:  # noqa: BLE001
-            self.failed = f"{type(e).__name__}: {e}"
-        if self.failed:
-            self.get_logger().error(f"OAK device error, exiting for respawn: {self.failed}")
+            err = f"{type(e).__name__}: {e}"
+        return err
 
     def _depth_info(self, msg, calib, shape):
         h, w = shape

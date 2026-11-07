@@ -8,6 +8,14 @@
 #   sqrtvins_on_drone.sh logs      follow its log
 #   sqrtvins_on_drone.sh status    rates of /ov_srvins/odomimu + CPU of each process
 #   sqrtvins_on_drone.sh stop      remove the container (the flight stack is untouched)
+#   sqrtvins_on_drone.sh bag DIR   record a test bag (container larp-bag) into
+#                                  ~/team_ws/sqrtvins_ws/results/DIR/bag (mcap)
+#   sqrtvins_on_drone.sh bagstop   stop the recording cleanly
+#
+# Images: larp_oak undistorts on the camera (/oak/*/image_undistorted). Set
+# SQRTVINS_HOST_UNDISTORT=true to run the old host-side Python undistorter instead
+# (only if larp_oak runs with vio_undistorted:=false). SQRTVINS_CONFIG picks a
+# config file from config/oak_d_s2.
 #
 # It joins the stack's DDS domain with the same local-only profile, so nothing
 # goes over Wi-Fi, and it never publishes to /fmu or /skybeta.
@@ -31,7 +39,7 @@ case "${1:-}" in
       -e ROS_DOMAIN_ID="$DOMAIN" \
       --entrypoint bash "$IMAGE" -c \
       "set +u; source /opt/ros/humble/setup.bash; source /root/sqrtvins_ws/install/setup.bash; \
-       exec stdbuf -o0 ros2 launch larp_localization sqrtvins.launch.py ${SQRTVINS_CONFIG:+config:=/root/sqrtvins_ws/src/larp_localization/config/oak_d_s2/$SQRTVINS_CONFIG}" >/dev/null
+       exec stdbuf -o0 ros2 launch larp_localization sqrtvins.launch.py undistort:=${SQRTVINS_HOST_UNDISTORT:-false} ${SQRTVINS_CONFIG:+config:=/root/sqrtvins_ws/src/larp_localization/config/oak_d_s2/$SQRTVINS_CONFIG}" >/dev/null
     echo "started $NAME config=${SQRTVINS_CONFIG:-estimator_config.yaml} (keep the drone still for a few seconds while it initialises)"
     ;;
   logs) docker logs -f --tail 50 "$NAME" ;;
@@ -42,5 +50,30 @@ case "${1:-}" in
     docker top "$NAME" -eo pid,pcpu,rss,args | awk 'NR==1 || /run_subscribe|undistort/' | cut -c1-110
     ;;
   stop) docker rm -f "$NAME" >/dev/null 2>&1 && echo "stopped $NAME" || echo "not running" ;;
+  bag)
+    DIR="${2:?usage: bag DIR}"
+    docker rm -f larp-bag >/dev/null 2>&1 || true
+    # Everything needed to replay sqrtVINS offline (and to see what cuVSLAM did).
+    # Raw images are left out: 4 full-size streams would load the Jetson too much.
+    TOPICS="/oak/left/image_undistorted /oak/right/image_undistorted \
+      /oak/left/image_undistorted/camera_info /oak/right/image_undistorted/camera_info \
+      /oak/left/camera_info /oak/right/camera_info /oak/imu/data /tf_static \
+      /ov_srvins/odomimu /visual_slam/tracking/odometry"
+    docker run -d --name larp-bag --network host --ipc host --cpus=1 --memory=768m \
+      -v "$WS:/root/sqrtvins_ws" -v "$DDS:/etc/skybeta/fastdds.xml:ro" \
+      -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/skybeta/fastdds.xml \
+      -e FASTDDS_DEFAULT_PROFILES_FILE=/etc/skybeta/fastdds.xml \
+      -e ROS_DOMAIN_ID="$DOMAIN" \
+      --entrypoint bash "$IMAGE" -c \
+      "set +u; source /opt/ros/humble/setup.bash; mkdir -p /root/sqrtvins_ws/results/$DIR; \
+       exec ros2 bag record -s mcap -o /root/sqrtvins_ws/results/$DIR/bag $TOPICS" >/dev/null
+    echo "recording bag -> results/$DIR/bag"
+    ;;
+  bagstop)
+    docker kill -s INT larp-bag >/dev/null 2>&1 || { echo "no bag running"; exit 0; }
+    for _ in $(seq 1 20); do docker ps -q -f name=larp-bag | grep -q . || break; sleep 0.5; done
+    docker logs larp-bag 2>&1 | grep -i -E "error|warn" | tail -3 || true
+    docker rm -f larp-bag >/dev/null 2>&1 || true
+    ;;
   *) sed -n '2,12p' "$0"; exit 2 ;;
 esac
