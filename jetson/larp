@@ -26,9 +26,11 @@ Usage: larp COMMAND
   attach            attach to the stack's tmux (agent/slam/bridge/competitor). Ctrl-b d to leave
   shell             bash inside the stack container (ROS sourced)
   ros CMD...        run one ROS command in the stack, e.g.  larp ros ros2 topic list
-  fox [start|stop|status]  (no camera images: too big for Wi-Fi)
+  fox start [--images] [--rate HZ] ...  |  fox stop  |  fox status
                     Foxglove bridge on ws://<drone-ip>:${FOX_PORT}, READ-ONLY
-                    (no client publish / services / params -- rule 5.5)
+                    (no client publish / services / params -- rule 5.5).
+                    --images adds 5 Hz half-size camera copies on /viz/*.
+                    larp fox start --help for all options
   build             colcon-build ~/team_ws inside the stack (team_build.sh)
   bag [ARGS]        record the flight-debug topic set (organisers' host/run.sh bag)
   doctor            organisers' health check (host/doctor.sh)
@@ -39,33 +41,87 @@ Usage: larp COMMAND
 EOF
 }
 
+has_window() { docker exec "$STACK" tmux list-windows -t skybeta -F '#W' | grep -qx "$1"; }
+
+fox_usage() {
+  cat <<EOF
+larp fox start [--images] [--rate HZ] [--scale S] [--quality Q] [--topics T1,T2,...]
+larp fox stop | status
+
+  (default)     telemetry only: IMU, VIO, PX4, /skybeta/*. No images.
+  --images      also stream low-bandwidth camera copies on /viz/<topic>
+  --rate HZ     image rate (default 5)
+  --scale S     image scale (default 0.5; 1.0 = full size)
+  --quality Q   JPEG quality 1-100 (default 50)
+  --topics ...  CompressedImage topics to relay
+                (default /oak/left/image_raw/compressed,/oak/right/image_raw/compressed)
+
+Full-rate camera topics are never served: one OAK stream (~60 Mbit/s) is more
+than the drone's Wi-Fi uplink and cost the bridge ~50% CPU.
+EOF
+}
+
 fox() {
   need_stack
-  case "${1:-start}" in
+  local action="${1:-start}"; shift || true
+  case "$action" in
     start)
-      if docker exec "$STACK" tmux list-windows -t skybeta -F '#W' | grep -qx foxglove; then
-        echo "foxglove already running"; return
+      local images=0 rate=5 scale=0.5 quality=50
+      local topics="/oak/left/image_raw/compressed,/oak/right/image_raw/compressed"
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --images) images=1; shift ;;
+          --rate) rate="${2:?}"; shift 2 ;;
+          --scale) scale="${2:?}"; shift 2 ;;
+          --quality) quality="${2:?}"; shift 2 ;;
+          --topics) topics="${2:?}"; images=1; shift 2 ;;
+          -h|--help) fox_usage; return ;;
+          *) fox_usage; die "unknown option $1" ;;
+        esac
+      done
+      if has_window foxglove || has_window viz; then
+        die "foxglove already running: larp fox stop first"
       fi
       # Read-only (rule 5.5): drop clientPublish/parameters/services, whitelist no client writes.
-      # No camera images: one OAK JPEG stream is ~60 Mbit/s, more than the Wi-Fi uplink, and
-      # copying them cost the bridge ~50% CPU. Everything else (IMU, VIO, PX4, state) stays.
+      # Serve every topic except images; images only via the /viz relay.
       # Values go in via tmux -e so the regexes need no nested shell quoting.
       docker exec "$STACK" tmux new-window -d -t skybeta -n foxglove \
         -e "FOX_PORT=${FOX_PORT}" \
-        -e "FOX_TOPICS=['^(?!/oak/(left|right)/image).*\$']" \
+        -e "FOX_TOPICS=['^(/viz/.*|(?!.*/image).*)\$']" \
         -e "FOX_NONE=['^\$']" \
         'bash -c "source skybeta_env.sh; ros2 launch foxglove_bridge foxglove_bridge_launch.xml \
           port:=\$FOX_PORT address:=0.0.0.0 capabilities:=\"[connectionGraph,assets]\" \
           topic_whitelist:=\"\$FOX_TOPICS\" client_topic_whitelist:=\"\$FOX_NONE\" \
           service_whitelist:=\"\$FOX_NONE\" param_whitelist:=\"\$FOX_NONE\"; \
           echo exited; sleep infinity"'
+      if [[ $images == 1 ]]; then
+        local list; list="['${topics//,/\',\'}']"
+        docker exec "$STACK" tmux new-window -d -t skybeta -n viz \
+          -e "VIZ_TOPICS=${list}" -e "VIZ_RATE=${rate}" -e "VIZ_SCALE=${scale}" \
+          -e "VIZ_QUALITY=${quality}" \
+          'bash -c "source skybeta_env.sh; \
+            if ros2 pkg prefix larp_viz >/dev/null 2>&1; then \
+              ros2 run larp_viz viz_relay --ros-args -p topics:=\"\$VIZ_TOPICS\" \
+                -p rate_hz:=\$VIZ_RATE -p scale:=\$VIZ_SCALE -p jpeg_quality:=\$VIZ_QUALITY; \
+            else echo \"larp_viz not built: run larp build\"; fi; \
+            echo exited; sleep infinity"'
+        echo "images: ${topics} -> /viz/... at ${rate} Hz, scale ${scale}, quality ${quality}"
+      else
+        echo "images: off (larp fox start --images to add them)"
+      fi
       echo "foxglove starting -> connect Foxglove to:"
       ips
       ;;
-    stop) docker exec "$STACK" tmux kill-window -t skybeta:foxglove 2>/dev/null && echo stopped || echo "not running" ;;
-    status) docker exec "$STACK" tmux list-windows -t skybeta -F '#W' | grep -qx foxglove \
-              && echo running || echo "not running" ;;
-    *) die "fox start|stop|status" ;;
+    stop)
+      local w stopped=0
+      for w in viz foxglove; do
+        docker exec "$STACK" tmux kill-window -t "skybeta:$w" 2>/dev/null && stopped=1
+      done
+      [[ $stopped == 1 ]] && echo stopped || echo "not running" ;;
+    status)
+      echo "bridge: $(has_window foxglove && echo running || echo 'not running')," \
+           "images: $(has_window viz && echo on || echo off)" ;;
+    *) fox_usage; exit 1 ;;
   esac
 }
 

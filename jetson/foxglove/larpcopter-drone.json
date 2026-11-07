@@ -1,0 +1,167 @@
+{
+  "configById": {
+    "Image!left": {
+      "imageMode": {
+        "imageTopic": "/viz/oak/left/image_raw/compressed"
+      }
+    },
+    "Image!right": {
+      "imageMode": {
+        "imageTopic": "/viz/oak/right/image_raw/compressed"
+      }
+    },
+    "Plot!accel": {
+      "title": "IMU acceleration (m/s^2)",
+      "paths": [
+        {
+          "value": "/oak/imu/data.linear_acceleration.x",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/oak/imu/data.linear_acceleration.y",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/oak/imu/data.linear_acceleration.z",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        }
+      ],
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 15
+    },
+    "Plot!gyro": {
+      "title": "IMU angular velocity (rad/s)",
+      "paths": [
+        {
+          "value": "/oak/imu/data.angular_velocity.x",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/oak/imu/data.angular_velocity.y",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/oak/imu/data.angular_velocity.z",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        }
+      ],
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 15
+    },
+    "Plot!pos": {
+      "title": "VIO position, odom ENU (m)",
+      "paths": [
+        {
+          "value": "/visual_slam/tracking/odometry.pose.pose.position.x",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/visual_slam/tracking/odometry.pose.pose.position.y",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/visual_slam/tracking/odometry.pose.pose.position.z",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        }
+      ],
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 15
+    },
+    "RawMessages!state": {
+      "topicPath": "/skybeta/state.data",
+      "diffEnabled": false,
+      "expansion": "all"
+    },
+    "RawMessages!vio": {
+      "topicPath": "/visual_slam/status",
+      "diffEnabled": false,
+      "expansion": "all"
+    },
+    "3D!vio": {
+      "followTf": "base_link",
+      "followMode": "follow-position",
+      "scene": {
+        "transforms": {
+          "showLabel": false
+        }
+      },
+      "topics": {
+        "/visual_slam/tracking/odometry": {
+          "visible": true
+        },
+        "/visual_slam/tracking/vo_path": {
+          "visible": true
+        },
+        "/visual_slam/vis/landmarks_cloud": {
+          "visible": true,
+          "pointSize": 3
+        }
+      }
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {
+    "speed": 1
+  },
+  "layout": {
+    "direction": "row",
+    "splitPercentage": 40,
+    "first": {
+      "direction": "column",
+      "splitPercentage": 50,
+      "first": "Image!left",
+      "second": "Image!right"
+    },
+    "second": {
+      "direction": "column",
+      "splitPercentage": 55,
+      "first": {
+        "direction": "row",
+        "splitPercentage": 50,
+        "first": "3D!vio",
+        "second": {
+          "direction": "column",
+          "splitPercentage": 50,
+          "first": "RawMessages!state",
+          "second": "RawMessages!vio"
+        }
+      },
+      "second": {
+        "direction": "row",
+        "splitPercentage": 33,
+        "first": "Plot!accel",
+        "second": {
+          "direction": "row",
+          "splitPercentage": 50,
+          "first": "Plot!gyro",
+          "second": "Plot!pos"
+        }
+      }
+    }
+  }
+}

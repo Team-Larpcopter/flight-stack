@@ -16,6 +16,8 @@ identity, PX4 parameters, or `/fmu/in/*`.
 | `larp` | Helper CLI, linked as `~/.local/bin/larp`. Run `larp help`. |
 | `install.sh` | One-time host setup: tmux, htop, jq, `larp`, Claude Code, Node 22, Codex CLI. Needs internet. |
 | `tmux.conf` | Copied to `~/.tmux.conf` if none exists. `Ctrl-b Ctrl-b` sends the prefix to the stack's nested tmux. |
+| `foxglove/larpcopter-drone.json` | Foxglove layout: both cameras (`/viz`), IMU and VIO plots, 3D VIO view, `/skybeta/state`, VIO status. |
+| `../src/larp_viz` | ROS package: `viz_relay` republishes camera JPEGs on `/viz/<topic>` at low rate and size. |
 
 ## `larp` commands
 
@@ -26,15 +28,36 @@ identity, PX4 parameters, or `/fmu/in/*`.
 | `larp ros CMD` | one ROS command inside the stack |
 | `larp attach` | the stack's tmux (`Ctrl-b d` to leave) |
 | `larp build` | `team_build.sh` (colcon build of `~/team_ws`) inside the stack |
-| `larp fox [start\|stop\|status]` | read-only Foxglove bridge on port 8766 (no client publish, services or params, rule 5.5). Camera images are not served: one stream exceeds the Wi-Fi uplink |
+| `larp fox start [--images]` | read-only Foxglove bridge on port 8766 (no client publish, services or params, rule 5.5). Telemetry only by default; `--images` adds camera copies on `/viz` (see below) |
+| `larp fox stop` / `status` | stop the bridge and image relay / show whether they run |
 | `larp bag` | organisers' `host/run.sh bag` |
 | `larp doctor` | organisers' `host/doctor.sh` |
 | `larp restart` | restart the stack. **Power-cycle the flight controller afterwards** (skybeta bug #15) |
 | `larp work` | host tmux session `larp` for dev work |
 | `larp portal` | press ACCEPT on the Stanford Visitor guest portal when HTTPS stops working |
 
-Foxglove: `ws://<tailscale-or-wifi-ip>:8766` (8765 belongs to the organisers' skybeta-status agent). It stops whenever the stack
-restarts; run `larp fox start` again.
+## Foxglove
+
+```bash
+larp fox start                       # telemetry only
+larp fox start --images              # + both cameras, 5 Hz, half size, JPEG 50
+larp fox start --images --rate 2 --scale 1.0 --quality 80
+larp fox start --topics /some/image/compressed   # relay other CompressedImage topics
+larp fox stop
+```
+
+Connect the Foxglove desktop app to `ws://<tailscale-ip>:8766` (8765 belongs to
+the organisers' skybeta-status agent), then **Layouts → Import from file →
+`jetson/foxglove/larpcopter-drone.json`**.
+
+Full-rate image topics are never served: one OAK JPEG stream is ~250 KB per
+frame at 30 Hz (~60 Mbit/s), more than the drone's Wi-Fi uplink, and it cost
+the bridge ~50% CPU. The `--images` copies measured ~97 KB/s per camera at
+5 Hz; `viz_relay` uses ~22% of one core because it still receives every
+30 Hz frame. Any topic containing `/image` is hidden unless it is under `/viz`.
+
+The bridge and relay run as `foxglove` and `viz` windows in the stack's tmux,
+so they stop whenever the stack restarts; run `larp fox start` again.
 
 ## Setup on a fresh drone
 
