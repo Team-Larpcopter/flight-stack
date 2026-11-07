@@ -1,0 +1,363 @@
+{
+  "configById": {
+    "Image!left": {
+      "imageMode": {
+        "imageTopic": "/viz/oak/left/image_raw/compressed"
+      }
+    },
+    "Image!right": {
+      "imageMode": {
+        "imageTopic": "/viz/oak/right/image_raw/compressed"
+      }
+    },
+    "Image!depth_filtered": {
+      "imageMode": {
+        "imageTopic": "/viz/oak/stereo/filtered/image/compressed"
+      }
+    },
+    "Image!depth_raw": {
+      "imageMode": {
+        "imageTopic": "/viz/oak/stereo/image_raw/compressed"
+      }
+    },
+    "3D!cuvslam": {
+      "followTf": "odom",
+      "followMode": "follow-none",
+      "scene": {
+        "transforms": {
+          "showLabel": false,
+          "axisScale": 0.5
+        },
+        "backgroundColor": "#101418"
+      },
+      "transforms": {},
+      "topics": {
+        "/visual_slam/tracking/vo_path": {
+          "visible": true,
+          "lineWidth": 0.03,
+          "color": "#4da3ffff"
+        },
+        "/visual_slam/tracking/odometry": {
+          "visible": true,
+          "type": "arrow",
+          "arrowScale": [
+            0.3,
+            0.06,
+            0.06
+          ],
+          "color": "#4da3ffff"
+        },
+        "/visual_slam/vis/landmarks_cloud": {
+          "visible": true,
+          "pointSize": 3,
+          "colorMode": "flat",
+          "flatColor": "#9fd0ffaa"
+        }
+      },
+      "layers": {
+        "grid": {
+          "layerId": "foxglove.Grid",
+          "visible": true,
+          "frameId": "odom",
+          "size": 10,
+          "divisions": 20,
+          "lineWidth": 1,
+          "color": "#3a4450ff",
+          "instanceId": "e85ca08b-fcbc-4ec9-8c1e-8298b747a45e"
+        }
+      },
+      "cameraState": {
+        "perspective": true,
+        "distance": 6.0,
+        "phi": 55,
+        "thetaOffset": 45,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOffset": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "fovy": 45,
+        "near": 0.01,
+        "far": 500
+      }
+    },
+    "3D!sqrtvins": {
+      "followTf": "global",
+      "followMode": "follow-none",
+      "scene": {
+        "transforms": {
+          "showLabel": false,
+          "axisScale": 0.5
+        },
+        "backgroundColor": "#101418"
+      },
+      "transforms": {},
+      "topics": {
+        "/ov_srvins/pathimu": {
+          "visible": true,
+          "lineWidth": 0.03,
+          "color": "#ff7a45ff"
+        },
+        "/ov_srvins/odomimu": {
+          "visible": true,
+          "type": "arrow",
+          "arrowScale": [
+            0.3,
+            0.06,
+            0.06
+          ],
+          "color": "#ff7a45ff"
+        },
+        "/ov_srvins/points_slam": {
+          "visible": true,
+          "pointSize": 5,
+          "colorMode": "flat",
+          "flatColor": "#ffd166ff"
+        },
+        "/ov_srvins/points_msckf": {
+          "visible": true,
+          "pointSize": 3,
+          "colorMode": "flat",
+          "flatColor": "#ffb38a88"
+        }
+      },
+      "layers": {
+        "grid": {
+          "layerId": "foxglove.Grid",
+          "visible": true,
+          "frameId": "global",
+          "size": 10,
+          "divisions": 20,
+          "lineWidth": 1,
+          "color": "#3a4450ff",
+          "instanceId": "f1d0abad-53ac-437d-92ad-a0f2a7bbac55"
+        }
+      },
+      "cameraState": {
+        "perspective": true,
+        "distance": 6.0,
+        "phi": 55,
+        "thetaOffset": 45,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOffset": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "fovy": 45,
+        "near": 0.01,
+        "far": 500
+      }
+    },
+    "RawMessages!state": {
+      "topicPath": "/skybeta/state.data",
+      "diffEnabled": false,
+      "expansion": "all"
+    },
+    "RawMessages!vio": {
+      "topicPath": "/visual_slam/status",
+      "diffEnabled": false,
+      "expansion": "all"
+    },
+    "RawMessages!sqrtvins": {
+      "topicPath": "/ov_srvins/odomimu.pose.pose",
+      "diffEnabled": false,
+      "expansion": "all"
+    },
+    "Plot!cuvslam_pos": {
+      "title": "cuVSLAM position, odom (m)",
+      "paths": [
+        {
+          "value": "/visual_slam/tracking/odometry.pose.pose.position.x",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/visual_slam/tracking/odometry.pose.pose.position.y",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/visual_slam/tracking/odometry.pose.pose.position.z",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        }
+      ],
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 20
+    },
+    "Plot!sqrtvins_pos": {
+      "title": "sqrtVINS position, global (m)",
+      "paths": [
+        {
+          "value": "/ov_srvins/odomimu.pose.pose.position.x",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/ov_srvins/odomimu.pose.pose.position.y",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/ov_srvins/odomimu.pose.pose.position.z",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        }
+      ],
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 20
+    },
+    "Plot!accel": {
+      "title": "IMU acceleration (m/s^2)",
+      "paths": [
+        {
+          "value": "/oak/imu/data.linear_acceleration.x",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/oak/imu/data.linear_acceleration.y",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/oak/imu/data.linear_acceleration.z",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        }
+      ],
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 20
+    },
+    "Plot!gyro": {
+      "title": "IMU angular velocity (rad/s)",
+      "paths": [
+        {
+          "value": "/oak/imu/data.angular_velocity.x",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/oak/imu/data.angular_velocity.y",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/oak/imu/data.angular_velocity.z",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        }
+      ],
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 20
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {
+    "speed": 1
+  },
+  "layout": {
+    "direction": "row",
+    "first": {
+      "direction": "column",
+      "first": {
+        "direction": "column",
+        "first": "Image!left",
+        "second": "Image!right",
+        "splitPercentage": 50
+      },
+      "second": {
+        "direction": "column",
+        "first": "Image!depth_filtered",
+        "second": "Image!depth_raw",
+        "splitPercentage": 50
+      },
+      "splitPercentage": 50
+    },
+    "second": {
+      "direction": "column",
+      "first": {
+        "direction": "row",
+        "first": "3D!cuvslam",
+        "second": "3D!sqrtvins",
+        "splitPercentage": 50
+      },
+      "second": {
+        "direction": "row",
+        "first": {
+          "direction": "column",
+          "first": "Plot!cuvslam_pos",
+          "second": "Plot!sqrtvins_pos",
+          "splitPercentage": 50
+        },
+        "second": {
+          "direction": "row",
+          "first": {
+            "direction": "column",
+            "first": "Plot!accel",
+            "second": "Plot!gyro",
+            "splitPercentage": 50
+          },
+          "second": {
+            "direction": "column",
+            "first": {
+              "direction": "column",
+              "first": "RawMessages!state",
+              "second": "RawMessages!vio",
+              "splitPercentage": 50
+            },
+            "second": "RawMessages!sqrtvins",
+            "splitPercentage": 66
+          },
+          "splitPercentage": 50
+        },
+        "splitPercentage": 50
+      },
+      "splitPercentage": 60
+    },
+    "splitPercentage": 24
+  }
+}
