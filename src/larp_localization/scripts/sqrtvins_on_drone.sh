@@ -31,8 +31,8 @@ case "${1:-}" in
       -e ROS_DOMAIN_ID="$DOMAIN" \
       --entrypoint bash "$IMAGE" -c \
       "set +u; source /opt/ros/humble/setup.bash; source /root/sqrtvins_ws/install/setup.bash; \
-       exec stdbuf -o0 ros2 launch larp_localization sqrtvins.launch.py" >/dev/null
-    echo "started $NAME (keep the drone still for a few seconds while it initialises)"
+       exec stdbuf -o0 ros2 launch larp_localization sqrtvins.launch.py ${SQRTVINS_CONFIG:+config:=/root/sqrtvins_ws/src/larp_localization/config/oak_d_s2/$SQRTVINS_CONFIG}" >/dev/null
+    echo "started $NAME config=${SQRTVINS_CONFIG:-estimator_config.yaml} (keep the drone still for a few seconds while it initialises)"
     ;;
   logs) docker logs -f --tail 50 "$NAME" ;;
   status)
