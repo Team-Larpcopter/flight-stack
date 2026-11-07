@@ -73,14 +73,31 @@ and makes the node exit with "unable to parse all parameters".
 - **IMU noise is a guess.** `kalibr_imu_chain.yaml` uses the cuVSLAM values from
   skybeta, inflated x2 (white noise) and x10 (random walk) as OpenVINS
   recommends. Replace with an Allan-variance calibration of this BNO086.
-- **IMU extrinsics are nominal.** `T_parent_imu` is the depthai URDF pose, not a
-  calibrated one; `calib_cam_extrinsics: true` lets sqrtVINS refine it.
+- **IMU extrinsics** come from the OAK's factory IMU->camera calibration, which
+  larp_oak publishes as the oak_imu_frame TF (raw IMU axes). The earlier nominal
+  URDF pose had gravity flipped relative to the cameras and made sqrtVINS drift
+  ~1.1 m while still; with the factory pose a 3-minute static test drifted 2.5 mm.
+- **Accelerometer scale:** |g| reads 9.16 m/s^2 at rest (~7% low). sqrtVINS
+  absorbs it as an accelerometer bias; a proper IMU calibration is the real fix.
+- **Output stamps:** sqrtVINS runs in float32 and its odometry header stamps are
+  quantised to 128 s at current Unix time. Positions are fine; fix the stamps
+  before feeding PX4.
 - **Not yet run on drone data.** Built (x86 laptop) and started with this config:
   subscribes to `/oak/imu/data` and `/oak/{left,right}/image_undistorted`, publishes
   `/ov_srvins/{odomimu,poseimu,pathimu,points_slam,points_msckf,trackhist}`.
 - **Known upstream issue:** `run_subscribe_msckf` segfaults while shutting down
   (`~ROS2Visualizer` / image_transport). Harmless at exit, but it hides error
   messages; run it with `stdbuf -o0` when debugging start-up.
+
+## Testing on the drone
+
+```bash
+~/team_ws/sqrtvins_ws/src/larp_localization/scripts/vio_test.sh square1 90
+```
+Restarts sqrtVINS (keep still until GO), records sqrtVINS and cuVSLAM, prints
+drift and the aligned comparison (`tools/compare_vio.py`). The workspace lives in
+`~/team_ws/sqrtvins_ws` with a `COLCON_IGNORE` so the stack's team_build skips it;
+build it with `--base-paths src`.
 
 ## Building
 
@@ -91,11 +108,18 @@ mkdir -p ~/sqrtvins_ws/src && cd ~/sqrtvins_ws/src
 git clone https://github.com/rpng/sqrtVINS.git
 git -C sqrtVINS checkout 30fafc8
 git -C sqrtVINS apply ../../src/larp_localization/patches/sqrtvins-30fafc8-fstream.patch   # see below
+git -C sqrtVINS apply ../../src/larp_localization/patches/sqrtvins-30fafc8-zupt-cleanup.patch
 cd .. && source /opt/ros/humble/setup.bash
 MAKEFLAGS=-j1 colcon build --executor sequential --packages-up-to ov_srvins \
   --cmake-args -DCMAKE_BUILD_TYPE=Release -DENABLE_ARUCO_TAGS=OFF \
   -DBoost_DIR=/usr/lib/cmake/Boost-1.80.0    # on the drone (skybeta image), see below
 ```
+
+`patches/sqrtvins-30fafc8-zupt-cleanup.patch` fixes a memory leak: when a
+zero-velocity update is accepted, VioManager returned before the only place the
+feature database is cleaned, so a stationary drone grew it without bound
+(~60 MB/s, OOM-killed after ~40 s). The patch cleans measurements older than the
+oldest clone in both ZUPT branches, as the normal path does.
 
 `patches/sqrtvins-30fafc8-fstream.patch` adds `#include <fstream>` to four
 sqrtVINS files that use `std::ofstream` without it. x86 builds pick the header up

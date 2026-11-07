@@ -1,0 +1,40 @@
+diff --git a/ov_srvins/src/core/VioManager.cpp b/ov_srvins/src/core/VioManager.cpp
+index d5e7318..ae1ac80 100644
+--- a/ov_srvins/src/core/VioManager.cpp
++++ b/ov_srvins/src/core/VioManager.cpp
+@@ -263,6 +263,17 @@ void VioManager::track_image_and_update(
+           message.timestamp + state->calib_dt_CAMtoIMU->value()(0) - 0.10);
+       updaterZUPT->clean_old_imu_measurements(
+           message.timestamp + state->calib_dt_CAMtoIMU->value()(0) - 0.10);
++      // larpcopter patch: this early return skips do_feature_propagate_update,
++      // the only place the feature database is cleaned, so a stationary platform
++      // grew it without bound (measured ~60 MB/s, OOM in ~40 s at 30 Hz stereo).
++      // Drop measurements older than the oldest clone, as the normal path does.
++      if (!state->clones_IMU.empty()) {
++        trackFEATS->get_feature_database()->cleanup_measurements(
++            state->margtimestep());
++        if (trackARUCO != nullptr)
++          trackARUCO->get_feature_database()->cleanup_measurements(
++              state->margtimestep());
++      }
+       return;
+     }
+   }
+@@ -337,6 +348,17 @@ void VioManager::feed_measurement_simulation(
+           timestamp + state->calib_dt_CAMtoIMU->value()(0) - 0.10);
+       updaterZUPT->clean_old_imu_measurements(
+           timestamp + state->calib_dt_CAMtoIMU->value()(0) - 0.10);
++      // larpcopter patch: this early return skips do_feature_propagate_update,
++      // the only place the feature database is cleaned, so a stationary platform
++      // grew it without bound (measured ~60 MB/s, OOM in ~40 s at 30 Hz stereo).
++      // Drop measurements older than the oldest clone, as the normal path does.
++      if (!state->clones_IMU.empty()) {
++        trackFEATS->get_feature_database()->cleanup_measurements(
++            state->margtimestep());
++        if (trackARUCO != nullptr)
++          trackARUCO->get_feature_database()->cleanup_measurements(
++              state->margtimestep());
++      }
+       return;
+     }
+   }

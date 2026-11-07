@@ -95,6 +95,14 @@ class OakNode(Node):
         self.preset = dp("depth_preset", "ROBOTICS").value
         self.subpixel = bool(dp("subpixel", True).value)
         self.imu_hz = int(dp("imu_hz", 200).value)
+        # "raw" (default): BNO086 RAW accel/gyro, in the sensor axes the device's
+        # factory IMU->camera extrinsics are defined for (used for the IMU TF below).
+        # "calibrated" outputs the same values with y and z negated (measured on
+        # skybeta-15) and the same |g| (9.16 m/s^2 at rest, ~7% low: an accelerometer
+        # scale error the filter must absorb), so it does NOT match those extrinsics.
+        self.imu_mode = dp("imu_mode", "raw").value
+        self.imu_check = []  # first ~1 s of accel samples for the start-up gravity check
+        self.r_left_imu = None  # rotation IMU -> left optical, for that check
         self.parent = dp("parent_frame", "oak_parent_frame").value
         self.prefix = dp("tf_prefix", "oak").value
         self.publish_depth = bool(dp("publish_depth", True).value)
@@ -159,17 +167,44 @@ class OakNode(Node):
         rgb optical at the parent origin; T_parent_cam = T_parent_rgb * T_rgb_cam."""
         r_po = matrix_from_quat(OPTICAL_Q)  # parent <- rgb optical
         tfs = [self._transform(self.frames["rgb"], (0.0, 0.0, 0.0), OPTICAL_Q)]
+        T_parent = {}
         for side, sock in (("left", dai.CameraBoardSocket.CAM_B), ("right", dai.CameraBoardSocket.CAM_C)):
             # getCameraExtrinsics(src, dst) maps points from src to dst: T_dst_src.
             e = np.array(calib.getCameraExtrinsics(sock, dai.CameraBoardSocket.CAM_A))  # T_rgb_cam, cm
             r = r_po @ e[:3, :3]
             t = r_po @ (e[:3, 3] / 100.0)
+            T = np.eye(4)
+            T[:3, :3], T[:3, 3] = r, t
+            T_parent[side] = T
             tfs.append(self._transform(self.frames[side], tuple(float(x) for x in t), quat_from_matrix(r)))
-        # IMU: depthai_ros_driver uses the model's nominal pose; keep it identical
-        # (cuVSLAM runs without IMU fusion here).
-        tfs.append(self._transform(self.frames["imu"], (-0.002, -0.037948, -0.00079), OPTICAL_Q))
+        # IMU: from the device's factory IMU->camera calibration, which is defined for
+        # the RAW sensor axes (imu_mode raw). With it, the resting accelerometer reads
+        # ~(0, -9.2, 0) in the left optical frame (y down), i.e. gravity is consistent
+        # with the cameras. The previous nominal URDF pose put gravity on +y (flipped),
+        # which broke IMU fusion (sqrtVINS drifted ~1 m while still).
+        T_imu = None
+        try:
+            e = np.array(calib.getImuToCameraExtrinsics(dai.CameraBoardSocket.CAM_B))  # T_left_imu, cm
+            if e.shape == (4, 4) and abs(np.linalg.det(e[:3, :3]) - 1.0) < 1e-3:
+                T_left_imu = e.copy()
+                T_left_imu[:3, 3] /= 100.0
+                T_imu = T_parent["left"] @ T_left_imu
+                self.r_left_imu = T_left_imu[:3, :3]
+        except Exception as ex:  # noqa: BLE001
+            self.get_logger().warning(f"IMU extrinsics unavailable ({ex})")
+        if T_imu is None:
+            self.get_logger().warning("no IMU calibration on the device: using the nominal URDF IMU pose")
+            tfs.append(self._transform(self.frames["imu"], (-0.002, -0.037948, -0.00079), OPTICAL_Q))
+        else:
+            tfs.append(self._transform(
+                self.frames["imu"], tuple(float(x) for x in T_imu[:3, 3]), quat_from_matrix(T_imu[:3, :3])
+            ))  # fmt: skip
+            self.get_logger().info(
+                "IMU pose from factory calibration (IMU -> left camera):\n"
+                + np.array2string(T_left_imu, precision=4, suppress_small=True)
+            )
         self.tf.sendTransform(tfs)
-        for tf in tfs[1:3]:
+        for tf in tfs[1:]:
             t, q = tf.transform.translation, tf.transform.rotation
             self.get_logger().info(
                 f"TF {self.parent} -> {tf.child_frame_id}: t=({t.x:.6f}, {t.y:.6f}, {t.z:.6f}) "
@@ -211,9 +246,12 @@ class OakNode(Node):
         for name in ("spatialFilter", "temporalFilter", "speckleFilter"):
             getattr(pp, name).enable = False
         imu = p.create(dai.node.IMU)
-        imu.enableIMUSensor(
-            [dai.IMUSensor.ACCELEROMETER_RAW, dai.IMUSensor.GYROSCOPE_RAW], self.imu_hz
+        sensors = (
+            [dai.IMUSensor.ACCELEROMETER_RAW, dai.IMUSensor.GYROSCOPE_RAW]
+            if self.imu_mode == "raw"
+            else [dai.IMUSensor.ACCELEROMETER_CALIBRATED, dai.IMUSensor.GYROSCOPE_CALIBRATED]
         )
+        imu.enableIMUSensor(sensors, self.imu_hz)
         imu.setBatchReportThreshold(1)
         imu.setMaxBatchReports(10)
         q = {
@@ -312,6 +350,20 @@ class OakNode(Node):
         msg.linear_acceleration.x, msg.linear_acceleration.y, msg.linear_acceleration.z = a.x, a.y, a.z
         self.pub["imu"].publish(msg)
         self.stats["imu"] += 1
+        if self.imu_check is not None:
+            self.imu_check.append((a.x, a.y, a.z))
+            if len(self.imu_check) >= self.imu_hz:  # ~1 s
+                self._gravity_check(np.array(self.imu_check))
+                self.imu_check = None
+
+    def _gravity_check(self, acc):
+        """Log the resting accelerometer vector once: |a| should be ~9.81 m/s^2, and in
+        the left optical frame (x right, y down, z forward) a level camera reads ~(0, -9.81, 0)."""
+        mean = acc.mean(axis=0)
+        text = f"IMU check ({self.imu_mode}, {len(acc)} samples): |a| = {np.linalg.norm(mean):.3f} m/s^2, mean a = {np.round(mean, 3)} (IMU frame)"
+        if self.r_left_imu is not None:
+            text += f", in left optical frame = {np.round(self.r_left_imu @ mean, 3)}"
+        self.get_logger().info(text)
 
     def _report(self):
         s = ", ".join(f"{k} {v / 10.0:.1f} Hz" for k, v in self.stats.items())
