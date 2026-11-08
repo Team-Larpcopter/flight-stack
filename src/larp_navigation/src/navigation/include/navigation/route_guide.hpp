@@ -20,7 +20,7 @@ struct Route {
   Polyline points;
 };
 
-// This consumes Air-FAR geometry; it does not choose exploration targets.
+// This consumes global route geometry; it does not choose exploration targets.
 // The validity predicate checks each connector/segment against the current map.
 class RouteGuide {
  public:
@@ -60,6 +60,10 @@ class RouteGuide {
     return true;
   }
 
+  bool renew(double now) {
+    if(!valid_ || !std::isfinite(now) || now<route_.capture_time){clear();return false;}
+    route_.capture_time=now;return true;
+  }
   void clear() { valid_ = false; route_ = {}; lengths_.clear(); progress_ = 0; }
 
   Polyline nearby(const Point& start, double horizon, double now,
@@ -95,7 +99,7 @@ class RouteGuide {
       if (length < 1e-6) return true;
       const Point endpoint = result.back() + d*(std::min(length,remaining)/length);
       if (!valid_segment(result.back(), endpoint)) {
-        // A long Air-FAR edge may leave observed space. Retain its certified
+        // A long global route edge may leave observed space. Retain its certified
         // free prefix instead of requiring the next graph vertex to be visible.
         // Segment validity means the ENTIRE segment is valid, so this predicate
         // is monotone along a fixed ray; no obstacle can be jumped over.

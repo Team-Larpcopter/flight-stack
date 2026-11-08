@@ -98,7 +98,7 @@ namespace super_planner {
         ExpTraj last_exp_traj_info_;
 
         vector<double> time_consuming_;
-        // A caller can supply Air-FAR's nearby polyline directly to the
+        // A caller can supply global route's nearby polyline directly to the
         // geometric frontend. Rejection leaves the previous committed backup
         // intact; it must not silently change the global route with a new A*.
         std::function<bool(const Vec3f&, double, vec_Vec3f&)> guide_provider_;

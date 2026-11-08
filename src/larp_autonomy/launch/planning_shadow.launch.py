@@ -1,4 +1,4 @@
-"""Fixed CAD -> Air-FAR route -> SUPER polynomial -> shadow executive input.
+"""Fixed CAD -> SUPER A* route -> SUPER polynomial -> shadow executive input.
 
 Observer must already be running in the CAD coordinate frame. Boundary config
 is an explicit ROS parameter file containing surveyed hard_boundary_lower,
@@ -14,19 +14,15 @@ from launch_ros.actions import Node
 def generate_launch_description():
     arg=LaunchConfiguration
     remaps=[('/navigation/'+name,'/autonomy/'+name) for name in (
-        'odometry','vio_healthy','goal','route','map_snapshot','rejected_map','committed_path')]
+        'odometry','vio_healthy','goal','route','map_snapshot','map_state','rejected_map','committed_path')]
     remaps.append(('/navigation/trajectory','/autonomy/committed_trajectory'))
     return LaunchDescription([
         DeclareLaunchArgument('rig_file'),DeclareLaunchArgument('navigation_config'),
-        DeclareLaunchArgument('airfar_config'),
         DeclareLaunchArgument('cad_prior_file'),DeclareLaunchArgument('boundary_config'),
         Node(package='larp_navigation',executable='depth_map_node',output='screen',
              parameters=[arg('boundary_config'),{'rig_file':arg('rig_file'),'config_file':arg('navigation_config'),
                           'cad_prior_file':arg('cad_prior_file'),
                           'require_hard_boundary':True,'static_cad_only':True,'use_sim_time':False}],remappings=remaps),
-        Node(package='larp_navigation',executable='airfar_route_node',name='airfar_planner',output='screen',
-             parameters=[arg('airfar_config'),{'navigation_config_file':arg('navigation_config'),
-                         'snapshot_mode':True,'use_sim_time':False}],remappings=remaps),
         Node(package='larp_autonomy',executable='trajectory_bridge',output='screen',
              parameters=[{'simulation_only':False,'use_sim_time':False}]),
     ])

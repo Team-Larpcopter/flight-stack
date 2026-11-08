@@ -28,6 +28,13 @@ using namespace super_utils;
 
 namespace path_search {
     using namespace rog_map;
+    static double wallSeconds() {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+    // Scores in the heap must be immutable: changing a GridNode's score in
+    // place does not reheapify std::priority_queue. Push decreases and skip stale entries.
+    struct OpenEntry {double score;GridNodePtr node;};
+    struct OpenCompare {bool operator()(const OpenEntry& a,const OpenEntry& b)const{return a.score>b.score;}};
 
 
     Astar::Astar(const std::string &cfg_path,
@@ -35,12 +42,8 @@ namespace path_search {
                  rog_map::ROGMap::Ptr rm) : ros_ptr_(ros_ptr), map_ptr_(rm) {
         cfg_ = PathSearchConfig(cfg_path);
         cout << rog_map::GREEN << " -- [RM] Init Astar-map." << rog_map::RESET << endl;
-        int map_buffer_size = cfg_.map_voxel_num(0) * cfg_.map_voxel_num(1) * cfg_.map_voxel_num(2);
-        grid_node_buffer_.resize(map_buffer_size);
-        for (auto &i: grid_node_buffer_) {
-            i = new GridNode;
-            i->rounds = 0;
-        }
+        // Keep a bounded index table, allocating search nodes only as visited.
+        resizeBuffer();
         cout << rog_map::BLUE << "\tmap index size: " << cfg_.map_size_i.transpose() << rog_map::RESET << endl;
         cout << rog_map::BLUE << "\tmap vox_num: " << cfg_.map_voxel_num.transpose() << rog_map::RESET << endl;
 
@@ -48,6 +51,7 @@ namespace path_search {
 
     RET_CODE
     Astar::setup(const Vec3f &start_pt, const Vec3f &goal_pt, const int &flag, const double &searching_horizon) {
+        if(!start_pt.allFinite() || !goal_pt.allFinite() || !std::isfinite(searching_horizon))return INIT_ERROR;
         md_.start_pt = start_pt;
         md_.goal_pt = goal_pt;
         md_.mission_rcv_WT = ros_ptr_->getSimTime();
@@ -83,6 +87,15 @@ namespace path_search {
         }
 
         posToGlobalIndex(md_.local_map_center_d, md_.local_map_center_id_g);
+        if(search_bounds_) {
+            Vec3i lo,hi;posToGlobalIndex(search_bounds_->first,lo);posToGlobalIndex(search_bounds_->second,hi);
+            md_.local_map_center_id_g=(lo+hi)/2;
+            const Vec3i half=(md_.local_map_center_id_g-lo).cwiseMax(hi-md_.local_map_center_id_g);
+            if(half!=cfg_.map_size_i) {
+                cfg_.map_size_i=half;cfg_.map_voxel_num=half*2+Vec3i::Ones();resizeBuffer();
+            }
+            globalIndexToPos(md_.local_map_center_id_g,md_.local_map_center_d);
+        }
         md_.local_map_min_d = md_.local_map_center_d - md_.resolution * cfg_.map_size_i.cast<double>();
         md_.local_map_max_d = md_.local_map_center_d + md_.resolution * cfg_.map_size_i.cast<double>();;
         if (cfg_.visual_process||cfg_.debug_visualization_en) {
@@ -224,7 +237,7 @@ namespace path_search {
             return setup_ret;
         }
         out_path.clear();
-        double time_1 = ros_ptr_->getSimTime();
+        double time_1 = wallSeconds();
         ++rounds_;
         /// 2) Switch both start and end point to local map
 
@@ -234,6 +247,10 @@ namespace path_search {
 
         local_start_pt = start_pt;
         local_end_pt = end_pt;
+        if(flag & FULL_GOAL) {
+            if(!std::isfinite(time_out) || time_out<=0 || !insideLocalMap(start_pt) || !insideLocalMap(end_pt) ||
+               !map_ptr_->isKnownFreeInflate(start_pt) || !map_ptr_->isKnownFreeInflate(end_pt))return INIT_ERROR;
+        }
 
         if (!insideLocalMap(start_pt)) {
             ros_ptr_->warn(" -- [A*] Start point [{}] is out of local map, find a waypoint to the map edge.",
@@ -312,11 +329,11 @@ namespace path_search {
         }
 
 
-        GridNodePtr startPtr = grid_node_buffer_[getLocalIndexHash(start_idx)];
-        GridNodePtr endPtr = grid_node_buffer_[getLocalIndexHash(end_idx)];
+        GridNodePtr startPtr = nodeAt(getLocalIndexHash(start_idx));
+        GridNodePtr endPtr = nodeAt(getLocalIndexHash(end_idx));
         endPtr->id_g = end_idx;
 
-        std::priority_queue<GridNodePtr, std::vector<GridNodePtr>, NodeComparator> open_set;
+        std::priority_queue<OpenEntry, std::vector<OpenEntry>, OpenCompare> open_set;
         std::priority_queue<GridNodePtr, std::vector<GridNodePtr>, FrontierComparator> frontier_queue;
 
 
@@ -329,7 +346,7 @@ namespace path_search {
         startPtr->total_score = getHeu(startPtr, endPtr, cfg_.heu_type);
         startPtr->state = GridNode::OPENSET; //put start node in open set
         startPtr->father_ptr = NULL;
-        open_set.push(startPtr); //put start in open set
+        open_set.push({startPtr->total_score,startPtr}); //put start in open set
         int num_iter = 0;
         vector<GridNodePtr> node_path;
 
@@ -347,9 +364,11 @@ namespace path_search {
         }
 
         while (!open_set.empty()) {
+            if(wallSeconds()-time_1>time_out)return TIME_OUT;
             num_iter++;
-            current = open_set.top();
-            open_set.pop();
+            const auto entry=open_set.top();open_set.pop();
+            current=entry.node;
+            if(current->state==GridNode::CLOSEDSET || entry.score!=current->total_score)continue;
             if (cfg_.visual_process) {
                 rog_map::Vec3f local_pt;
                 globalIndexToPos(current->id_g, local_pt);
@@ -443,7 +462,7 @@ namespace path_search {
                             continue;
                         }
 
-                        neighborPtr = grid_node_buffer_[getLocalIndexHash(neighborIdx)];
+                        neighborPtr = nodeAt(getLocalIndexHash(neighborIdx));
                         if (neighborPtr == nullptr) {
                             cout << rog_map::RED << " -- [RM] neighborPtr is null, which should not happen." <<
                                  rog_map::RESET
@@ -468,6 +487,10 @@ namespace path_search {
                             continue;
                         }
 
+                        if(edge_validator_) {
+                            Vec3f currentPos;globalIndexToPos(current->id_g,currentPos);
+                            if(!edge_validator_(currentPos,neighborPos))continue;
+                        }
                         neighborPtr->rounds = rounds_;
                         double distance_score = sqrt(dx * dx + dy * dy + dz * dz);
                         distance_score = current->distance_score + distance_score;
@@ -482,22 +505,23 @@ namespace path_search {
                             neighborPtr->distance_score = distance_score;
                             neighborPtr->distance_to_goal = heu_score;
                             neighborPtr->total_score = distance_score + heu_score;
-                            open_set.push(neighborPtr); //put neighbor in open set and record it.
+                            open_set.push({neighborPtr->total_score,neighborPtr}); //put neighbor in open set and record it.
                         } else if (distance_score < neighborPtr->distance_score) {
                             neighborPtr->father_ptr = current;
                             neighborPtr->distance_score = distance_score;
                             neighborPtr->distance_to_goal = heu_score;
                             neighborPtr->total_score = distance_score + heu_score;
+                            open_set.push({neighborPtr->total_score,neighborPtr});
                         }
                     }
-            double time_2 = ros_ptr_->getSimTime();
+            double time_2 = wallSeconds();
             if (!cfg_.visual_process && (time_2 - time_1) > time_out) {
                 fmt::print(fg(fmt::color::indian_red),
                            "Failed in A star path searching !!! {} seconds time limit exceeded.\n", time_out);
                 return TIME_OUT;
             }
         }
-        double time_2 = ros_ptr_->getSimTime();
+        double time_2 = wallSeconds();
         if ((time_2 - time_1) > time_out) {
             fmt::print(fg(fmt::color::indian_red), "Time consume in A star path finding is {} s, iter={}.\n",
                        (time_2 - time_1),
@@ -540,7 +564,7 @@ namespace path_search {
             return setup_ret;
         }
 
-        double time_1 = ros_ptr_->getSimTime();
+        double time_1 = wallSeconds();
         ++rounds_;
 
         posToGlobalIndex(md_.local_map_center_d, md_.local_map_center_id_g);
@@ -564,8 +588,8 @@ namespace path_search {
         rog_map::Vec3i start_idx;
         posToGlobalIndex(local_start_pt, start_idx);
 
-        GridNodePtr startPtr = grid_node_buffer_[getLocalIndexHash(start_idx)];
-        std::priority_queue<GridNodePtr, std::vector<GridNodePtr>, NodeComparator> open_set;
+        GridNodePtr startPtr = nodeAt(getLocalIndexHash(start_idx));
+        std::priority_queue<OpenEntry, std::vector<OpenEntry>, OpenCompare> open_set;
         GridNodePtr neighborPtr = NULL;
         GridNodePtr current = NULL;
 
@@ -575,7 +599,7 @@ namespace path_search {
         startPtr->total_score = 0;
         startPtr->state = GridNode::OPENSET; //put start node in open set
         startPtr->father_ptr = NULL;
-        open_set.push(startPtr); //put start in open set
+        open_set.push({startPtr->total_score,startPtr}); //put start in open set
         int num_iter = 0;
 
         vector<GridNodePtr> node_path;
@@ -587,8 +611,9 @@ namespace path_search {
         }
         while (!open_set.empty()) {
             num_iter++;
-            current = open_set.top();
-            open_set.pop();
+            const auto entry=open_set.top();open_set.pop();
+            current=entry.node;
+            if(current->state==GridNode::CLOSEDSET || entry.score!=current->total_score)continue;
             if (cfg_.visual_process) {
                 rog_map::Vec3f local_pt;
                 globalIndexToPos(current->id_g, local_pt);
@@ -604,7 +629,7 @@ namespace path_search {
             if (md_.unknown_as_occ && cur_inf_type != OCCUPIED && cur_inf_type != UNKNOWN) {
                 retrievePath(current, node_path);
                 ConvertNodePathToPointPath(node_path, out_path);
-//                double time_2 = ros_ptr_->getSimTime();
+//                double time_2 = wallSeconds();
                 //                    printf("\033[34m Escape: A star iter:%d, time:%.3f ms\033[0m\n", num_iter, (time_2 - time_1).toSec() * 1000);
                 return REACH_HORIZON;
             }
@@ -612,7 +637,7 @@ namespace path_search {
             if (md_.unknown_as_free && cur_inf_type != OCCUPIED) {
                 retrievePath(current, node_path);
                 ConvertNodePathToPointPath(node_path, out_path);
-//                double time_2 = ros_ptr_->getSimTime();
+//                double time_2 = wallSeconds();
                 //                    printf("\033[34m Escape: A star iter:%d, time:%.3f ms\033[0m\n", num_iter, (time_2 - time_1).toSec() * 1000);
                 return REACH_HORIZON;
             }
@@ -651,7 +676,7 @@ namespace path_search {
                             continue;
                         }
 
-                        neighborPtr = grid_node_buffer_[getLocalIndexHash(neighborIdx)];
+                        neighborPtr = nodeAt(getLocalIndexHash(neighborIdx));
                         if (neighborPtr == nullptr) {
                             cout << rog_map::RED << " -- [RM] neighborPtr is null, which should not happen" <<
                                  rog_map::RESET << endl;
@@ -677,21 +702,22 @@ namespace path_search {
                             neighborPtr->father_ptr = current;
                             neighborPtr->distance_score = distance_score;
                             neighborPtr->total_score = distance_score + heu_score;
-                            open_set.push(neighborPtr); //put neighbor in open set and record it.
+                            open_set.push({neighborPtr->total_score,neighborPtr}); //put neighbor in open set and record it.
                         } else if (distance_score < neighborPtr->distance_score) {
                             neighborPtr->father_ptr = current;
                             neighborPtr->distance_score = distance_score;
                             neighborPtr->total_score = distance_score + heu_score;
+                            open_set.push({neighborPtr->total_score,neighborPtr});
                         }
                     }
-            double time_2 = ros_ptr_->getSimTime();
+            double time_2 = wallSeconds();
             if (!cfg_.visual_process && (time_2 - time_1) > 0.2) {
                 fmt::print(fg(fmt::color::indian_red),
                            "Failed in A star path searching !!! 0.2 seconds time limit exceeded.\n");
                 return TIME_OUT;
             }
         }
-        double time_2 = ros_ptr_->getSimTime();
+        double time_2 = wallSeconds();
         if ((time_2 - time_1) > 0.1) {
             fmt::print(fg(fmt::color::indian_red), "Time consume in A star path finding is {} s, iter={}.\n",
                        (time_2 - time_1),

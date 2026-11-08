@@ -23,7 +23,7 @@ int main(int argc,char** argv) {
   auto clock=std::make_shared<navigation::PlannerClock>([&]{return now;},[](const auto& m){std::cerr<<m<<'\n';});
   navigation::RoutePlanner planner(argv[1],map,clock);
   require(planner.setGoal(1,{1,1,1},0),"goal rejected");
-  require(planner.plan()==super_utils::FAILED,"planned without required Air-FAR route");
+  require(planner.plan()==super_utils::FAILED,"planned without required global route route");
   navigation::Route route{"map",1,10,1,now,{{0,0,1},{1,0,1},{1,1,1}}};
   require(planner.accept(route,10),"route rejected");
   const auto ret=planner.plan();
@@ -31,7 +31,7 @@ int main(int argc,char** argv) {
   require(ret==super_utils::SUCCESS,"SUPER failed to produce safe trajectory from route");
   require(!planner.position().empty() && planner.committedStillFree(),"committed curve not certified");
   bool corner=false;for(const auto& p:clock->latest_frontend)if((p-Eigen::Vector3d(1,0,1)).norm()<1e-6)corner=true;
-  require(corner,"Air-FAR route corner did not reach SUPER geometric frontend");
+  require(corner,"global route route corner did not reach SUPER geometric frontend");
   const auto traj=planner.position();
   require((traj.getPos(0)-body.p).norm()<1e-9,"planner moved measured initial state to a voxel center");
   require((traj.getPos(traj.getTotalDuration())-Eigen::Vector3d(1,1,1)).norm()<.1,"goal terminal position wrong");
@@ -71,5 +71,5 @@ int main(int argc,char** argv) {
   clipped.invalidateRoute();
   require(clipped.plan()==super_utils::FAILED,"planned without a fresh post-stop route");
   require(clipped.braking() && clipped.position().start_WT==brake.start_WT,"failed replan resumed unsafe old trajectory");
-  std::cout<<"Air-FAR polyline -> SUPER frontend -> certified stopping polynomial passed\n";
+  std::cout<<"global route polyline -> SUPER frontend -> certified stopping polynomial passed\n";
 }

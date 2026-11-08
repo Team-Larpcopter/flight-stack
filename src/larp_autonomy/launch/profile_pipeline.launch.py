@@ -17,10 +17,10 @@ def nodes(context):
     def value(name):
         return LaunchConfiguration(name).perform(context)
     args = {name: value(name) for name in (
-        'rig_file', 'navigation_config', 'airfar_config', 'cad_prior_file', 'boundary_config',
+        'rig_file', 'navigation_config', 'route_backend', 'cad_prior_file', 'boundary_config',
         'initial_map_x', 'initial_map_y', 'initial_map_z', 'initial_map_yaw',
         'map_heading_ned', 'map_origin_ned_x', 'map_origin_ned_y', 'map_origin_ned_z')}
-    for name in ('rig_file', 'navigation_config', 'airfar_config', 'cad_prior_file', 'boundary_config'):
+    for name in ('rig_file', 'navigation_config', 'cad_prior_file', 'boundary_config'):
         if not Path(args[name]).is_file():
             raise ValueError('Missing profiling input: ' + name + '=' + args[name])
     result = []
@@ -50,8 +50,8 @@ def nodes(context):
 def generate_launch_description():
     default_config = str(Path(get_package_share_directory('larp_localization')) /
                          'config/oak_d_s2/estimator_config.yaml')
-    required = ('rig_file', 'navigation_config', 'airfar_config', 'cad_prior_file', 'boundary_config')
-    defaults = {'start_localization': 'true', 'estimator_config': default_config,
+    required = ('rig_file', 'navigation_config', 'cad_prior_file', 'boundary_config')
+    defaults = {'route_backend': 'super_astar', 'start_localization': 'true', 'estimator_config': default_config,
                 'initial_map_x': '0.0', 'initial_map_y': '0.0', 'initial_map_z': '0.0',
                 'initial_map_yaw': '0.0', 'map_heading_ned': '0.0',
                 'map_origin_ned_x': '0.0', 'map_origin_ned_y': '0.0', 'map_origin_ned_z': '0.0'}

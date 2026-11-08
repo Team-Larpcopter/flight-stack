@@ -15,6 +15,9 @@ def nodes(context):
     mode = value('mode')
     if mode not in ('shadow', 'simulation', 'hardware'):
         raise ValueError('mode must be shadow, simulation, or hardware')
+    backend = value('route_backend')
+    if backend != 'super_astar':
+        raise ValueError('route_backend must be super_astar')
     active = mode != 'shadow'
     aligned = value('alignment_verified').lower() == 'true'
     if active and (not aligned or not value('mission_id').strip()):
@@ -34,11 +37,8 @@ def nodes(context):
         Node(package='larp_navigation', executable='depth_map_node', output='screen',
              parameters=[value('boundary_config'), {'rig_file': value('rig_file'),
                          'config_file': value('navigation_config'), 'cad_prior_file': value('cad_prior_file'),
-                         'require_hard_boundary': True, 'static_cad_only': True, 'use_sim_time': clock}],
+                         'require_hard_boundary': True, 'static_cad_only': True, 'route_backend': backend, 'use_sim_time': clock}],
              remappings=remaps),
-        Node(package='larp_navigation', executable='airfar_route_node', name='airfar_planner', output='screen',
-             parameters=[value('airfar_config'), {'navigation_config_file': value('navigation_config'),
-                         'snapshot_mode': True, 'static_cad_only': True, 'main_run_freq': 10.0, 'use_sim_time': clock}], remappings=remaps),
         Node(package='larp_autonomy', executable='trajectory_bridge', output='screen',
              parameters=[{'simulation_only': mode == 'simulation', 'hardware_enabled': mode == 'hardware',
                           'alignment_verified': aligned, 'mission_id': value('mission_id'),
@@ -54,8 +54,8 @@ def nodes(context):
 
 
 def generate_launch_description():
-    required = ('rig_file', 'navigation_config', 'airfar_config', 'cad_prior_file', 'boundary_config')
-    defaults = {'mode': 'shadow', 'alignment_verified': 'false', 'mission_id': '',
+    required = ('rig_file', 'navigation_config', 'cad_prior_file', 'boundary_config')
+    defaults = {'mode': 'shadow', 'route_backend': 'super_astar', 'alignment_verified': 'false', 'mission_id': '',
                 'map_heading_ned': '0.0', 'map_origin_ned_x': '0.0', 'map_origin_ned_y': '0.0',
                 'map_origin_ned_z': '0.0', 'initial_map_x': '0.0', 'initial_map_y': '0.0',
                 'initial_map_z': '0.0', 'initial_map_yaw': '0.0',
