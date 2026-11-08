@@ -1,4 +1,6 @@
-# Atomic classified ROG-Map snapshot. Header is depth CAPTURE time in map frame.
+# Atomic classified ROG-Map geometry in map frame. Dynamic mode: depth CAPTURE
+# time. Explicit static CAD mode: initial registration pose time; only matching
+# fresh MapState messages authorize routing against retained geometry.
 # Within [lower, upper], cells absent from both clouds are UNKNOWN, never free.
 # Each cloud contains voxel centers; occupied wins if classifications overlap.
 std_msgs/Header header

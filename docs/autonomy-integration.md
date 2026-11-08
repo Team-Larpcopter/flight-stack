@@ -32,8 +32,8 @@ and map updates are disabled in the current hardware path.
 `px4_bench_node` publishes external vision and certified setpoints only with
 explicit enablement, fresh disarmed status and healthy VIO. Setpoints additionally
 require verified map/NED alignment. It sends no arming, mode-change or offboard
-heartbeat messages. The existing flight executive remains simulation-only and
-must not be launched on hardware. PX4 messages match the hardware image's
+heartbeat messages. The executive defaults to disabled and requires explicit simulation or hardware
+enablement; see [planner integration](planner-executive-integration.md). PX4 messages match the hardware image's
 release/1.16 revision recorded in `src/px4_msgs/UPSTREAM_REVISION`.
 
 ## Verification on 2026-11-07
@@ -50,9 +50,9 @@ release/1.16 revision recorded in `src/px4_msgs/UPSTREAM_REVISION`.
 - Fixed shutdown teardown of global ROS objects after a reproducible exit crash.
 - PX4 UART telemetry was received and reported disarmed without failsafe. Actual
   external-vision fusion and planner-to-PX4 consumption have not been verified.
-- Planner compilation was blocked by missing ROS PCL packages; dependencies were
-  installed in an isolated image, but a successful full planner build/run on the
-  Jetson is still outstanding.
+- The later planner integration passed 134 Python and 16 C++/ROS checks on Jetson,
+  including synthetic valid routes/trajectories and stale-localization rejection.
+  Live combined-system performance remains a separate qualification step.
 
 Moving accuracy, surveyed airframe mounting, map/PX4 registration, reset handling,
 full-system latency under planner load and real flight remain unqualified.
@@ -77,27 +77,18 @@ raw does not mean integer sensor counts or unaligned accel/gyro packets. Existin
 calibration directories must be regenerated or have their estimator YAML updated;
 changing the source templates does not rewrite deployed evidence.
 
-## Running localization
+## Building and running from this repository
 
-`jetson/integration_image/Dockerfile` fixes inherited Boost header/library mismatch
-and installs planner dependencies. `build_sdk.sh` builds pinned DepthAI 3.10;
-include its install `lib` directory in `LD_LIBRARY_PATH`.
+Use [the fresh-clone workflow](jetson-fresh-clone.md). It pulls a public Humble
+image, downloads checksum-pinned DepthAI, and builds this checkout's own `install/`
+and `sdk_install/`. No separate integration folder, prepared container, team
+image, IMU correction file or manually generated camera calibration is required.
 
-`launch_localization.sh WORKSPACE SECONDS` runs a bounded calibration/localization
-check inside an isolated container, saving fresh calibration and evidence. Set
-`ROS_DOMAIN_ID` to the vehicle's configured domain and `DDS_PROFILE` to its host
-Fast DDS XML file. It refuses to run beside known competing camera owners.
+`bash jetson/launch_localization_tmux.sh` creates its container when absent and
+runs the native camera and sqrtVINS in foreground panes. It verifies that an
+existing container mounts this same checkout. The bundled OAK-D S2 configuration
+is the default. `CALIBRATION_DIR` can intentionally override it for another rig.
 
-For indefinite foreground tmux operation use `localization_pane.sh camera`,
-`localization_pane.sh vio`, and `localization_pane.sh monitor` in separate panes
-inside the correctly configured container. The default is the bundled target-camera configuration in
-`src/larp_localization/config/oak_d_s2`; no external calibration file is required.
-`CALIBRATION_DIR` optionally selects a different generated calibration directory. `WORKSPACE`, `INSTALL_PREFIX`,
-`SDK_PREFIX` and `VIO_VERBOSITY` are configurable. No
-host-specific calibration artifacts are embedded in these new launch helpers.
-
-Use `jetson/foxglove/larpcopter-autonomy-localization.json` for the new topics.
-Pose/path frame is `global`, at the IMU origin. Images use optional `/viz` preview
-relays; previews do not feed the estimator. The existing `larp` CLI and historical
-localization launch files are retained from the hardware branch and target its
-legacy stack; they are not the native entry point described here.
+Use `jetson/foxglove/larpcopter-autonomy-localization.json` for localization topics.
+Pose/path frame is `global`, at the IMU origin. The legacy `larp` CLI targets the
+organizer stack and is not required for this native entry point.

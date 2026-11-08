@@ -1,12 +1,20 @@
-ARG BASE=skybeta-team:0.3.2
+# Public multi-architecture Humble image; no organizer or local team image needed.
+ARG BASE=ros:humble-ros-base-jammy
 FROM ${BASE}
 SHELL ["/bin/bash", "-c"]
-# The inherited image reports Boost 1.74 packages but contains 1.80 headers.
-# Restore a consistent distro toolchain in this isolated image.
-RUN apt-get update && apt-get install -y --reinstall libboost1.74-dev \
- && grep -q '^#define BOOST_VERSION 107400$' /usr/include/boost/version.hpp \
- && rm -rf /var/lib/apt/lists/*
-# Native Air-FAR/ROG-Map/SUPER dependencies missing from the base team image.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ros-humble-pcl-msgs ros-humble-pcl-conversions libpcl-dev \
+    build-essential cmake ninja-build git curl ca-certificates pkg-config unzip zip \
+    python3-colcon-common-extensions python3-pytest python3-numpy python3-scipy \
+    python3-opencv python3-yaml libeigen3-dev libyaml-cpp-dev libopencv-dev \
+    libboost-all-dev libusb-1.0-0-dev libudev-dev libpcl-dev \
+    ros-humble-pcl-msgs ros-humble-pcl-conversions \
+    ros-humble-cv-bridge ros-humble-image-transport ros-humble-message-filters \
+    ros-humble-tf2-ros ros-humble-tf2-geometry-msgs \
  && rm -rf /var/lib/apt/lists/*
+# Also tolerate the historically used team base with inconsistent Boost headers.
+RUN if ! grep -q '^#define BOOST_VERSION 107400$' /usr/include/boost/version.hpp; then \
+      apt-get update && apt-get install -y --reinstall libboost1.74-dev \
+      && rm -rf /var/lib/apt/lists/*; fi \
+ && grep -q '^#define BOOST_VERSION 107400$' /usr/include/boost/version.hpp \
+ && pkg-config --modversion opencv4 \
+ && python3 -c 'import cv2; print(cv2.__version__)'

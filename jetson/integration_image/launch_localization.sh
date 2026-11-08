@@ -16,25 +16,24 @@ if [[ ${1:-} != --inside ]]; then
   [[ -r $dds_profile ]] || { echo "DDS profile missing: $dds_profile"; exit 2; }
   exec docker run --rm --init --name larp-localization-bench --network host --ipc host \
     --device-cgroup-rule='c 189:* rmw' \
-    -v /dev/bus/usb:/dev/bus/usb -v "$workspace:/integration" \
-    -v "$script:/bench-launch.sh:ro" -w /integration \
+    -v /dev/bus/usb:/dev/bus/usb -v "$workspace:/flight-stack" \
+    -v "$script:/bench-launch.sh:ro" -w /flight-stack \
     -v "$dds_profile:/etc/skybeta/fastdds.xml:ro" \
     -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/skybeta/fastdds.xml \
     -e FASTDDS_DEFAULT_PROFILES_FILE=/etc/skybeta/fastdds.xml \
     -e ROS_DOMAIN_ID -e OPENBLAS_NUM_THREADS=1 -e OMP_NUM_THREADS=1 \
-    "${BENCH_IMAGE:-larp-integration:20261107}" bash /bench-launch.sh --inside "$duration"
+    "${BENCH_IMAGE:-larp-flight-stack:humble}" bash /bench-launch.sh --inside "$duration"
 fi
 seconds=${2:-300}
 source /opt/ros/humble/setup.bash
-source /root/skybeta_ws/install/local_setup.bash
-source /integration/install_clean/setup.bash
-export LD_LIBRARY_PATH="/integration/sdk_install/lib:${LD_LIBRARY_PATH:-}"
-export PYTHONPATH="/integration/src/larp_autonomy:${PYTHONPATH:-}"
-run=$(mktemp -d /integration/evidence/localization-XXXXXXXX)
+source /flight-stack/install/setup.bash
+export LD_LIBRARY_PATH="/flight-stack/sdk_install/lib:${LD_LIBRARY_PATH:-}"
+export PYTHONPATH="/flight-stack/src/larp_autonomy:${PYTHONPATH:-}"
+run=$(mktemp -d /flight-stack/evidence/localization-XXXXXXXX)
 chmod a+rx "$run"
 echo "Logs and fresh calibration: $run"
-native=/integration/install_clean/larp_hardware/lib/larp_hardware/oak_native_node
-vio=/integration/install_clean/ov_srvins/lib/ov_srvins/run_subscribe_msckf
+native=/flight-stack/install/larp_hardware/lib/larp_hardware/oak_native_node
+vio=/flight-stack/install/ov_srvins/lib/ov_srvins/run_subscribe_msckf
 [[ -x $native && -x $vio ]] || { echo 'Missing localization binaries'; exit 2; }
 cleanup() {
   trap - EXIT INT TERM
@@ -64,7 +63,7 @@ python3 -m larp_autonomy.native_calibration \
   --extrinsics "$run/factory.json.extrinsics.json" \
   --left "$run/raw.csv.left.json" --right "$run/raw.csv.right.json" \
   --out "$run/calibration" \
-  --template-dir /integration/src/larp_localization/config/oak_d_s2 --bench-only
+  --template-dir /flight-stack/src/larp_localization/config/oak_d_s2 --bench-only
 setsid "$vio" --ros-args -r __ns:=/autonomy \
   -r /sim/processed/vio:=/autonomy/processed_vio \
   -p config_path:="$run/calibration/estimator_config.yaml" \

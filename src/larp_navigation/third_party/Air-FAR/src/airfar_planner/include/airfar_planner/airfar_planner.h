@@ -11,6 +11,7 @@
 #include "scan_handler.h"
 #include "graph_msger.h"
 #include <dronehacks_msgs/msg/map_snapshot.hpp>
+#include <dronehacks_msgs/msg/map_state.hpp>
 #include <dronehacks_msgs/msg/navigation_goal.hpp>
 #include <dronehacks_msgs/msg/route_polyline.hpp>
 
@@ -42,6 +43,10 @@ public:
     void Loop(); // Main Loop Function
 
 private:
+    bool static_cad_only_{false};
+    Point3D graph_update_position_;
+    std::vector<int> graph_update_layers_;
+    int graph_settle_updates_{0};
     bool snapshot_mode_{true}, goal_active_{false}, goal_pending_{false}, snapshot_dirty_{false};
     uint64_t epoch_{0}, map_revision_{0}, goal_id_{0}, route_id_{0};
     std_msgs::msg::Header snapshot_header_;
@@ -50,6 +55,9 @@ private:
     rclcpp::Subscription<dronehacks_msgs::msg::MapSnapshot>::SharedPtr snapshot_sub_;
     rclcpp::Subscription<dronehacks_msgs::msg::NavigationGoal>::SharedPtr mission_goal_sub_;
     rclcpp::Publisher<dronehacks_msgs::msg::RoutePolyline>::SharedPtr route_pub_;
+    rclcpp::Subscription<dronehacks_msgs::msg::MapState>::SharedPtr map_state_sub_;
+    void MapStateCallback(dronehacks_msgs::msg::MapState::ConstSharedPtr msg);
+    void RefreshSurroundClouds();
     void SnapshotCallback(dronehacks_msgs::msg::MapSnapshot::ConstSharedPtr msg);
     void GoalCallback(dronehacks_msgs::msg::NavigationGoal::ConstSharedPtr msg);
     void ApplyPendingGoal();

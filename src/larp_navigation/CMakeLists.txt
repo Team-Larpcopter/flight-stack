@@ -16,12 +16,16 @@ find_package(visualization_msgs REQUIRED)
 find_package(pcl_msgs REQUIRED)
 find_package(message_filters REQUIRED)
 find_package(dronehacks_msgs REQUIRED)
+find_package(flight_executive_msgs REQUIRED)
 find_path(PCL_CONVERSIONS_INCLUDE pcl_conversions/pcl_conversions.h
   PATHS /opt/ros/$ENV{ROS_DISTRO}/include/pcl_conversions REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(PCL REQUIRED IMPORTED_TARGET pcl_common pcl_io pcl_filters)
+# Ubuntu 22.04 (Jetson/Humble) installs version-suffixed PCL pkg-config files.
+pkg_search_module(PCL_COMMON REQUIRED IMPORTED_TARGET pcl_common pcl_common-1.12)
+pkg_search_module(PCL_IO REQUIRED IMPORTED_TARGET pcl_io pcl_io-1.12)
+pkg_search_module(PCL_FILTERS REQUIRED IMPORTED_TARGET pcl_filters pcl_filters-1.12)
 set(SUPER_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/SUPER)
 file(GLOB_RECURSE ROG_SRC CONFIGURE_DEPENDS
   ${SUPER_ROOT}/rog_map/src/rog_map/*.cpp
@@ -30,7 +34,7 @@ add_library(rog_map_core STATIC ${ROG_SRC})
 target_include_directories(rog_map_core PUBLIC ${SUPER_ROOT}/rog_map/include ${PCL_CONVERSIONS_INCLUDE})
 target_compile_definitions(rog_map_core PUBLIC USE_ROS2 ORIGIN_AT_CORNER FMT_HEADER_ONLY
   ROOT_DIR="${CMAKE_CURRENT_BINARY_DIR}/")
-target_link_libraries(rog_map_core Eigen3::Eigen PkgConfig::PCL yaml-cpp)
+target_link_libraries(rog_map_core Eigen3::Eigen PkgConfig::PCL_COMMON PkgConfig::PCL_IO PkgConfig::PCL_FILTERS yaml-cpp)
 ament_target_dependencies(rog_map_core rclcpp sensor_msgs visualization_msgs pcl_msgs message_filters)
 file(GLOB_RECURSE SUPER_SRC CONFIGURE_DEPENDS
   ${SUPER_ROOT}/super_planner/src/*.cpp)
@@ -123,7 +127,8 @@ if(BUILD_AIRFAR)
   find_package(route_goal_msg REQUIRED)
   find_package(visibility_graph_msg REQUIRED)
   find_package(OpenCV REQUIRED)
-  pkg_check_modules(PCL_ROUTE REQUIRED IMPORTED_TARGET pcl_common pcl_filters pcl_search pcl_kdtree)
+  pkg_search_module(PCL_SEARCH REQUIRED IMPORTED_TARGET pcl_search pcl_search-1.12)
+  pkg_search_module(PCL_KDTREE REQUIRED IMPORTED_TARGET pcl_kdtree pcl_kdtree-1.12)
   set(AIRFAR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/Air-FAR/src/airfar_planner)
   set(AIRFAR_SOURCES airfar_planner dynamic_graph planner_visualizer utility graph_planner
     contour_detector contour_graph map_handler scan_handler graph_msger terrain_planner)
@@ -131,7 +136,7 @@ if(BUILD_AIRFAR)
   list(TRANSFORM AIRFAR_SOURCES APPEND .cpp)
   add_executable(airfar_route_node ${AIRFAR_SOURCES})
   target_include_directories(airfar_route_node PRIVATE ${AIRFAR}/include ${PCL_CONVERSIONS_INCLUDE} ${OpenCV_INCLUDE_DIRS})
-  target_link_libraries(airfar_route_node rog_map_core navigation_interfaces Eigen3::Eigen PkgConfig::PCL_ROUTE ${OpenCV_LIBRARIES})
+  target_link_libraries(airfar_route_node rog_map_core navigation_interfaces Eigen3::Eigen PkgConfig::PCL_COMMON PkgConfig::PCL_FILTERS PkgConfig::PCL_SEARCH PkgConfig::PCL_KDTREE ${OpenCV_LIBRARIES})
   ament_target_dependencies(airfar_route_node rclcpp std_msgs sensor_msgs nav_msgs geometry_msgs
     visualization_msgs std_srvs pcl_msgs message_filters nav_graph_msg route_goal_msg visibility_graph_msg dronehacks_msgs)
   target_sources(airfar_route_node PRIVATE src/navigation/airfar_snapshot_adapter.cpp)
@@ -139,4 +144,19 @@ endif()
 
 install(TARGETS body_odometry_node ev_source_node depth_map_node airfar_route_node probe_route_frontend DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
+
+add_executable(planner_latency_native src/navigation/planner_latency_native.cpp)
+ament_target_dependencies(planner_latency_native rclcpp sensor_msgs nav_msgs geometry_msgs dronehacks_msgs flight_executive_msgs)
+install(TARGETS planner_latency_native DESTINATION lib/${PROJECT_NAME})
+if(BUILD_TESTING AND BUILD_AIRFAR)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME static_pipeline COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/static_pipeline_smoke.py
+    --mapper $<TARGET_FILE:depth_map_node> --airfar $<TARGET_FILE:airfar_route_node>
+    --config ${CMAKE_CURRENT_SOURCE_DIR}/config/navigation.yaml
+    --airfar-config ${CMAKE_CURRENT_SOURCE_DIR}/config/airfar_geometry.yaml)
+  set_tests_properties(static_pipeline PROPERTIES TIMEOUT 180
+    ENVIRONMENT "ROS_DOMAIN_ID=187;ROS_LOCALHOST_ONLY=1")
+endif()
+
 ament_package()

@@ -1,3 +1,7 @@
+> Planner integration now provides an explicit `hardware_enabled` opt-in.
+> See [planner integration](../../docs/planner-executive-integration.md) for current
+> launch modes. This adds a command path, not hardware flight qualification.
+
 # Simulate takeoff, hold, and trajectory tracking
 
 This Python ROS 2 node waits for the pilot to arm and then switch to Position,
@@ -86,7 +90,10 @@ types. Telemetry subscriptions use best-effort, volatile QoS.
 The `simulation_only` parameter defaults to false; the simulation launch file
 sets it to true. This is an operator acknowledgement, not a reliable way to
 distinguish simulator telemetry from a physical vehicle. Keep this ROS domain
-and XRCE agent isolated from hardware. No hardware launch path is provided.
+and XRCE agent isolated from hardware when using simulation mode. The planner
+mission launch additionally provides explicit `mode:=hardware`, which selects
+`hardware_enabled:=true` instead. Both flags default false, and exactly one must
+be enabled. See the integration document linked above for launch prerequisites.
 
 ## State and failure behavior
 

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Run inside the isolated toolchain image, with /integration mounted.
+# Run inside the toolchain image, using this flight-stack checkout.
 # Downloads/builds dependencies only; no device access is needed.
-source_dir=${1:-/integration/sdk-source/depthai-core-v3.10.0}
-build_dir=${2:-/integration/build_sdk}
-install_dir=${3:-/integration/sdk_install}
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+source_dir=${1:-$root/sdk-source/depthai-core-v3.10.0}
+build_dir=${2:-$root/build_sdk}
+install_dir=${3:-$root/sdk_install}
 cmake -S "$source_dir" -B "$build_dir" \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON \
   -DCMAKE_INSTALL_PREFIX="$install_dir" \

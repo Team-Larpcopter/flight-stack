@@ -8,16 +8,18 @@
 | Path | Role |
 | --- | --- |
 | `src/` | First-party ROS 2 packages |
-| `src/px4_msgs/` | Pinned PX4 v1.17 message submodule |
+| `src/px4_msgs/` | Vendored PX4 messages; revision in `UPSTREAM_REVISION` |
 | `docs/` | Contributor and assistant guidance |
 | `.github/` | PR template and GitHub metadata |
 | `build/`, `install/`, `log/` | Generated colcon output (do not commit) |
+
+For a fresh Jetson checkout, use [the reproducible container build](jetson-fresh-clone.md).
+The commands below assume all package and SDK dependencies are already installed.
 
 ## Build and run
 
 ```bash
 cd /path/to/flight_stack_ws
-git submodule update --init --recursive
 source /opt/ros/humble/setup.bash
 # optional: source any required overlay workspaces
 colcon build --symlink-install

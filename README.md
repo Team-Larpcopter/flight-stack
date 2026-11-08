@@ -3,18 +3,24 @@
 ROS 2 application packages for Larpcopter flight software. A local checkout is
 often named `flight_stack_ws`.
 
-## Quick start
+## Jetson quick start (native camera + sqrtVINS)
+
+Clone `main` on the provisioned Jetson and build the native stack:
 
 ```bash
-cd /path/to/flight_stack_ws
-git submodule update --init --recursive
-source /opt/ros/humble/setup.bash
-colcon build --symlink-install
-source install/local_setup.bash
+git clone https://github.com/Team-Larpcopter/flight-stack.git
+cd flight-stack
+bash jetson/build.sh
 ```
 
-See [docs/workspace.md](docs/workspace.md) for layout and verification
-expectations.
+This builds the pinned DepthAI SDK, C++ camera driver, sqrtVINS, navigation and
+executive packages, then runs hardware-independent checks. It does not start
+sensors. Sources are vendored; there are no Git submodules. The build pulls the public multi-architecture ROS 2 Humble image; no existing
+team image, integration workspace or calibration file is required.
+
+See [fresh-clone build and launch](docs/jetson-fresh-clone.md) for prerequisites,
+container creation and the two-pane camera/sqrtVINS launcher, and
+[workspace setup](docs/workspace.md) for package development.
 
 ## Contributing
 

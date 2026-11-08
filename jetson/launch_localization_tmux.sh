@@ -8,8 +8,8 @@ usage() {
 }
 if [[ ${1:-} == --help || ${1:-} == -h ]]; then usage; exit 0; fi
 if (($#>1)); then usage >&2; exit 2; fi
-container=${CONTAINER:-larp-localization-ready}
-session=${SESSION:-localization}
+container=${CONTAINER:-flight-stack-localization}
+session=${SESSION:-flight-stack-localization}
 [[ $session =~ ^[a-zA-Z0-9_-]+$ ]] || { echo 'Invalid tmux session name' >&2; exit 2; }
 command -v docker >/dev/null
 command -v tmux >/dev/null
@@ -27,14 +27,20 @@ if tmux has-session -t "=$session" 2>/dev/null; then
   attach
   exit 0
 fi
-calibration=${1:-${CALIBRATION_DIR:-${WORKSPACE:-/integration}/src/larp_localization/config/oak_d_s2}}
+calibration=${1:-${CALIBRATION_DIR:-${WORKSPACE:-/flight-stack}/src/larp_localization/config/oak_d_s2}}
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 pane_script="$script_dir/integration_image/localization_pane.sh"
 [[ -r $pane_script ]] || { echo "Missing pane helper: $pane_script" >&2; exit 2; }
 if ! running=$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null); then
-  echo "Container '$container' does not exist; create the configured localization container first." >&2
-  exit 2
+  CONTAINER="$container" bash "$script_dir/create_localization_container.sh"
+  running=false
 fi
+root=$(cd "$script_dir/.." && pwd)
+mounted=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/flight-stack"}}{{.Source}}{{end}}{{end}}' "$container")
+[[ $mounted == "$root" ]] || {
+  echo "Container $container belongs to another checkout; set a different CONTAINER and SESSION." >&2
+  exit 2
+}
 if [[ $running != true ]]; then docker start "$container" >/dev/null; fi
 # Calibration is a path inside the container, not on the host.
 docker exec -e "CALIBRATION_DIR=$calibration" "$container" bash -c '
