@@ -50,3 +50,17 @@ class VoxelDelta:
                 changed.append((slot, self.chunks[slot]))
         self.metadata = metadata
         return changed
+
+
+def hide_boundary_cells(xyz, lower, upper, resolution):
+    """Visualization-only removal of the immutable occupied boundary shell."""
+    if len(lower) == 0 and len(upper) == 0:
+        return xyz
+    lower, upper = np.asarray(lower), np.asarray(upper)
+    if (lower.shape != (3,) or upper.shape != (3,) or
+            not np.isfinite(lower).all() or not np.isfinite(upper).all() or
+            np.any(upper <= lower) or not np.isfinite(resolution) or resolution <= 0):
+        raise ValueError('Invalid visualization boundary')
+    # Match ROG outsideHardBoundary(pos, inflated=false), not body inflation.
+    pad = resolution * .5
+    return xyz[np.all((xyz > lower + pad) & (xyz < upper - pad), axis=1)]

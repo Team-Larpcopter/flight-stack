@@ -31,3 +31,13 @@ def test_cloud_padding_endianness_and_nan():
                fields=[NS(name=n, datatype=7, count=1, offset=i*4)
                        for i, n in enumerate(('x', 'y', 'z'))])
     np.testing.assert_array_equal(cloud_xyz(cloud), [[1, 2, 3]])
+
+
+def test_boundary_filter_keeps_interior_obstacles_and_does_not_mutate_map():
+    from larp_autonomy.voxel_delta import hide_boundary_cells
+    xyz = np.array([[0, 1, 1], [2, 1, 1], [1, 0, 1], [1, 2, 1],
+                    [1, 1, 0], [1, 1, 2], [1, 1, 1], [.03, 1, 1]], dtype=float)
+    original = xyz.copy()
+    np.testing.assert_array_equal(hide_boundary_cells(xyz, [0]*3, [2]*3, .05), xyz[6:])
+    np.testing.assert_array_equal(xyz, original)
+    assert hide_boundary_cells(xyz, [], [], .05) is xyz

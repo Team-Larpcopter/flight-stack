@@ -9,12 +9,16 @@ def main():
     from rclpy.qos import QoSProfile, DurabilityPolicy, qos_profile_sensor_data
     from dronehacks_msgs.msg import MapSnapshot, RoutePolyline, NavigationGoal
     from visualization_msgs.msg import Marker, MarkerArray
-    from .voxel_delta import CHUNK_COUNT, VoxelDelta, cloud_xyz
+    from .voxel_delta import CHUNK_COUNT, VoxelDelta, cloud_xyz, hide_boundary_cells
     from nav_msgs.msg import Path, Odometry
     from geometry_msgs.msg import PoseStamped, Point
     from std_msgs.msg import Bool
     rclpy.init()
     node = Node('planner_visualization')
+    from rcl_interfaces.msg import ParameterDescriptor
+    array_param = ParameterDescriptor(dynamic_typing=True)
+    boundary_lower = node.declare_parameter('hide_boundary_lower', [], array_param).value
+    boundary_upper = node.declare_parameter('hide_boundary_upper', [], array_param).value
     latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
     # One retained writer per chunk: bridge 3.6 caches each writer separately,
     # replaying the current map to late clients without periodic full broadcasts.
@@ -70,7 +74,8 @@ def main():
             snapshot = latest['map']
             try:
                 changed = delta.update(
-                    cloud_xyz(snapshot.occupied),
+                    hide_boundary_cells(cloud_xyz(snapshot.occupied), boundary_lower,
+                                        boundary_upper, snapshot.resolution),
                     [snapshot.lower.x, snapshot.lower.y, snapshot.lower.z],
                     [snapshot.upper.x, snapshot.upper.y, snapshot.upper.z],
                     snapshot.resolution, snapshot.header.frame_id,
