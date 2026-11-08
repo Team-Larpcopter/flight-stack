@@ -112,3 +112,7 @@ host environment. `WORKSPACE`, `INSTALL_PREFIX`, and `SDK_PREFIX`
 are also forwarded when provided. Defaults use this checkout mounted at `/flight-stack` with `install/` and `sdk_install/`.
 The helper copied into the container comes from this checkout, so it does not rely
 on an older manually installed `localization_pane.sh`.
+
+## External vision launcher
+
+See [Launch external vision in tmux](external_visionlaunch.md) for the four-pane camera, sqrtVINS, DDS agent, and PX4 bridge launcher, including verified stop controls.
