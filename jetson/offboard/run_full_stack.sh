@@ -38,8 +38,11 @@ if [[ -n ${DDS_PROFILE:-} ]]; then
        -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/flight-stack/dds.xml
        -e FASTDDS_DEFAULT_PROFILES_FILE=/etc/flight-stack/dds.xml)
 fi
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+image=${RUNTIME_IMAGE:-larp-flight-stack:arm64-runtime}
+source "$here/runtime_mounts.sh"
 tty=(); if [[ -t 0 && -t 1 ]]; then tty=(-it); fi
-exec docker run --rm --init "${tty[@]}" --name "${CONTAINER:-flight-stack-runtime}" \
+exec docker run --rm --init "${runtime_mounts[@]}" "${tty[@]}" --name "${CONTAINER:-flight-stack-runtime}" \
   --runtime nvidia --network host --ipc host --device-cgroup-rule='c 189:* rmw' \
   -v /dev/bus/usb:/dev/bus/usb "${devices[@]}" "${dds[@]}" \
   -v "$(realpath "$DEPLOYMENT_CONFIG"):/config:ro" -e ROS_DOMAIN_ID \

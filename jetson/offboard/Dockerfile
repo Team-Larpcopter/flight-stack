@@ -4,8 +4,7 @@ ARG BASE=larp-flight-stack:humble
 FROM ${BASE}
 ADD gpu-runtime.tar.gz /
 COPY engine /models/las2_m_320x480_d192_fp16.engine
-# Stack updates leave the large GPU dependency layer cached.
-ADD stack-runtime.tar.gz /
+# Application, ROS and agent files are mounted from the extracted bundle.
 ENV NVIDIA_VISIBLE_DEVICES=all NVIDIA_DRIVER_CAPABILITIES=compute,utility
 ENV LD_LIBRARY_PATH=/flight-stack/sdk_install/lib:/usr/local/cuda-12.6/targets/aarch64-linux/lib:/usr/lib/aarch64-linux-gnu/nvidia
 ENV PYTHONPATH=/usr/lib/python3.10/dist-packages

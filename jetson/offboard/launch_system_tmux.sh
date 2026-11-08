@@ -14,9 +14,7 @@ if tmux has-session -t "$session" 2>/dev/null; then
   tmux set-option -t "$session" mouse on
   exec tmux attach-session -t "$session"
 fi
-if [[ -f $here/stack-runtime.tar.gz && ( ! -f $here/.assembled || $here/stack-runtime.tar.gz -nt $here/.assembled || $here/Dockerfile -nt $here/.assembled ) ]]; then
-  bash "$here/load_image.sh"
-fi
+source "$here/runtime_mounts.sh"
 config=$(realpath "$DEPLOYMENT_CONFIG")
 [[ -f $config/mission.yaml ]] || { echo 'Missing DEPLOYMENT_CONFIG/mission.yaml' >&2; exit 2; }
 transport=${PX4_TRANSPORT:-udp4}; devices=()
@@ -40,9 +38,9 @@ if docker container inspect "$container" >/dev/null 2>&1; then
   echo "Container $container already exists. Stop its processes and remove it before a new mission." >&2
   exit 2
 fi
-docker run --rm --network none -v "$config:/config:ro" "$image" \
+docker run --rm --network none "${runtime_mounts[@]}" -v "$config:/config:ro" "$image" \
   python3 -c 'import sys; from larp_autonomy.runtime_config import load_config; load_config("/config/mission.yaml",sys.argv[1])' "$mode"
-docker create --init --name "$container" --runtime nvidia --network host --ipc host \
+docker create --init --name "$container" "${runtime_mounts[@]}" --runtime nvidia --network host --ipc host \
   --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb "${devices[@]}" "${dds[@]}" \
   -v "$config:/config:ro" -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}" \
   -e PX4_TRANSPORT="$transport" -e PX4_PORT="${PX4_PORT:-8888}" -e PX4_BAUD="${PX4_BAUD:-921600}" \
