@@ -1,7 +1,7 @@
 # Fresh clone on Jetson
 
 The native production path is OAK stereo/raw aligned IMU → sqrtVINS → optional
-CAD/Air-FAR/SUPER planning. ROS 2 Humble runs in Docker. No external IMU
+CAD/SUPER A* planning. ROS 2 Humble runs in Docker. No external IMU
 correction file is required. The bundled OAK-D S2 factory geometry targets the
 team camera; a different device needs its own factory geometry and mount check.
 

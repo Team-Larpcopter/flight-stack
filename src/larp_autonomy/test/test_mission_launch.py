@@ -56,3 +56,11 @@ def test_full_profile_constructs_camera_vio_and_shadow_planner(tmp_path):
     c.launch_configurations['rig_file'] = str(tmp_path / 'missing')
     with pytest.raises(ValueError):
         module.nodes(c)
+
+
+def test_removed_route_backend_is_rejected():
+    module = load_launch('planner_mission.launch.py')
+    c = context('shadow')
+    c.launch_configurations['route_backend'] = 'unsupported'
+    with pytest.raises(ValueError, match='super_astar'):
+        module.nodes(c)

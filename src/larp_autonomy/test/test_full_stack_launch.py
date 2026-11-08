@@ -26,7 +26,7 @@ def context(tmp_path, monkeypatch):
     c = launch.LaunchContext()
     c.launch_configurations.update({
         'mode': 'shadow', 'alignment_verified': 'false', 'mission_id': '',
-        **{k: str(file) for k in ('rig_file', 'navigation_config', 'airfar_config',
+        **{k: str(file) for k in ('rig_file', 'navigation_config',
            'cad_prior_file', 'boundary_config', 'estimator_config', 'bridge_params')},
         **{k: '0.0' for k in ('goal_x', 'goal_y', 'goal_z', 'goal_yaw', 'initial_map_x',
            'initial_map_y', 'initial_map_z', 'initial_map_yaw', 'map_heading_ned',
