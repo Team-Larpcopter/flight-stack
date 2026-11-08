@@ -164,33 +164,6 @@
       "xAxisVal": "timestamp",
       "followingViewWidth": 20
     },
-    "Plot!velocity": {
-      "title": "Body velocity, map frame (m/s)",
-      "paths": [
-        {
-          "value": "/viz/autonomy/body_odom.twist.twist.linear.x",
-          "enabled": true,
-          "timestampMethod": "receiveTime"
-        },
-        {
-          "value": "/viz/autonomy/body_odom.twist.twist.linear.y",
-          "enabled": true,
-          "timestampMethod": "receiveTime"
-        },
-        {
-          "value": "/viz/autonomy/body_odom.twist.twist.linear.z",
-          "enabled": true,
-          "timestampMethod": "receiveTime"
-        }
-      ],
-      "showLegend": true,
-      "legendDisplay": "floating",
-      "showXAxisLabels": true,
-      "showYAxisLabels": true,
-      "isSynced": true,
-      "xAxisVal": "timestamp",
-      "followingViewWidth": 20
-    },
     "Image!depth": {
       "imageMode": {
         "imageTopic": "/viz/stereo/depth/image/compressed"
@@ -317,11 +290,7 @@
       "second": {
         "direction": "row",
         "first": "RawMessages!trajectory",
-        "second": {
-          "direction": "column",
-          "first": "Plot!sqrtvins_pos",
-          "second": "Plot!velocity"
-        }
+        "second": "Plot!sqrtvins_pos"
       }
     },
     "splitPercentage": 70
