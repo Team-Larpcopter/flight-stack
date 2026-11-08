@@ -58,3 +58,11 @@ def test_latched_state_flush_keeps_final_transition_without_republishing():
     VizRelay._flush_latched(relay, '/flight_executive/state', publisher)
     VizRelay._flush_latched(relay, '/flight_executive/state', publisher)
     assert sent == [b'ERROR']
+
+
+def test_unbounded_preview_has_finite_distinct_near_and_far_colors():
+    depth = np.array([[0., .2, 1., 10., 100.]], dtype=np.float32)
+    color = colorize_depth(depth, .2, float('inf'))
+    assert (color[0, 0] == 0).all()
+    assert (color[0, 4] != 0).any()
+    assert not np.array_equal(color[0, 1], color[0, 3])

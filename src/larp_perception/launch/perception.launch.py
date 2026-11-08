@@ -69,7 +69,7 @@ def relay(context):
                     "scale": ParameterValue(arg("viz_scale"), value_type=float),
                     "jpeg_quality": ParameterValue(arg("viz_quality"), value_type=int),
                     "min_depth_m": 0.2,
-                    "max_depth_m": 3.0 if flight else 6.0,
+                    "max_depth_m": float("inf") if flight else 6.0,
                 }
             ],
         )

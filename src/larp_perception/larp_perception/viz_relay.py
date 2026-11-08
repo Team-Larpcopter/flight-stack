@@ -103,7 +103,10 @@ def colorize_depth(depth_m, min_m, max_m):
     """Metres -> BGR: near red, far blue, invalid (0, NaN, out of range) black."""
     valid = np.isfinite(depth_m) & (depth_m > 0)
     clipped = np.clip(np.nan_to_num(depth_m), min_m, max_m)
-    scaled = ((max_m - clipped) / (max_m - min_m) * 255.0).astype(np.uint8)  # near -> 255
+    if np.isposinf(max_m):
+        scaled = (min_m / np.maximum(clipped, min_m) * 255.0).astype(np.uint8)
+    else:
+        scaled = ((max_m - clipped) / (max_m - min_m) * 255.0).astype(np.uint8)
     color = cv2.applyColorMap(scaled, cv2.COLORMAP_JET)
     color[~valid] = 0
     return color

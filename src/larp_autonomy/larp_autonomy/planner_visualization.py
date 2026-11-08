@@ -18,6 +18,7 @@ def main():
     from rcl_interfaces.msg import ParameterDescriptor
     array_param = ParameterDescriptor(dynamic_typing=True)
     boundary_lower = node.declare_parameter('hide_boundary_lower', [], array_param).value
+    ceiling_z = node.declare_parameter('ceiling_cut_z', 1e6).value
     boundary_upper = node.declare_parameter('hide_boundary_upper', [], array_param).value
     latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
     # One retained writer per chunk: bridge 3.6 caches each writer separately,
@@ -36,8 +37,11 @@ def main():
         marker.type = Marker.CUBE_LIST
         marker.action = Marker.ADD if len(points) else Marker.DELETE
         marker.pose.orientation.w = 1.0
-        marker.scale.x = marker.scale.y = marker.scale.z = resolution
-        marker.color.r, marker.color.g, marker.color.b, marker.color.a = 1., .8, .4, 1.
+        marker.scale.x = marker.scale.y = marker.scale.z = resolution * .82
+        # Chunk-level palette avoids per-voxel color bandwidth and processing.
+        palette = [(0.24, .52, .68), (.38, .68, .76), (.52, .60, .78), (.30, .62, .58)]
+        marker.color.r, marker.color.g, marker.color.b = palette[slot % len(palette)]
+        marker.color.a = 1.
         marker.points = [Point(x=float(x), y=float(y), z=float(z)) for x, y, z in points]
         chunk_pubs[slot].publish(MarkerArray(markers=[marker]))
     for slot in range(CHUNK_COUNT):
@@ -75,7 +79,7 @@ def main():
             try:
                 changed = delta.update(
                     hide_boundary_cells(cloud_xyz(snapshot.occupied), boundary_lower,
-                                        boundary_upper, snapshot.resolution),
+                                        boundary_upper, snapshot.resolution, ceiling_z),
                     [snapshot.lower.x, snapshot.lower.y, snapshot.lower.z],
                     [snapshot.upper.x, snapshot.upper.y, snapshot.upper.z],
                     snapshot.resolution, snapshot.header.frame_id,

@@ -41,3 +41,10 @@ def test_boundary_filter_keeps_interior_obstacles_and_does_not_mutate_map():
     np.testing.assert_array_equal(hide_boundary_cells(xyz, [0]*3, [2]*3, .05), xyz[6:])
     np.testing.assert_array_equal(xyz, original)
     assert hide_boundary_cells(xyz, [], [], .05) is xyz
+
+
+def test_ceiling_cut_only_affects_visualization_points():
+    from larp_autonomy.voxel_delta import hide_boundary_cells
+    xyz = np.array([[1., 1., 1.], [1., 1., 1.75]])
+    np.testing.assert_array_equal(hide_boundary_cells(xyz, [0]*3, [2]*3, .05, 1.7), xyz[:1])
+    assert len(xyz) == 2
