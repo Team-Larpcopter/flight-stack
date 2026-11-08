@@ -93,6 +93,10 @@ class FlightExecutiveNode(Node):
         padding = self.declare_parameter('geofence_padding_m', .5 if hardware else 0.).value
         self.envelope = Envelope(lower, upper, heading, origin, padding=padding) if enforce else None
         self.require_autonomy_ready = self.declare_parameter('require_autonomy_ready', False).value
+        self.require_preplanned_route = self.declare_parameter('require_preplanned_route', False).value
+        self.route_ready = False
+        self.input_subscriptions.append(self.create_subscription(
+            Bool, '/autonomy/route_ready', lambda msg: setattr(self, 'route_ready', msg.data), telemetry_qos))
         self.autonomy_ready = False
         self.autonomy_ready_at = -float('inf')
         self.input_subscriptions.append(self.create_subscription(
@@ -302,6 +306,11 @@ class FlightExecutiveNode(Node):
             self.get_logger().warning(
                 'Waiting for disarm before mission readiness; no commands sent',
                 throttle_duration_sec=3.0)
+            return
+        if getattr(self, 'require_preplanned_route', False) and c.state == State.WAITING and not self.route_ready:
+            c.started_at = now
+            c.last_tick = now
+            self.get_logger().info('Waiting for cached route before takeoff', throttle_duration_sec=3.0)
             return
         waiting = c.state == State.WAITING or (c.state == State.TAKEOFF and c.phase != Phase.ASCEND)
         if not self.skybeta_compat and self.require_autonomy_ready and waiting and not (

@@ -59,16 +59,16 @@ def nodes(context):
     if part not in ('planner', 'super', 'map'):
         source = PythonLaunchDescriptionSource(str(Path(share('larp_autonomy')) / 'launch' / 'mission_runtime.launch.py'))
         return [IncludeLaunchDescription(source, launch_arguments={
-            'component': part, 'mode': mode, 'mission_file': mission, 'planner': 'super'}.items())]
+            'component': part, 'mode': mode, 'mission_file': mission, 'planner': 'follower'}.items())]
     if part == 'map':
         result = [Node(package='larp_autonomy', executable='map_status', output='screen',
                        parameters=[{'planner': 'follower'}])]
     else:
         cfg = load_config(mission, mode)
         params = planner_parameters(cfg, Path(share('larp_navigation')) / 'config')
-        params.update(follower_horizon_m=float(value('follower_horizon_m')),
+        params.update(execution_gated=mode=='hardware' or LaunchConfiguration('preplan_only', default='false').perform(context)=='true', follower_horizon_m=float(value('follower_horizon_m')),
                       follower_replan_period_s=float(value('follower_replan_period_s')),
-                      follower_route_file=value('follower_route_file'))
+                      follower_route_file=value('follower_route_file') or cfg.get('follower_route_file', ''))
         result = [Node(package='larp_route_follower', executable='route_follower_node', output='screen',
                        parameters=[params], remappings=planner_remaps())]
     return [RegisterEventHandler(OnProcessExit(on_exit=[EmitEvent(event=Shutdown(reason='Component exited'))])),
@@ -79,6 +79,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('component'), DeclareLaunchArgument('mission_file'),
         DeclareLaunchArgument('mode', default_value='shadow'),
+        DeclareLaunchArgument('preplan_only', default_value='false'),
         DeclareLaunchArgument('follower_horizon_m', default_value='1.5'),
         DeclareLaunchArgument('follower_replan_period_s', default_value='0.4'),
         DeclareLaunchArgument('follower_route_file', default_value=''),

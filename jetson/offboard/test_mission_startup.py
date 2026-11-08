@@ -37,7 +37,7 @@ if name=='tmux' and args[0] in ('new-session','split-window'):print('%'+str(sum(
 
 
 @pytest.mark.parametrize('script,planner,mode',[
-    ('launch_full_system_tmux.sh','super','shadow'),('launch_mission_tmux.sh','super','hardware'),
+    ('launch_full_system_tmux.sh','follower','shadow'),('launch_mission_tmux.sh','follower','hardware'),
     ('launch_ego_full_system_tmux.sh','ego','shadow'),('launch_ego_mission_tmux.sh','ego','hardware')])
 def test_full_mission_panes_and_backend_selection(tmp_path,script,planner,mode):
     result,calls=launcher(tmp_path,script)

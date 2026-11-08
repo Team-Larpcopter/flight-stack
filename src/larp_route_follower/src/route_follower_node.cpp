@@ -11,6 +11,7 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <std_msgs/msg/bool.hpp>
+#include <std_msgs/msg/string.hpp>
 #include <dronehacks_msgs/msg/map_snapshot.hpp>
 #include <dronehacks_msgs/msg/map_state.hpp>
 #include <dronehacks_msgs/msg/navigation_goal.hpp>
@@ -18,6 +19,7 @@
 #include <dronehacks_msgs/msg/committed_trajectory.hpp>
 #include <yaml-cpp/yaml.h>
 #include <cstring>
+#include <optional>
 
 class DepthMapNode : public rclcpp::Node {
  public:
@@ -35,6 +37,7 @@ class DepthMapNode : public rclcpp::Node {
     depth_frame_=rig["depth_frame"]?rig["depth_frame"].as<std::string>():"";
     snapshot_include_free_=declare_parameter<bool>("snapshot_include_free",true);
     takeoff_height_=declare_parameter<double>("takeoff_height",1.0);
+    route_ready_=create_publisher<std_msgs::msg::Bool>("/autonomy/route_ready",1);
     ready_=create_publisher<std_msgs::msg::Bool>("/autonomy/takeoff_ready",1);
     epoch_=declare_parameter<int64_t>("localization_epoch",1);
     const double depth_age=declare_parameter<double>("max_depth_age_s",.5);
@@ -84,6 +87,7 @@ class DepthMapNode : public rclcpp::Node {
       larp_route_follower::FollowerSettings follower;
       follower.horizon=declare_parameter<double>("follower_horizon_m",follower.horizon);
       follower.replan_period=declare_parameter<double>("follower_replan_period_s",follower.replan_period);
+      follower.scan_when_blocked=declare_parameter<bool>("follower_scan_when_blocked",true);
       follower.route_file=declare_parameter<std::string>("follower_route_file","");
       planner_=std::make_unique<larp_route_follower::FollowerRoutePlanner>(config_,map_,planner_clock_,follower,internal_grid_route_);
       if(internal_grid_route_ && !boundary_lower_.empty())
@@ -114,6 +118,12 @@ class DepthMapNode : public rclcpp::Node {
     snapshots_=create_publisher<dronehacks_msgs::msg::MapSnapshot>("/navigation/map_snapshot",rclcpp::QoS(1).transient_local());
     map_states_=create_publisher<dronehacks_msgs::msg::MapState>("/navigation/map_state",rclcpp::SensorDataQoS().keep_last(1));
     rejected_maps_=create_publisher<dronehacks_msgs::msg::MapSnapshot>("/navigation/rejected_map",1);
+    execution_gated_=declare_parameter<bool>("execution_gated",false);
+    phase_sub_=create_subscription<std_msgs::msg::String>("/flight_executive/state",rclcpp::QoS(1).transient_local(),
+      [this](const std_msgs::msg::String& m){
+        execution_allowed_=m.data=="HOLD" || m.data=="TRACKING";
+        if(execution_gated_ && !execution_allowed_ && planner_)planner_->suspendExecution();
+      });
     health_=create_subscription<std_msgs::msg::Bool>("/navigation/vio_healthy",10,[this](const std_msgs::msg::Bool& m) {
       healthy_=m.data;health_received_=std::chrono::steady_clock::now();
     });
@@ -169,6 +179,8 @@ class DepthMapNode : public rclcpp::Node {
     trajectory_sequence_=std::max(trajectory_sequence_+1,static_cast<uint64_t>(std::max<int64_t>(1,t)));
     command.sequence=trajectory_sequence_;
     auto invalidate=[&](const char* reason){
+      planner_->suspendExecution();
+      std_msgs::msg::Bool pending;route_ready_->publish(pending);
       path_->publish(out);trajectories_->publish(command);
       if(internal_grid_route_ && (!healthy_ || !planner_->active() || !map_ready_for_route_))publishGridRoute(false,reason);
       if(planner_->active())RCLCPP_WARN_THROTTLE(get_logger(),*get_clock(),500,
@@ -180,6 +192,17 @@ class DepthMapNode : public rclcpp::Node {
     if(!healthy_ || !planner_->active() || !map_ready || !body_.rcv ||
        t*1e-9-body_.rcv_time>.3 ||
        std::chrono::steady_clock::now()-health_received_>std::chrono::seconds(1)) {invalidate("health, goal, localization or map freshness");return;}
+    if(execution_gated_ && !execution_allowed_) {
+      planner_->suspendExecution();
+      if(!warm_start_)warm_start_=navigation::Point(body_.p.x(),body_.p.y(),body_.p.z()+takeoff_height_);
+      if(t-last_plan_ns_>=100'000'000) {
+        last_plan_ns_=t;planner_->setMapRevision(revision_);
+        std_msgs::msg::Bool cached;cached.data=planner_->prepareRoute(*warm_start_);
+        route_ready_->publish(cached);
+        publishGridRoute(true);
+      }
+      return;
+    }
     int result=-1;
     if(t-last_plan_ns_>=100'000'000) {
       last_plan_ns_=t;planner_->setMapRevision(revision_);result=int(planner_->plan());
@@ -241,7 +264,7 @@ class DepthMapNode : public rclcpp::Node {
     msg.goal_id=planner_->goalId();msg.map_revision=revision_;msg.route_id=++route_sequence_;
     const auto* grid=planner_->gridRoute();
     msg.reason=failure.empty()?grid->reason():failure;
-    if(ready && map_->isKnownFreeInflate(body_.p) && planner_->active() && grid->route().goal_id==planner_->goalId() &&
+    if(ready && map_->isKnownFreeInflate(warm_start_.value_or(body_.p)) && planner_->active() && grid->route().goal_id==planner_->goalId() &&
        grid->route().map_revision==revision_ && grid->route().points.size()>=2) {
       msg.status=msg.VALID;
       for(const auto& p:grid->route().points)msg.points.push_back(point(p));
@@ -399,7 +422,11 @@ class DepthMapNode : public rclcpp::Node {
   std::shared_ptr<navigation::ObservedMap> map_;
   std::shared_ptr<navigation::PlannerClock> planner_clock_;
   std::string planner_backend_;
-  std::unique_ptr<navigation::PlannerContract> planner_;
+  std::unique_ptr<larp_route_follower::FollowerRoutePlanner> planner_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr route_ready_;
+  bool execution_gated_{false},execution_allowed_{false};
+  std::optional<navigation::Point> warm_start_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr phase_sub_;
   int64_t last_plan_ns_{0},last_certificate_ns_{0};
   uint64_t trajectory_sequence_{0};
   int64_t max_depth_age_ns_{500'000'000};

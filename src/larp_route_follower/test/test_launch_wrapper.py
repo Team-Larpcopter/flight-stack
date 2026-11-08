@@ -10,7 +10,7 @@ from launch import LaunchContext
 HERE = Path(__file__).resolve().parent
 ORIGINAL = HERE.parents[1] / 'larp_autonomy' / 'launch' / 'mission_runtime.launch.py'
 FOLLOWER = HERE.parent / 'launch' / 'mission_runtime.launch.py'
-FOLLOWER_ONLY = {'planner_backend', 'follower_horizon_m', 'follower_replan_period_s', 'follower_route_file'}
+FOLLOWER_ONLY = {'execution_gated', 'planner_backend', 'follower_horizon_m', 'follower_replan_period_s', 'follower_route_file'}
 
 
 def load(path, name):

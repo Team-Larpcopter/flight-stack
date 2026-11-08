@@ -177,6 +177,9 @@ namespace path_search {
             cancelSearch();
             search_bounds_=std::make_pair(lower,upper);
         }
+        // Zero preserves the legacy time-only search policy.
+        size_t expansion_limit_{0};
+        void setExpansionLimit(size_t limit) { expansion_limit_=limit; }
         void setEdgeValidator(std::function<bool(const Vec3f&,const Vec3f&)> validate) {
             edge_validator_=std::move(validate);
         }

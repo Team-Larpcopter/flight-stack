@@ -125,7 +125,7 @@ min_px_dist: 10  # distance between features (features near each other provide l
 ransac_th: 2.0 # ransac threshold for the essential matrix
 knn_ratio: 0.70 # descriptor knn threshold for the top two descriptor matches
 track_frequency: 31.0 # frequency we will perform feature tracking at (in frames per second / hertz)
-downsample_cameras: false # will downsample image in half if true
+downsample_cameras: true # half-resolution tracking; intrinsics scaled by VINS; full-resolution driver/depth unchanged
 num_opencv_threads: 1 # -1: auto, 0-1: serial, >1: number of threads
 histogram_method: "HISTOGRAM" # NONE, HISTOGRAM, CLAHE
 
