@@ -95,3 +95,17 @@ Each pane runs its launch command from an interactive Bash shell. Ctrl+C stops
 that component and returns to the prompt; press Up then Enter to restart it.
 Mouse mode stays enabled. Restarting the mission executive still requires its
 normal grounded/pilot-transition conditions; it does not adopt an airborne mission.
+
+## Short takeoff/hold test
+
+`bash launch_takeoff_hold_tmux.sh` uses five panes: drivers, Foxglove, VINS,
+DDS and executive. It loads an adjacent `deployment.env` when present. The pilot
+arms then selects Position; the executive requests Offboard, ascends 0.5 m,
+holds for 2 seconds, then requests landing. It starts no planner or trajectory
+publisher and intentionally does not require map/obstacle readiness. PX4
+preflight, pilot sequencing, telemetry and body-envelope checks remain active.
+This does not resolve or qualify unstable VIO.
+
+Run `bash launch_takeoff_hold_tmux.sh --check` for configuration/import checks
+without launching sensors or flight publishers. Stop the other stack before
+starting this test. Mouse mode and Ctrl+C-to-shell behavior match the full stack.
