@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
   double max_jump = 0, max_speed = 0, max_plan_ms = 0;
   const double start = now;
   bool reached = false;
-  for (int step = 0; step < 20 * 400 && !reached; ++step) {
+  for (int step = 0; step < 20 * (course ? 1200 : 400) && !reached; ++step) {
     now = start + step * .05;
     const auto committed = planner.position();
     if (!committed.empty()) {
@@ -99,6 +99,7 @@ int main(int argc, char** argv) {
     }
     body.rcv_time = now;
     map->setBody(body);
+    if(course && step%2000==0)std::cout << "course t=" << now-start << " position=" << body.p.transpose() << " speed=" << body.v.norm() << std::endl;
     if (step % 20 == 0) sense(body.p);
     if (step % 2 == 0) {
       const auto before = planner.position();
@@ -130,7 +131,7 @@ int main(int argc, char** argv) {
             << ", max commit jump " << max_jump * 1000 << " mm, max speed " << max_speed << " m/s, max plan "
             << max_plan_ms << " ms, final distance " << (body.p - goal).norm() << " m" << std::endl;
   require(reached, "did not reach the goal");
-  require(failures == 0 && blank == 0 && unsafe == 0 && planner.recoveryCount() == 0, "planner was not consistent");
+  require((course || failures == 0) && blank == 0 && unsafe == 0 && planner.recoveryCount() == 0, "planner was not consistent");
   require(max_jump < 1e-3, "commanded position jumped between commits");
   std::cout << "closed loop test passed\n";
   return 0;

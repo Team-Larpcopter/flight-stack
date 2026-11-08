@@ -8,7 +8,7 @@ import rclpy
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Imu, CompressedImage, Image
 from nav_msgs.msg import Odometry
-from std_msgs.msg import Int64
+from std_msgs.msg import Int64, Bool
 from visualization_msgs.msg import MarkerArray
 
 rclpy.init()
@@ -17,6 +17,9 @@ samples = defaultdict(list)
 start = time.monotonic()
 
 def receive(topic, message):
+    if isinstance(message, Bool):
+        samples[topic].append([time.monotonic()-start, None, message.data])
+        return
     stamp = (message.data * 1e-9 if isinstance(message, Int64) else
              message.header.stamp.sec + message.header.stamp.nanosec * 1e-9
              if hasattr(message, 'header') else None)
@@ -27,8 +30,7 @@ subs=[]
 for kind, topic in [(Imu, '/autonomy/imu/data'), (Odometry, '/autonomy/odomimu'),
                     (Odometry, '/autonomy/odometry'), (Int64, '/autonomy/processed_vio'),
                     (Image, '/stereo/depth/image'),
-                    (Image, '/native_oak/left/image_undistorted'),
-                    (Image, '/native_oak/rectified/left/image'),
+                    (Bool, '/autonomy/route_ready'),
                     (CompressedImage, '/viz/native_oak/left/image_undistorted/compressed'),
                     (CompressedImage, '/viz/stereo/depth/image/compressed'),
                     (MarkerArray, '/viz/autonomy/occupied_chunks')]:

@@ -12,6 +12,11 @@ from measured position. Loss of command certification discards the timed curve,
 while retaining the route for recovery. New execution timestamps are assigned
 at commit, not at the beginning of search.
 
+A valid committed curve is retained until its last two seconds, so repeated
+replanning cannot keep retiming the approach to a corner. Map certification can
+still interrupt it immediately. A* edges and trajectory certification use the
+same full-body clearance geometry; an inflated-grid route alone is insufficient.
+
 Depth revisions do not trigger whole-course revalidation. The follower checks
 its local route section and the commanded curve against the current map; a
 blocked local section causes a resumable search. Unaffected distant geometry
