@@ -12,9 +12,14 @@ find_package(visualization_msgs REQUIRED)
 find_package(dronehacks_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(message_filters REQUIRED)
-find_package(pcl_conversions REQUIRED)
+find_package(pcl_msgs REQUIRED)
+find_path(PCL_CONVERSIONS_INCLUDE pcl_conversions/pcl_conversions.h
+  PATHS /opt/ros/$ENV{ROS_DISTRO}/include/pcl_conversions REQUIRED)
 find_package(Eigen3 REQUIRED)
-find_package(PCL REQUIRED COMPONENTS common filters)
+# Match the stack mapper: avoid PCL's unrelated VTK/FLANN CMake discovery.
+find_package(PkgConfig REQUIRED)
+pkg_search_module(PCL_COMMON REQUIRED IMPORTED_TARGET pcl_common pcl_common-1.12)
+pkg_search_module(PCL_FILTERS REQUIRED IMPORTED_TARGET pcl_filters pcl_filters-1.12)
 find_package(OpenCV REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME} "msg/ShadowTrajectory.msg"
@@ -35,10 +40,10 @@ set_target_properties(ego_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 foreach(component plan_env path_searching bspline_opt traj_utils plan_manage)
   target_include_directories(ego_core PUBLIC ${EGO_ROOT}/${component}/include)
 endforeach()
-target_include_directories(ego_core SYSTEM PUBLIC ${PCL_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(ego_core Eigen3::Eigen ${PCL_LIBRARIES} ${OpenCV_LIBRARIES})
+target_include_directories(ego_core SYSTEM PUBLIC ${PCL_CONVERSIONS_INCLUDE} ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(ego_core Eigen3::Eigen PkgConfig::PCL_COMMON PkgConfig::PCL_FILTERS ${OpenCV_LIBRARIES})
 ament_target_dependencies(ego_core rclcpp nav_msgs std_msgs sensor_msgs geometry_msgs
-  visualization_msgs cv_bridge message_filters pcl_conversions)
+  visualization_msgs cv_bridge message_filters pcl_msgs)
 add_library(ego_optimizer SHARED src/optimizer.cpp)
 target_include_directories(ego_optimizer PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
