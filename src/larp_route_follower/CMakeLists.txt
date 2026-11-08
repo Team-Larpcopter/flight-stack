@@ -66,7 +66,11 @@ ament_target_dependencies(route_follower_node rclcpp sensor_msgs nav_msgs std_ms
 
 install(TARGETS route_follower_node DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
-install(PROGRAMS scripts/launch_follower_system_tmux.sh DESTINATION share/${PROJECT_NAME}/scripts)
+# Host-side tmux launchers (run from the deployment folder or with DEPLOY_DIR set).
+set(FOLLOWER_SCRIPTS scripts/launch_follower_system_tmux.sh scripts/launch_follower_full_system_tmux.sh
+  scripts/launch_follower_mission_tmux.sh)
+install(PROGRAMS ${FOLLOWER_SCRIPTS} DESTINATION share/${PROJECT_NAME}/scripts)
+install(PROGRAMS ${FOLLOWER_SCRIPTS} DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   add_executable(hermite_test test/hermite_test.cpp)
@@ -86,6 +90,8 @@ if(BUILD_TESTING)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   add_test(NAME launch_wrapper COMMAND ${Python3_EXECUTABLE} -m pytest -q
     ${CMAKE_CURRENT_SOURCE_DIR}/test/test_launch_wrapper.py)
+  add_test(NAME launch_scripts COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test/check_scripts.sh
+    ${CMAKE_CURRENT_SOURCE_DIR}/scripts ${CMAKE_CURRENT_SOURCE_DIR}/../../jetson/offboard/launch_system_tmux.sh)
 endif()
 
 ament_package()

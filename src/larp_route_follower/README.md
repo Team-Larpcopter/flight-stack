@@ -44,25 +44,45 @@ Not modelled explicitly: jerk, thrust and attitude limits (the hard velocity and
 acceleration limits are certified; at the configured 0.06 m/s and 0.04 m/s^2 the vehicle
 is far inside its envelope).
 
+## Package layout
+
+| Path | What |
+|---|---|
+| `src/route_follower_node.cpp` | `depth_map_node` copy; only the planner backend differs |
+| `include/larp_route_follower/follower_route_planner.hpp` | follower `PlannerContract` backend |
+| `include/larp_route_follower/hermite.hpp` | closed-form quintic segments |
+| `launch/mission_runtime.launch.py` | one component per call; planner = follower, others = larp_autonomy's |
+| `launch/follower_system.launch.py` | whole stack in one `ros2 launch` (no tmux) |
+| `scripts/launch_follower_system_tmux.sh` | tmux stack (same panes as `launch_system_tmux.sh`) |
+| `scripts/launch_follower_full_system_tmux.sh` | shadow wrapper (like `launch_full_system_tmux.sh`) |
+| `scripts/launch_follower_mission_tmux.sh` | hardware wrapper (like `launch_mission_tmux.sh`) |
+
 ## Run
 
+Jetson tmux stack, the usual way: copy the three `scripts/launch_follower_*` files next to
+the deployed `launch_system_tmux.sh` (they use that folder's `deployment.env`,
+`replace_stack.sh` and `runtime_mounts.sh`; or set `DEPLOY_DIR` to it), then
+
 ```bash
-# Every component except the planner runs larp_autonomy's unchanged launch.
+bash launch_follower_full_system_tmux.sh            # shadow: plans, nothing executed
+bash launch_follower_mission_tmux.sh                # hardware: pilot arms, then Position
+bash launch_follower_system_tmux.sh shadow --check  # preflight only
+```
+
+Inside the runtime container (installed package):
+
+```bash
+# Whole stack in one launch, or a subset with components:=depth,map,planner
+ros2 launch larp_route_follower follower_system.launch.py mission_file:=/config/mission.yaml mode:=shadow
+# One pane/component, same interface as larp_autonomy's mission_runtime.launch.py
 ros2 launch larp_route_follower mission_runtime.launch.py component:=planner \
-  mode:=shadow mission_file:=/config/mission.yaml \
-  follower_horizon_m:=1.5 follower_replan_period_s:=0.4 follower_route_file:=
+  mode:=shadow mission_file:=/config/mission.yaml
 ```
 
-Jetson tmux (same panes/container/recorder as `launch_system_tmux.sh`, planner pane =
-follower): copy `scripts/launch_follower_system_tmux.sh` next to the deployed
-`launch_system_tmux.sh`, then
-
-```bash
-bash launch_follower_system_tmux.sh shadow   # or hardware
-```
-
-Optional preloaded route: a text file in the map frame, one `x y z` per line (`#`
-comments), ending within 0.3 m of the mission goal; pass `follower_route_file:=<path>`.
+Follower arguments (all launch files): `follower_horizon_m` (default 1.5),
+`follower_replan_period_s` (0.4), `follower_route_file` (empty). A route file is a
+map-frame text file, one `x y z` per line (`#` comments), ending within 0.3 m of the
+mission goal.
 
 ## Integration still to do (outside this package, intentionally untouched)
 
@@ -85,4 +105,7 @@ source tree next to this package):
   0 blank commands, 0 braking, 0 mm commanded jump between commits, max plan 0.31 ms,
   6 mm from the goal.
 - `launch_wrapper`: planner parameters and remappings equal larp_autonomy's, except
-  the executable and follower-only parameters.
+  the executable and follower-only parameters; the whole-stack launch starts every
+  component through the follower runtime.
+- `launch_scripts`: scripts parse, run the same panes as `launch_system_tmux.sh`, wrap
+  the right mode, and stop before starting anything when deployment helpers are missing.

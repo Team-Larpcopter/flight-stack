@@ -60,3 +60,24 @@ def test_planner_component_matches_original(mission, monkeypatch, tmp_path):
     assert b['planner_backend'] == 'follower'
     assert {k: v for k, v in a.items() if k != 'planner_backend'} == \
            {k: v for k, v in b.items() if k not in FOLLOWER_ONLY}
+
+
+def test_whole_stack_launch_starts_every_component_through_the_follower(mission, monkeypatch, tmp_path):
+    module = load(HERE.parent / 'launch' / 'follower_system.launch.py', 'follower_system')
+    captured = []
+    monkeypatch.setattr(module, 'IncludeLaunchDescription',
+                        lambda source, launch_arguments: captured.append((source, dict(launch_arguments))))
+    monkeypatch.setattr(module, 'share', lambda package: str(tmp_path / package))
+    monkeypatch.setattr(module, 'PythonLaunchDescriptionSource', lambda path: path)
+    context = LaunchContext()
+    context.launch_configurations.update(mission_file=str(mission), mode='shadow', components='',
+                                         follower_horizon_m='1.5', follower_replan_period_s='0.4',
+                                         follower_route_file='')
+    module.components(context)
+    assert [args['component'] for _, args in captured] == list(module.DEFAULT)
+    assert all(source.endswith('larp_route_follower/launch/mission_runtime.launch.py')
+               for source, _ in captured)
+    assert all(args['mission_file'] == str(mission) and args['mode'] == 'shadow' for _, args in captured)
+    context.launch_configurations['components'] = 'depth,nope'
+    with pytest.raises(ValueError):
+        module.components(context)
