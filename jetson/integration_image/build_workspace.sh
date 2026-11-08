@@ -28,7 +28,7 @@ if [[ ${RUN_TESTS:-1} == 1 ]]; then testing=ON; fi
 # and CUDA depth experiments are not dependencies of this stack.
 colcon build --base-paths src --executor sequential \
   --packages-up-to larp_hardware larp_autonomy flight_executive larp_px4_bridge larp_liteanystereo larp_perception \
-  --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING="$testing" \
+  --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING="$testing" -DBUILD_LOCALIZATION_REGRESSION=ON \
     -DENABLE_ARUCO_TAGS=OFF -DBoost_NO_BOOST_CMAKE=ON \
     -DBoost_NO_SYSTEM_PATHS=ON -DBOOST_ROOT=/usr \
     -DBOOST_INCLUDEDIR=/usr/include \
@@ -38,6 +38,10 @@ export ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=187
 if [[ ${RUN_TESTS:-1} == 1 ]]; then
 ctest --test-dir build/larp_hardware --output-on-failure
 ctest --test-dir build/larp_navigation --output-on-failure
+ctest --test-dir build/larp_ego_planner --output-on-failure
+timeout 120s python3 src/larp_navigation/tests/static_pipeline_smoke.py \
+  --mapper install/larp_navigation/lib/larp_navigation/depth_map_node \
+  --config src/larp_navigation/config/navigation.yaml --planner ego --executive-bridge
 python3 -m pytest -q --ignore=src/larp_autonomy/test/test_bridge_ros.py src/larp_autonomy/test src/larp_px4_bridge/test/test_core.py src/larp_liteanystereo/test src/larp_perception/test
 fi
 ros2 pkg executables larp_hardware

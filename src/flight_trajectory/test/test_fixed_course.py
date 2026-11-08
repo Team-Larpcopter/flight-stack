@@ -1,0 +1,48 @@
+from dataclasses import replace
+from math import cos, sin, pi
+import pytest
+from flight_trajectory.fixed_course import FixedCourse, FixedCourseFollower, ROUTE_XY
+from flight_trajectory.course_follower import Pose
+
+
+def test_route_height_window_alignment_and_terminal_stop():
+    course = FixedCourse()
+    assert course.waypoints[0] == (0., 0., 1.0)
+    assert course.waypoints[-1] == (-2.82128, -.77724, 1.0)
+    assert ROUTE_XY[3][0] == ROUTE_XY[4][0] == pytest.approx(-3.3863)
+    final = course.sample(course.duration+10.)
+    assert final.position == pytest.approx(course.waypoints[-1])
+    assert final.velocity == pytest.approx((0., 0., 0.))
+    assert final.acceleration == pytest.approx((0., 0., 0.))
+    assert final.yaw_rate == 0.
+    elapsed = 0.
+    for kind, duration, value, heading, delta in course.segments:
+        if kind == 'turn':
+            for i in range(101):
+                r = course.sample(elapsed+duration*i/100)
+                assert r.position == pytest.approx(value)
+                assert r.velocity == pytest.approx((0., 0., 0.))
+                assert abs(r.yaw_rate) <= .30001
+        elapsed += duration
+
+
+def test_full_route_streams_in_rotated_start_frame_then_finishes():
+    follower = FixedCourseFollower(FixedCourse())
+    ground = Pose(0., 3., -2., 7., .8)
+    follower.update_pose(ground, True)
+    follower.update_pose(replace(ground, z=6.0), False)
+    follower.update_executive_state('HOLD')
+    sample = follower.tick(0.)
+    assert sample.position == pytest.approx((3., -2., 6.0))
+    t = 0.
+    while t < follower.trajectory.duration+1.:
+        t += .02
+        follower.update_pose(Pose(t, *sample.position, sample.yaw), False)
+        sample = follower.tick(t)
+        assert sample is not None
+    assert sample.is_final
+    x,y = ROUTE_XY[-1]
+    assert sample.position == pytest.approx((3.+cos(.8)*x+sin(.8)*y,
+                                             -2.+sin(.8)*x-cos(.8)*y,6.0))
+    follower.update_executive_state('LAND')
+    assert follower.tick(t+.02) is None

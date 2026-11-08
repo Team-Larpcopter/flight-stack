@@ -2,7 +2,11 @@
 
 `ros2 launch larp_autonomy planner_mission.launch.py` replaces the hard-coded
 course publisher. It starts body-frame odometry, the static CAD mapper/SUPER with its existing A*
-frontend, and the polynomial bridge. SUPER A* is the only route backend.
+frontend, and the polynomial bridge. SUPER A* is the default route backend.
+An optional [EGO planner](ego-planner.md) is selected with `planner:=ego`.
+It replaces the local trajectory optimizer while retaining the shared ROG map,
+global route frontend, independent trajectory certificate and executive bridge.
+Both backends support the execution contract below; SUPER remains the default.
 Start the native camera and sqrtVINS separately;
 do not also start `observe.launch.py` or another body-odometry adapter.
 The course CAD is the intended occupancy map for real flight, as well as profiling.

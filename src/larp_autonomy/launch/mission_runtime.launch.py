@@ -1,4 +1,4 @@
-"""One component per pane; ROG and SUPER share one authoritative map process."""
+"""One component per pane; ROG and the selected planner share one authoritative map process."""
 import os
 import tempfile
 from pathlib import Path
@@ -17,6 +17,8 @@ def nodes(context):
     value=lambda name: LaunchConfiguration(name).perform(context)
     part, mode=value('component'),value('mode')
     if part not in COMPONENTS: raise ValueError('Unknown runtime component')
+    planner=value('planner')
+    if planner not in ('super','ego'): raise ValueError('planner must be super or ego')
     cfg=load_config(value('mission_file'),mode)
     active=mode=='hardware'
     nav=Path(share('larp_navigation'))/'config'
@@ -65,8 +67,8 @@ def nodes(context):
     elif part=='depth':
         result=[include('larp_liteanystereo','las_depth.launch.py',{'publish_as_primary':'true','min_depth_m':'0.2','max_depth_m':'inf','viz_enable':'false'})]
     elif part=='map':
-        result=[node('larp_autonomy','map_status')]
-    elif part=='super':
+        result=[node('larp_autonomy','map_status',[{'planner':planner}])]
+    elif part in ('planner','super'):
         params={k:cfg[k] for k in ('rig_file','hard_boundary_lower','hard_boundary_upper','hard_boundary_reference','takeoff_height')}
         params.update(config_file=cfg.get('navigation_config',str(nav/'navigation_fine.yaml')),
             cad_prior_file=cfg.get('cad_prior_file',str(nav/'course_cad_prior_fine.txt')),
@@ -77,7 +79,7 @@ def nodes(context):
             declared_launch_max_z_m=float(cfg.get('declared_launch_max_z_m', 1.5)),
             launch_clearance_reference=cfg.get('launch_clearance_reference',
                 'Operator-declared clear course launch cylinder at map origin: radius 0.52 m, z=0.1 to 1.5 m'),
-            require_hard_boundary=True,static_cad_only=False,route_backend='super_astar',
+            require_hard_boundary=True,static_cad_only=False,route_backend='super_astar',planner_backend=planner,
             flight_envelope_lower=[v+.4 for v in cfg['hard_boundary_lower']],
             flight_envelope_upper=[v-.4 for v in cfg['hard_boundary_upper']])
         result=[node('larp_navigation','depth_map_node',[params],remappings=[
@@ -87,7 +89,7 @@ def nodes(context):
         params=dict(simulation_only=False,hardware_enabled=active,alignment_verified=cfg['alignment_verified'],
             mission_id=cfg['mission_id'],map_heading_ned=cfg['map_heading_ned'],map_origin_ned=cfg['map_origin_ned'],
             align_px4_to_map_on_ground=active,trajectory_max_age_s=cfg['trajectory_max_age_s'])
-        # Plan and visualize before takeoff with the same SUPER instance.
+        # Plan and visualize before takeoff with the selected planner instance.
         # trajectory_bridge independently gates execution to HOLD/TRACKING.
         result=[node('larp_autonomy','trajectory_bridge',[params]),
             node('larp_autonomy','mission_goal',[dict(zip(('x','y','z','yaw'),cfg['goal']),wait_for_hold=False)])]
@@ -103,4 +105,5 @@ def nodes(context):
 
 def generate_launch_description():
     return LaunchDescription([DeclareLaunchArgument('component'),DeclareLaunchArgument('mission_file'),
-        DeclareLaunchArgument('mode',default_value='shadow'),OpaqueFunction(function=nodes)])
+        DeclareLaunchArgument('mode',default_value='shadow'),
+        DeclareLaunchArgument('planner',default_value='super'),OpaqueFunction(function=nodes)])

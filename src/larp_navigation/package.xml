@@ -1,9 +1,10 @@
 <?xml version="1.0"?>
 <package format="3">
 <name>larp_navigation</name><version>0.1.0</version>
-<description>ROG-Map, SUPER A* route guidance and certified SUPER trajectories.</description>
+<description>ROG-Map, global route guidance and certified SUPER or EGO trajectories.</description>
 <maintainer email="team@larpcopter.local">Team Larpcopter</maintainer>
 <license>LGPL-3.0-or-later</license><license>BSD-3-Clause</license>
+<license>GPL-3.0-only</license>
 <buildtool_depend>ament_cmake</buildtool_depend>
 <depend>rclcpp</depend>
 <depend>sensor_msgs</depend>
@@ -16,6 +17,7 @@
 <depend>message_filters</depend>
 <depend>dronehacks_msgs</depend>
 <depend>flight_executive_msgs</depend>
+<depend>larp_ego_planner</depend>
 <test_depend>rclpy</test_depend>
 <test_depend>python3-yaml</test_depend>
 <test_depend>python3-numpy</test_depend>

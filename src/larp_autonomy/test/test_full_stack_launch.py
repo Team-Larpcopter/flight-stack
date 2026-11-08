@@ -25,7 +25,7 @@ def context(tmp_path, monkeypatch):
     file.write_text('{}')
     c = launch.LaunchContext()
     c.launch_configurations.update({
-        'static_cad_only': 'true', 'start_depth': 'false', 'start_visualization': 'false',
+        'planner': 'super', 'static_cad_only': 'true', 'start_depth': 'false', 'start_visualization': 'false',
         'foxglove_port': '8766', 'engine_path': '/models/saved.engine', 'mode': 'shadow', 'alignment_verified': 'false', 'mission_id': '',
         **{k: str(file) for k in ('rig_file', 'navigation_config', 'cad_prior_file', 'boundary_config', 'estimator_config', 'bridge_params')},
         **{k: '0.0' for k in ('goal_x', 'goal_y', 'goal_z', 'goal_yaw', 'initial_map_x',
@@ -36,14 +36,17 @@ def context(tmp_path, monkeypatch):
     return module, c
 
 
-def test_shadow_and_hardware_graph(tmp_path, monkeypatch):
+@pytest.mark.parametrize('planner', ['super', 'ego'])
+def test_shadow_and_hardware_graph(tmp_path, monkeypatch, planner):
     module, c = context(tmp_path, monkeypatch)
+    c.launch_configurations['planner'] = planner
     actions = module.nodes(c)
     assert isinstance(actions[0], RegisterEventHandler)
     assert isinstance(actions[1], ExecuteProcess) and not isinstance(actions[1], Node)
     assert sum(isinstance(a, Node) for a in actions) == 4  # camera, VIO, goal, viz
     include = next(a for a in actions if isinstance(a, IncludeLaunchDescription))
     assert dict(include.launch_arguments)['mode'] == 'shadow'
+    assert dict(include.launch_arguments)['planner'] == planner
     c.launch_configurations['mode'] = 'hardware'
     with pytest.raises(ValueError, match='alignment_verified'):
         module.nodes(c)
@@ -56,7 +59,7 @@ def test_shadow_and_hardware_graph(tmp_path, monkeypatch):
     assert sum(isinstance(a, Node) for a in module.nodes(c)) == 3
 
 
-@pytest.mark.parametrize('key,value', [('mode', 'simulation'), ('agent_transport', 'typo'),
+@pytest.mark.parametrize('key,value', [('mode', 'simulation'), ('planner', 'typo'), ('agent_transport', 'typo'),
     ('agent_port', '0'), ('goal_x', 'nan'), ('rig_file', '/missing/rig')])
 def test_invalid_inputs_rejected_before_process_creation(tmp_path, monkeypatch, key, value):
     module, c = context(tmp_path, monkeypatch)

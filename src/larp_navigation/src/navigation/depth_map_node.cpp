@@ -1,6 +1,7 @@
 #include <navigation/observed_map.hpp>
 #include <navigation/pose_buffer.hpp>
 #include <navigation/route_planner.hpp>
+#include <navigation/ego_route_planner.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
@@ -67,35 +68,41 @@ class DepthMapNode : public rclcpp::Node {
     const auto launch_reference=declare_parameter<std::string>("launch_clearance_reference","");
     if(launch_radius_>0 && launch_reference.empty())throw std::invalid_argument("launch clearance requires explicit reference");
     if(launch_radius_>0)RCLCPP_WARN(get_logger(),"Declared launch clearance assumption: %s",launch_reference.c_str());
-    planner_clock_=std::make_shared<navigation::PlannerClock>([this]{return now().seconds();},
-      [this](const std::string& m){RCLCPP_WARN(get_logger(),"%s",m.c_str());});
-    const auto backend=declare_parameter<std::string>("route_backend","super_astar");
-    if(backend!="super_astar")throw std::invalid_argument("unknown route backend");
-    internal_grid_route_=backend=="super_astar";
-    planner_=std::make_unique<navigation::RoutePlanner>(config_,map_,planner_clock_,internal_grid_route_);
-    if(internal_grid_route_ && !boundary_lower_.empty())
-      planner_->setSearchBounds({boundary_lower_[0],boundary_lower_[1],boundary_lower_[2]},
-                               {boundary_upper_[0],boundary_upper_[1],boundary_upper_[2]});
-    if(internal_grid_route_)route_output_=create_publisher<dronehacks_msgs::msg::RoutePolyline>("/navigation/route",1);
-    const auto flight_lower=declare_parameter<std::vector<double>>("flight_envelope_lower",std::vector<double>{});
-    const auto flight_upper=declare_parameter<std::vector<double>>("flight_envelope_upper",std::vector<double>{});
-    if(!flight_lower.empty() || !flight_upper.empty()) {
-      if(flight_lower.size()!=3 || flight_upper.size()!=3)throw std::invalid_argument("flight envelope needs three axes");
-      planner_->setFlightEnvelope({flight_lower[0],flight_lower[1],flight_lower[2]},
-        {flight_upper[0],flight_upper[1],flight_upper[2]});
-    }
-    path_=create_publisher<nav_msgs::msg::Path>("/navigation/committed_path",1);
-    trajectories_=create_publisher<dronehacks_msgs::msg::CommittedTrajectory>("/navigation/trajectory",1);
-    goals_=create_subscription<dronehacks_msgs::msg::NavigationGoal>("/navigation/goal",rclcpp::QoS(1).transient_local(),
-      [this](const dronehacks_msgs::msg::NavigationGoal& m) {
-        if(m.localization_epoch!=epoch_ || m.header.frame_id!="map")return;
-        const auto& p=m.pose.position;const auto& q=m.pose.orientation;
-        const double qn=q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w;
-        if(m.cancel) {if(m.goal_id>=planner_->goalId())planner_->cancel();return;}
-        if(!std::isfinite(qn) || std::abs(qn-1)>.001)return;
-        const double yaw=std::atan2(2*(q.w*q.z+q.x*q.y),1-2*(q.y*q.y+q.z*q.z));
-        planner_->setGoal(m.goal_id,{p.x,p.y,p.z},yaw);
-      });
+    const bool enable_planning=declare_parameter<bool>("enable_planning",true);
+    if(enable_planning) {
+      planner_clock_=std::make_shared<navigation::PlannerClock>([this]{return now().seconds();},
+        [this](const std::string& m){RCLCPP_WARN(get_logger(),"%s",m.c_str());});
+      const auto backend=declare_parameter<std::string>("route_backend","super_astar");
+      if(backend!="super_astar")throw std::invalid_argument("unknown route backend");
+      internal_grid_route_=backend=="super_astar";
+      planner_backend_=declare_parameter<std::string>("planner_backend","super");
+      if(planner_backend_=="super")planner_=std::make_unique<navigation::RoutePlanner>(config_,map_,planner_clock_,internal_grid_route_);
+      else if(planner_backend_=="ego")planner_=std::make_unique<navigation::EgoRoutePlanner>(config_,map_,planner_clock_);
+      else throw std::invalid_argument("planner_backend must be super or ego");
+      if(internal_grid_route_ && !boundary_lower_.empty())
+        planner_->setSearchBounds({boundary_lower_[0],boundary_lower_[1],boundary_lower_[2]},
+                                 {boundary_upper_[0],boundary_upper_[1],boundary_upper_[2]});
+      if(internal_grid_route_)route_output_=create_publisher<dronehacks_msgs::msg::RoutePolyline>("/navigation/route",1);
+      const auto flight_lower=declare_parameter<std::vector<double>>("flight_envelope_lower",std::vector<double>{});
+      const auto flight_upper=declare_parameter<std::vector<double>>("flight_envelope_upper",std::vector<double>{});
+      if(!flight_lower.empty() || !flight_upper.empty()) {
+        if(flight_lower.size()!=3 || flight_upper.size()!=3)throw std::invalid_argument("flight envelope needs three axes");
+        planner_->setFlightEnvelope({flight_lower[0],flight_lower[1],flight_lower[2]},
+          {flight_upper[0],flight_upper[1],flight_upper[2]});
+      }
+      path_=create_publisher<nav_msgs::msg::Path>("/navigation/committed_path",1);
+      trajectories_=create_publisher<dronehacks_msgs::msg::CommittedTrajectory>("/navigation/trajectory",1);
+      goals_=create_subscription<dronehacks_msgs::msg::NavigationGoal>("/navigation/goal",rclcpp::QoS(1).transient_local(),
+        [this](const dronehacks_msgs::msg::NavigationGoal& m) {
+          if(m.localization_epoch!=epoch_ || m.header.frame_id!="map")return;
+          const auto& p=m.pose.position;const auto& q=m.pose.orientation;
+          const double qn=q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w;
+          if(m.cancel) {if(m.goal_id>=planner_->goalId())planner_->cancel();return;}
+          if(!std::isfinite(qn) || std::abs(qn-1)>.001)return;
+          const double yaw=std::atan2(2*(q.w*q.z+q.x*q.y),1-2*(q.y*q.y+q.z*q.z));
+          planner_->setGoal(m.goal_id,{p.x,p.y,p.z},yaw);
+        });
+    } // enable_planning: map-only mode has no trajectory/goal interface.
     if(std::isfinite(max_depth_) && max_depth_>map_->getMapConfig().raycast_range_max) throw std::invalid_argument("depth range exceeds map ray range");
     snapshots_=create_publisher<dronehacks_msgs::msg::MapSnapshot>("/navigation/map_snapshot",rclcpp::QoS(1).transient_local());
     map_states_=create_publisher<dronehacks_msgs::msg::MapState>("/navigation/map_state",rclcpp::SensorDataQoS().keep_last(1));
@@ -123,7 +130,7 @@ class DepthMapNode : public rclcpp::Node {
       [this](sensor_msgs::msg::Image::ConstSharedPtr m) {if(pending_.size()==3)pending_.pop_front();pending_.push_back(m);});
     }
     timer_=create_wall_timer(std::chrono::milliseconds(20),[this]{process();});
-    planner_timer_=create_wall_timer(std::chrono::milliseconds(50),[this]{plan();});
+    if(enable_planning)planner_timer_=create_wall_timer(std::chrono::milliseconds(50),[this]{plan();});
   }
  private:
   void plan() {
@@ -219,7 +226,7 @@ class DepthMapNode : public rclcpp::Node {
       out.poses.push_back(p);
     }
     path_->publish(out);
-    if(result!=-1)RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(),1000,"SUPER result %d: validated %zu trajectory samples",result,out.poses.size());
+    if(result!=-1)RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(),1000,"%s result %d: validated %zu trajectory samples",planner_backend_.c_str(),result,out.poses.size());
   }
   void publishGridRoute(bool ready,const std::string& failure="") {
     dronehacks_msgs::msg::RoutePolyline msg;
@@ -384,7 +391,8 @@ class DepthMapNode : public rclcpp::Node {
   double launch_radius_{0},launch_min_z_{.1},launch_max_z_{1.5};bool launch_declared_{false};
   std::shared_ptr<navigation::ObservedMap> map_;
   std::shared_ptr<navigation::PlannerClock> planner_clock_;
-  std::unique_ptr<navigation::RoutePlanner> planner_;
+  std::string planner_backend_;
+  std::unique_ptr<navigation::PlannerContract> planner_;
   int64_t last_plan_ns_{0},last_certificate_ns_{0};
   uint64_t trajectory_sequence_{0};
   int64_t max_depth_age_ns_{500'000'000};
