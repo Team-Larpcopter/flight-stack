@@ -55,14 +55,18 @@ pane() {
 }
 parts=(drivers foxglove vins dds depth map super executive)
 titles=(Drivers Foxglove sqrtVINS DDS LAS 'ROG map' SUPER 'Mission executive')
-first=$(tmux new-session -d -P -F '#{pane_id}' -s "$session" -n system "$(pane drivers)")
+first=$(tmux new-session -d -P -F '#{pane_id}' -s "$session" -n system "bash --noprofile --norc -i")
 tmux set-option -t "$session" mouse on
-tmux set-option -t "$session" remain-on-exit on
+tmux set-option -t "$session" remain-on-exit off
 tmux set-option -t "$session" pane-border-status top
 tmux select-pane -t "$first" -T "${titles[0]}"
+tmux send-keys -t "$first" -l "$(pane drivers)"
+tmux send-keys -t "$first" Enter
 for ((i=1; i<8; ++i)); do
-  created=$(tmux split-window -d -P -F '#{pane_id}' -t "$session:system" "$(pane "${parts[i]}")")
+  created=$(tmux split-window -d -P -F '#{pane_id}' -t "$session:system" "bash --noprofile --norc -i")
   tmux select-pane -t "$created" -T "${titles[i]}"
+  tmux send-keys -t "$created" -l "$(pane "${parts[i]}")"
+  tmux send-keys -t "$created" Enter
   tmux select-layout -t "$session:system" tiled >/dev/null
 done
 tmux select-pane -t "$first"

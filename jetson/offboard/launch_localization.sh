@@ -33,11 +33,16 @@ pane() {
   printf '%q ' docker exec -it "$container" /flight-stack/jetson/offboard/entrypoint.sh \
     bash /flight-stack/jetson/offboard/localization_pane.sh "$1"
 }
-tmux new-session -d -s "$session" -n localization "$(pane camera)"
+tmux new-session -d -s "$session" -n localization "bash --noprofile --norc -i"
 tmux set-option -t "$session" mouse on
-tmux set-option -t "$session" remain-on-exit on
-tmux split-window -h -t "$session:localization" "$(pane vins)"
-tmux split-window -v -t "$session:localization.1" "$(pane foxglove)"
+tmux set-option -t "$session" remain-on-exit off
+tmux split-window -h -t "$session:localization" "bash --noprofile --norc -i"
+tmux split-window -v -t "$session:localization.1" "bash --noprofile --norc -i"
+parts=(camera vins foxglove)
+for i in 0 1 2; do
+  tmux send-keys -t "$session:localization.$i" -l "$(pane "${parts[i]}")"
+  tmux send-keys -t "$session:localization.$i" Enter
+done
 tmux set-option -t "$session" pane-border-status top
 tmux select-pane -t "$session:localization.0" -T Camera
 tmux select-pane -t "$session:localization.1" -T sqrtVINS
