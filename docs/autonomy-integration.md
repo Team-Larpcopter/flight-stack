@@ -1,7 +1,7 @@
 # Native localization and fixed-map navigation integration
 
 The integration branch combines the existing Jetson camera/localization tooling
-with patched sqrtVINS, ROG-Map, Air-FAR and SUPER. Dependencies are vendored as
+with patched sqrtVINS, ROG-Map and SUPER. Dependencies are vendored as
 ordinary source directories, without Git submodules. `references/`, builds,
 SDK downloads and hardware evidence are excluded from Git.
 
@@ -25,7 +25,7 @@ pose matcher is used.
 
 The body adapter handles frame and lever-arm conversions and supports explicit
 initial position/yaw in the CAD coordinate system. Fixed-CAD planning requires an
-explicit geofence parameter file. Air-FAR's route feeds SUPER's geometric frontend;
+explicit geofence parameter file. SUPER's A* route feeds its geometric frontend;
 the trajectory bridge samples its certified stopping polynomial. Depth acquisition
 and map updates are disabled in the current hardware path.
 

@@ -1,6 +1,6 @@
 """Offline ROS integration test: static geometry, live pose leases, fail closed.
 
-Run only on an isolated ROS domain/network; starts mapper and Air-FAR, no hardware.
+Run only on an isolated ROS domain/network; starts mapper and SUPER, no hardware.
 """
 import argparse
 import os
@@ -13,16 +13,14 @@ import yaml
 import rclpy
 from rclpy.qos import QoSProfile, DurabilityPolicy, qos_profile_sensor_data
 from nav_msgs.msg import Odometry
-from std_msgs.msg import Bool, Float32
+from std_msgs.msg import Bool
 from dronehacks_msgs.msg import MapSnapshot, MapState, NavigationGoal, RoutePolyline, CommittedTrajectory
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mapper', required=True)
-    parser.add_argument('--airfar', required=True)
     parser.add_argument('--config', required=True)
-    parser.add_argument('--airfar-config', required=True)
     args = parser.parse_args()
     if os.environ.get('ROS_DOMAIN_ID') != '187':
         raise RuntimeError('This synthetic test requires isolated ROS_DOMAIN_ID=187')
@@ -33,13 +31,12 @@ def main():
     health_pub = node.create_publisher(Bool, '/navigation/vio_healthy', 10)
     goal_pub = node.create_publisher(NavigationGoal, '/navigation/goal', latched)
     state_pub = node.create_publisher(MapState, '/navigation/map_state', qos_profile_sensor_data)
-    maps, states, routes, curves, mapping = [], [], [], [], []
+    maps, states, routes, curves = [], [], [], []
     subscriptions = [
         node.create_subscription(MapSnapshot, '/navigation/map_snapshot', maps.append, latched),
         node.create_subscription(MapState, '/navigation/map_state', states.append, qos_profile_sensor_data),
         node.create_subscription(RoutePolyline, '/navigation/route', routes.append, 20),
         node.create_subscription(CommittedTrajectory, '/navigation/trajectory', curves.append, 20),
-        node.create_subscription(Float32, '/far_mapping_time', mapping.append, 20),
     ]
     x, healthy = 0., True
     def inputs():
@@ -79,7 +76,7 @@ def main():
             return process
         try:
             mapper = launch(args.mapper, {'config_file':directory/'nav.yaml','rig_file':directory/'rig.yaml',
-                'cad_prior_file':directory/'cad.txt','static_cad_only':'true'}, 'mapper')
+                'cad_prior_file':directory/'cad.txt','static_cad_only':'true','route_backend':'super_astar'}, 'mapper')
             deadline = time.monotonic()+45
             while not maps and time.monotonic()<deadline:spin(.1)
             assert len(maps)==1, 'mapper did not publish static geometry'
@@ -88,8 +85,6 @@ def main():
             assert len(states)>10, 'missing lightweight pose leases'
             late_maps = []
             subscriptions.append(node.create_subscription(MapSnapshot, '/navigation/map_snapshot', late_maps.append, latched))
-            airfar = launch(args.airfar, {'params-file':args.airfar_config,
-                'navigation_config_file':directory/'nav.yaml','static_cad_only':'true','main_run_freq':10.,'voxel_dim':.1}, 'airfar')
             goal = NavigationGoal();goal.header.frame_id='map';goal.localization_epoch=1;goal.goal_id=1
             goal.pose.position.x=.8;goal.pose.position.z=1.;goal.pose.orientation.w=1.
             goal_pub.publish(goal)
@@ -97,18 +92,17 @@ def main():
             while not any(m.status==m.VALID for m in routes) and time.monotonic()<deadline:spin(.1)
             assert late_maps, 'late subscriber missed retained geometry'
             assert any(m.status==m.VALID for m in routes), 'no valid route using retained static geometry'
-            spin(8)  # Allow bounded graph voting/settling to finish.
-            nmap,nroute,ncurve=len(mapping),len(routes),len(curves)
+            spin(2)  # Allow SUPER to commit its trajectory.
+            nroute,ncurve=len(routes),len(curves)
             spin(2)
             assert len(maps)==1, 'geometry revision changed without a geometry change'
-            assert len(mapping)==nmap, 'stationary pose still rebuilds graph'
-            assert sum(m.status==m.VALID for m in routes[nroute:])>=8, 'route not refreshed independently of graph rebuild'
+            assert sum(m.status==m.VALID for m in routes[nroute:])>=8, 'cached route not refreshed'
             assert any(m.status==m.VALID for m in curves[ncurve:]), 'SUPER produced no certified trajectory'
-            # Sub-threshold movement must move the route start without graph rebuild.
+            # Small movement must preserve the cached global goal.
             x=.02;nroute=len(routes);spin(1)
             valid=[m for m in routes[nroute:] if m.status==m.VALID]
-            assert valid and abs(valid[-1].points[0].x-x)<.005, 'route start did not follow measured pose'
-            assert len(mapping)==nmap, 'tiny pose update rebuilt geometry'
+            assert valid, 'no route after movement'
+            assert abs(valid[-1].points[-1].x-.8)<.005, 'cached global route lost goal'
             # Stop leases by making VIO unhealthy. Geometry alone cannot keep routes alive.
             healthy=False;spin(.7);nroute,ncurve=len(routes),len(curves);spin(.7)
             assert routes[nroute:] and all(m.status!=m.VALID for m in routes[nroute:]), 'stale localization authorized a route'
@@ -121,9 +115,9 @@ def main():
             assert all(m.status!=m.VALID for m in routes[nroute:]), 'wrong geometry revision authorized a route'
             healthy=True;spin(1)
             assert routes[-1].status==routes[-1].VALID, 'fresh matching pose did not restore route'
-            print('PASS: single retained CAD, late join, stationary graph reuse, fresh moving start, SUPER certificate, stale/identity rejection and recovery')
+            print('PASS: single retained CAD, late join, cached global goal, SUPER certificate, stale/identity rejection and recovery')
         except BaseException:
-            for name in ('mapper','airfar'):
+            for name in ('mapper',):
                 path=directory/(name+'.log')
                 if path.exists():print(name+' LOG\n'+path.read_text()[-18000:])
             raise

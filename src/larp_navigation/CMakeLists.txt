@@ -104,6 +104,9 @@ if(BUILD_TESTING)
   add_executable(trajectory_commit_test tests/trajectory_commit_test.cpp)
   target_link_libraries(trajectory_commit_test super_core)
   add_test(NAME trajectory_commit COMMAND trajectory_commit_test)
+  add_executable(global_grid_route_test tests/global_grid_route_test.cpp)
+  target_link_libraries(global_grid_route_test super_core)
+  add_test(NAME global_grid_route COMMAND global_grid_route_test ${CMAKE_CURRENT_SOURCE_DIR}/config/navigation.yaml)
   add_executable(route_planner_test tests/route_planner_test.cpp)
   target_link_libraries(route_planner_test super_core)
   add_test(NAME route_planner COMMAND route_planner_test ${CMAKE_CURRENT_SOURCE_DIR}/config/navigation.yaml)
@@ -118,44 +121,20 @@ if(BUILD_TESTING)
   set_tests_properties(cad_corner_frontend PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
 
-option(BUILD_AIRFAR "Build the ROS2 Air-FAR route frontend" ON)
-if(BUILD_AIRFAR)
-  find_package(nav_msgs REQUIRED)
-  find_package(geometry_msgs REQUIRED)
-  find_package(std_srvs REQUIRED)
-  find_package(nav_graph_msg REQUIRED)
-  find_package(route_goal_msg REQUIRED)
-  find_package(visibility_graph_msg REQUIRED)
-  find_package(OpenCV REQUIRED)
-  pkg_search_module(PCL_SEARCH REQUIRED IMPORTED_TARGET pcl_search pcl_search-1.12)
-  pkg_search_module(PCL_KDTREE REQUIRED IMPORTED_TARGET pcl_kdtree pcl_kdtree-1.12)
-  set(AIRFAR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/Air-FAR/src/airfar_planner)
-  set(AIRFAR_SOURCES airfar_planner dynamic_graph planner_visualizer utility graph_planner
-    contour_detector contour_graph map_handler scan_handler graph_msger terrain_planner)
-  list(TRANSFORM AIRFAR_SOURCES PREPEND ${AIRFAR}/src/)
-  list(TRANSFORM AIRFAR_SOURCES APPEND .cpp)
-  add_executable(airfar_route_node ${AIRFAR_SOURCES})
-  target_include_directories(airfar_route_node PRIVATE ${AIRFAR}/include ${PCL_CONVERSIONS_INCLUDE} ${OpenCV_INCLUDE_DIRS})
-  target_link_libraries(airfar_route_node rog_map_core navigation_interfaces Eigen3::Eigen PkgConfig::PCL_COMMON PkgConfig::PCL_FILTERS PkgConfig::PCL_SEARCH PkgConfig::PCL_KDTREE ${OpenCV_LIBRARIES})
-  ament_target_dependencies(airfar_route_node rclcpp std_msgs sensor_msgs nav_msgs geometry_msgs
-    visualization_msgs std_srvs pcl_msgs message_filters nav_graph_msg route_goal_msg visibility_graph_msg dronehacks_msgs)
-  target_sources(airfar_route_node PRIVATE src/navigation/airfar_snapshot_adapter.cpp)
-endif()
 
-install(TARGETS body_odometry_node ev_source_node depth_map_node airfar_route_node probe_route_frontend DESTINATION lib/${PROJECT_NAME})
+install(TARGETS body_odometry_node ev_source_node depth_map_node probe_route_frontend DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
 
 add_executable(planner_latency_native src/navigation/planner_latency_native.cpp)
 ament_target_dependencies(planner_latency_native rclcpp sensor_msgs nav_msgs geometry_msgs dronehacks_msgs flight_executive_msgs)
 install(TARGETS planner_latency_native DESTINATION lib/${PROJECT_NAME})
-if(BUILD_TESTING AND BUILD_AIRFAR)
+if(BUILD_TESTING)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
-  add_test(NAME static_pipeline COMMAND ${Python3_EXECUTABLE}
+  add_test(NAME super_grid_pipeline COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/static_pipeline_smoke.py
-    --mapper $<TARGET_FILE:depth_map_node> --airfar $<TARGET_FILE:airfar_route_node>
-    --config ${CMAKE_CURRENT_SOURCE_DIR}/config/navigation.yaml
-    --airfar-config ${CMAKE_CURRENT_SOURCE_DIR}/config/airfar_geometry.yaml)
-  set_tests_properties(static_pipeline PROPERTIES TIMEOUT 180
+    --mapper $<TARGET_FILE:depth_map_node>
+    --config ${CMAKE_CURRENT_SOURCE_DIR}/config/navigation.yaml)
+  set_tests_properties(super_grid_pipeline PROPERTIES TIMEOUT 180
     ENVIRONMENT "ROS_DOMAIN_ID=187;ROS_LOCALHOST_ONLY=1")
 endif()
 

@@ -29,6 +29,9 @@
 #include "rog_map/rog_map.h"
 
 #include "queue"
+#include <functional>
+#include <chrono>
+#include <optional>
 #include "path_search/config.hpp"
 #include "utils/header/type_utils.hpp"
 #include <ros_interface/ros_interface.hpp>
@@ -69,6 +72,7 @@ namespace path_search {
         }
     };
 
+    const int FULL_GOAL = (1 << 7); // No endpoint relocation or partial route.
     const int ON_INF_MAP = (1 << 0);
     const int ON_PROB_MAP = (1 << 1);
     const int UNKNOWN_AS_OCCUPIED = (1 << 3);
@@ -89,6 +93,19 @@ namespace path_search {
         vector<GridNodePtr> grid_node_buffer_;
 
         int rounds_{0};
+        std::optional<std::pair<Vec3f,Vec3f>> search_bounds_;
+        std::function<bool(const Vec3f&,const Vec3f&)> edge_validator_;
+        GridNodePtr nodeAt(int index) {
+            auto& node=grid_node_buffer_.at(index);
+            if(!node)node=new GridNode;
+            return node;
+        }
+        void resizeBuffer() {
+            const int64_t count=int64_t(cfg_.map_voxel_num.x())*cfg_.map_voxel_num.y()*cfg_.map_voxel_num.z();
+            if(count<=0 || count>10'000'000)throw std::invalid_argument("A* grid exceeds bounded storage");
+            for(auto* node:grid_node_buffer_)delete node;
+            grid_node_buffer_.assign(size_t(count),nullptr);
+        }
 
         static constexpr int DIAG = 0;
         static constexpr int MANH = 1;
@@ -146,6 +163,14 @@ namespace path_search {
 
         typedef std::shared_ptr<Astar> Ptr;
 
+        void setSearchBounds(const Vec3f& lower,const Vec3f& upper) {
+            if(!lower.allFinite() || !upper.allFinite() || !(lower.array()<upper.array()).all())
+                throw std::invalid_argument("invalid A* search bounds");
+            search_bounds_=std::make_pair(lower,upper);
+        }
+        void setEdgeValidator(std::function<bool(const Vec3f&,const Vec3f&)> validate) {
+            edge_validator_=std::move(validate);
+        }
         void setVisualProcessEn(const bool &en);
 
         void setFineInfNeighbors(const int & neighbor_step);

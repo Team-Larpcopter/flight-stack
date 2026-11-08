@@ -19,9 +19,9 @@ def load_launch(name):
 def context(mode):
     c = launch.LaunchContext()
     c.launch_configurations.update({
-        'mode': mode, 'alignment_verified': 'false', 'mission_id': '',
+        'mode': mode, 'route_backend': 'super_astar', 'alignment_verified': 'false', 'mission_id': '',
         'rig_file': '/unused/rig', 'navigation_config': '/unused/nav',
-        'airfar_config': '/unused/airfar', 'cad_prior_file': '/unused/cad',
+        'cad_prior_file': '/unused/cad',
         'boundary_config': '/unused/bounds', 'map_heading_ned': '0.0',
         'map_origin_ned_x': '0.0', 'map_origin_ned_y': '0.0', 'map_origin_ned_z': '0.0',
         'initial_map_x': '0.0', 'initial_map_y': '0.0', 'initial_map_z': '0.0',
@@ -31,13 +31,13 @@ def context(mode):
 
 def test_shadow_has_no_executive_and_active_modes_require_alignment():
     module = load_launch('planner_mission.launch.py')
-    assert len(module.nodes(context('shadow'))) == 4
+    assert len(module.nodes(context('shadow'))) == 3
     for mode in ('simulation', 'hardware'):
         c = context(mode)
         with pytest.raises(ValueError):
             module.nodes(c)
         c.launch_configurations.update(alignment_verified='true', mission_id='test-flight')
-        assert len(module.nodes(c)) == 5
+        assert len(module.nodes(c)) == 4
     with pytest.raises(ValueError):
         module.nodes(context('typo'))
 
@@ -47,7 +47,7 @@ def test_full_profile_constructs_camera_vio_and_shadow_planner(tmp_path):
     c = context('shadow')
     data = tmp_path / 'input.yaml'
     data.write_text('{}')
-    for key in ('rig_file', 'navigation_config', 'airfar_config', 'cad_prior_file', 'boundary_config'):
+    for key in ('rig_file', 'navigation_config', 'cad_prior_file', 'boundary_config'):
         c.launch_configurations[key] = str(data)
     c.launch_configurations.update(start_localization='true', estimator_config=str(data))
     assert len(module.nodes(c)) == 4

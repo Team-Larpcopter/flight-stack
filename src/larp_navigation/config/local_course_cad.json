@@ -61,6 +61,5 @@
     "reference": "CAD training launch corridor: rear wall 0.6064 m behind body, side walls 0.5334 m each side. Centre limits reserve 0.4 m to CAD walls; forward bound conservatively mirrored. Requires verified initial placement and clear takeoff volume; no sensor-derived free-space claim. Bounds rounded inward to the 5 cm map lattice."
   },
   "course_validation": "cad_v3_geometric_proxy",
-  "static_cad_only": true,
-  "airfar_config_file": "config/airfar_geometry.yaml"
+  "static_cad_only": true
 }

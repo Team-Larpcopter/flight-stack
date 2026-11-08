@@ -25,6 +25,8 @@
 #pragma once
 
 #include "vector"
+#include <algorithm>
+#include <stdexcept>
 #include "Eigen/Dense"
 #include "string"
 #include "utils/header/type_utils.hpp"
@@ -55,6 +57,9 @@ namespace path_search {
             loader.LoadParam(name_space + "/debug_visualization_en", debug_visualization_en, false);
             loader.LoadParam(name_space + "/heu_type", heu_type, 0);
             loader.LoadParam(name_space + "/visual_process", visual_process, false);
+            if(vox_.size()!=3 || *std::min_element(vox_.begin(),vox_.end())<2 ||
+               *std::max_element(vox_.begin(),vox_.end())>2000)
+                throw std::invalid_argument("astar/map_voxel_num needs three bounded positive dimensions");
             map_voxel_num = Vec3i(vox_[0], vox_[1], vox_[2]);
             map_size_i = map_voxel_num / 2;
             map_voxel_num = map_size_i * 2 + Vec3i::Constant(1);

@@ -1,6 +1,7 @@
 #pragma once
 #include <navigation/planner_clock.hpp>
 #include <navigation/route_guide.hpp>
+#include <navigation/global_grid_route.hpp>
 #include <navigation/trajectory_validator.hpp>
 #include <navigation/certified_stop.hpp>
 #include <navigation/physical_clearance.hpp>
@@ -26,7 +27,7 @@ class RoutePlanner {
   }
  public:
   RoutePlanner(const std::string& config,rog_map::ROGMap::Ptr map,
-               std::shared_ptr<PlannerClock> clock)
+               std::shared_ptr<PlannerClock> clock,bool internal_grid_route=false)
     :map_(std::move(map)),clock_(std::move(clock)),limits_(loadLimits(config)),planner_(config,clock_,map_,true),
      validator_([this](const Point& lo,const Point& hi){return boxFree(lo,hi);},limits_.v,limits_.a,limits_.budget),
      yaw_validator_([](const Point&,const Point&){return true;},limits_.yaw_rate,limits_.yaw_acceleration,limits_.budget) {
@@ -37,8 +38,11 @@ class RoutePlanner {
         return perceptionHeading(current.p,heading,envelope_lower_-Point::Constant(limits_.radius),
           envelope_upper_+Point::Constant(limits_.radius),[this](const Point& q){return map_->isOccupied(q);},current.yaw);
       });
+    if(internal_grid_route)grid_route_=std::make_unique<GlobalGridRoute>(config,map_,clock_,
+      [this](const Point& a,const Point& b){return lineFree(a,b);});
     planner_.setGuideProvider([this](const Point& start,double horizon,super_utils::vec_Vec3f& path){
-      path=guide_.nearby(start,horizon*guide_horizon_scale_,clock_->getSimTime(),goal_id_,
+      if(grid_route_)path=grid_route_->nearby(start,goal_,goal_id_,map_revision_,horizon*guide_horizon_scale_);
+      else path=guide_.nearby(start,horizon*guide_horizon_scale_,clock_->getSimTime(),goal_id_,
         [this](const Point& a,const Point& b){return lineFree(a,b);});
       last_guide_valid_=path.size()>=2;
       return last_guide_valid_;
@@ -61,8 +65,12 @@ class RoutePlanner {
       return valid;
     });
   }
+  void setMapRevision(uint64_t revision){map_revision_=revision;}
+  void setSearchBounds(const Point& lo,const Point& hi){if(grid_route_)grid_route_->setBounds(lo,hi);}
+  const GlobalGridRoute* gridRoute()const{return grid_route_.get();}
   bool setGoal(uint64_t id,const Point& goal,double yaw) {
     if(!id || id<=goal_id_ || !goal.allFinite() || !std::isfinite(yaw))return false;
+    if(grid_route_)grid_route_->clear();
     goal_id_=id;goal_=goal;yaw_=yaw;active_=true;new_goal_=true;guide_horizon_scale_=1.;guide_.clear();return true;
   }
   void setFlightEnvelope(const Point& lower,const Point& upper) {
@@ -70,10 +78,10 @@ class RoutePlanner {
       throw std::invalid_argument("invalid flight envelope");
     envelope_lower_=lower;envelope_upper_=upper;
   }
-  void cancel(){active_=false;braking_=false;guide_.clear();}
+  void cancel(){active_=false;braking_=false;guide_.clear();if(grid_route_)grid_route_->clear();}
   void invalidateRoute(){guide_.clear();}
   bool accept(Route route,uint64_t current_revision) {
-    if(!active_)return false;
+    if(grid_route_ || !active_)return false;
     const auto now=clock_->getSimTime();
     if(route.frame!="map" || route.goal_id!=goal_id_ || route.map_revision>current_revision ||
        !std::isfinite(route.capture_time) || route.capture_time>now || now-route.capture_time>1.) {
@@ -151,7 +159,7 @@ class RoutePlanner {
     return true;
   }
   void adaptGuideHorizon(super_utils::RET_CODE result) {
-    // Retry the same Air-FAR polyline with a shorter nearby section when the
+    // Retry the same global polyline with a shorter nearby section when the
     // optimizer cannot certify it. Never relax geometry or command a rejected
     // curve; an existing certified trajectory/stop remains authoritative.
     if(!last_guide_valid_)return;
@@ -161,6 +169,7 @@ class RoutePlanner {
   double guide_horizon_scale_{1.};bool last_guide_valid_{false};
   rog_map::ROGMap::Ptr map_;std::shared_ptr<PlannerClock> clock_;
   Limits limits_;
+  std::unique_ptr<GlobalGridRoute> grid_route_;uint64_t map_revision_{0};
   super_planner::SuperPlanner planner_;RouteGuide guide_;TrajectoryValidator validator_,yaw_validator_;
   StopCommand stop_;bool braking_{false};uint64_t recovery_count_{0};
   Point goal_{Point::Zero()};double yaw_{0};uint64_t goal_id_{0};bool active_{false},new_goal_{false};
