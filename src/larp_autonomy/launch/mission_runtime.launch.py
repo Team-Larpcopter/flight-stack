@@ -81,8 +81,10 @@ def nodes(context):
         params=dict(simulation_only=False,hardware_enabled=active,alignment_verified=cfg['alignment_verified'],
             mission_id=cfg['mission_id'],map_heading_ned=cfg['map_heading_ned'],map_origin_ned=cfg['map_origin_ned'],
             align_px4_to_map_on_ground=active,trajectory_max_age_s=cfg['trajectory_max_age_s'])
+        # Plan and visualize before takeoff with the same SUPER instance.
+        # trajectory_bridge independently gates execution to HOLD/TRACKING.
         result=[node('larp_autonomy','trajectory_bridge',[params]),
-            node('larp_autonomy','mission_goal',[dict(zip(('x','y','z','yaw'),cfg['goal']),wait_for_hold=active)])]
+            node('larp_autonomy','mission_goal',[dict(zip(('x','y','z','yaw'),cfg['goal']),wait_for_hold=False)])]
         if active:
             result.append(node('flight_executive','flight_executive_node',[dict(
                 simulation_only=False,hardware_enabled=True,takeoff_trigger='position',align_px4_to_map_on_ground=True,

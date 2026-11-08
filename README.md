@@ -62,3 +62,10 @@ this reduces visualization traffic, not mapper computation. Load the updated fli
 layout after upgrading, and restart the Foxglove pane (bridge and visualization
 publisher together). The bridge queue cap is 32 for retained chunks; ordinary
 single-writer depth-one monitoring streams keep depth one.
+
+The mission goal is published as soon as a localization epoch is available,
+without waiting for takeoff/HOLD. The single SUPER planner computes and publishes
+its path for Foxglove whenever aligned localization, map freshness and collision
+checks permit. No second preview planner runs. Execution remains gated separately
+to HOLD/TRACKING; a grounded pose without a collision-free starting state may
+still have no valid trajectory to display.
