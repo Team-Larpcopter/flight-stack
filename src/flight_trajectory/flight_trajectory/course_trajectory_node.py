@@ -22,7 +22,7 @@ from std_msgs.msg import String
 from flight_trajectory.course_follower import CourseFollower, Phase, Pose
 from flight_trajectory.dronehacks_course import course_trajectory
 from flight_trajectory.triangle_course import TriangleCourse, TriangleFollower
-from flight_trajectory.fixed_course import FixedCourse, FixedCourseFollower, load_waypoints
+from flight_trajectory.fixed_course import FixedCourse, FixedCourseFollower, load_waypoints, load_segment_yaws
 
 COURSES = {'dronehacks': course_trajectory, 'triangle': TriangleCourse, 'fixed_course': FixedCourse}
 
@@ -62,7 +62,8 @@ class CourseTrajectoryNode(Node):
             max_speed, yaw_mode = .2, 'fixed'
         elif course == 'fixed_course':
             route_file = self.declare_parameter('fixed_course_file', '').value
-            trajectory = FixedCourse(load_waypoints(route_file) if route_file else None)
+            trajectory = FixedCourse(load_waypoints(route_file) if route_file else None,
+                                     load_segment_yaws(route_file) if route_file else None)
             max_speed, yaw_mode = .2, 'stop-and-turn'
         else:
             trajectory = COURSES[course](max_speed=max_speed, height=height,

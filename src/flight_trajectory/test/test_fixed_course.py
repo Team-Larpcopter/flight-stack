@@ -75,3 +75,17 @@ def test_yaml_xyz_changes_are_loaded_on_each_start(tmp_path):
 def test_bad_waypoints_fail_before_flight(points):
     with pytest.raises(ValueError):
         FixedCourse(points)
+
+
+def test_new_start_first_leg_keeps_launch_heading_then_resumes_tangent():
+    course = FixedCourse([(0.,0.,1.), (0.,1.2,1.), (4.8261,1.2,1.),
+                          (4.8261,-3.3863,1.)], [0., None, None])
+    assert course.segments[0][0] == 'line'
+    sample = course.sample(course.segments[0][1]/2)
+    assert sample.yaw == pytest.approx(0.)
+    assert sample.position[0] == pytest.approx(0.)
+    assert 0 < sample.position[1] < 1.2
+    assert course.segments[1][0] == 'line'
+    assert course.segments[1][3] == pytest.approx(0.)
+    assert course.segments[2][0] == 'turn'
+    assert course.sample(course.duration).yaw == pytest.approx(-pi/2)

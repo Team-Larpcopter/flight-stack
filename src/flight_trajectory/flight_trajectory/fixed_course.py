@@ -22,6 +22,11 @@ def load_waypoints(path):
     return validate_waypoints(data.get('waypoints') if isinstance(data, dict) else None)
 
 
+def load_segment_yaws(path):
+    data = yaml.safe_load(Path(path).read_text())
+    return data.get('segment_yaws_rad')
+
+
 def validate_waypoints(points):
     if not isinstance(points, (list, tuple)) or len(points) < 2:
         raise ValueError('fixed course needs at least two [x, y, z] waypoints')
@@ -40,18 +45,22 @@ def validate_waypoints(points):
 
 
 class FixedCourse:
-    def __init__(self, waypoints=None):
+    def __init__(self, waypoints=None, segment_yaws=None):
         self.waypoints = validate_waypoints(waypoints if waypoints is not None else
                                             tuple((x, y, HEIGHT) for x, y in ROUTE_XY))
         # Take off vertically first, then visit the first configured XY if needed.
         if self.waypoints[0][:2] != (0., 0.):
             self.waypoints = ((0., 0., self.waypoints[0][2]),) + self.waypoints
+        if segment_yaws is not None and len(segment_yaws) != len(self.waypoints)-1:
+            raise ValueError('segment_yaws_rad must contain one yaw or null per leg')
         self.segments = []
         self.length = 0.
         heading = 0.
-        for a, b in zip(self.waypoints, self.waypoints[1:]):
+        for i, (a, b) in enumerate(zip(self.waypoints, self.waypoints[1:])):
             target = (heading + wrap(atan2(b[1]-a[1], b[0]-a[0])-heading)
                       if a[:2] != b[:2] else heading)
+            if segment_yaws is not None and segment_yaws[i] is not None:
+                target = heading + wrap(float(segment_yaws[i])-heading)
             delta = target-heading
             if abs(delta) > 1e-9:
                 # Quintic yaw transition: <=0.3 rad/s and <=0.4 rad/s^2.

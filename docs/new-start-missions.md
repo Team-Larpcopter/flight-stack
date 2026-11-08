@@ -1,6 +1,6 @@
 # New-start missions
 
-The operator places the aircraft at old map (1.2, 0, 0), facing 90 degrees right. This becomes a new mission origin (0, 0, 0), yaw zero. No completed mission state is inherited.
+The operator places the aircraft at old map (0, 0, 0), facing 90 degrees right. This becomes a new mission origin (0, 0, 0), yaw zero. No completed mission state is inherited.
 
 All mission geometry is stored in `jetson/offboard/assets/new_start/`: mission config, CAD preload, cached guide, and independent fixed-course waypoints. Coordinates were converted during development and saved. No coordinate-conversion generator is shipped, and build/launch performs no mission-asset rotation or translation. Ordinary live sensor/body/PX4 frame handling remains unchanged.
 
@@ -25,12 +25,13 @@ The SUPER-named launcher uses the latest default follower planner, matching the 
 
 ```text
 0        0         1
-4.8261   0         1
-4.8261  -4.5863    1
-0.77724 -4.5863    1
-0.77724 -4.02128   1
+0        1.2       1
+4.8261   1.2       1
+4.8261  -3.3863    1
+0.77724 -3.3863    1
+0.77724 -2.82128   1
 ```
 
-The transformed goal yaw is +pi/2; fixed-course retains its existing travel-heading behavior. New boundary: [-0.5334,-5.3624,0] to [5.5626,0.7336,1.8].
+The transformed goal yaw is +pi/2; fixed-course keeps yaw zero (physical old-right) during its first sideways leg using `segment_yaws_rad`. Remaining legs use the existing smoothed travel heading. New boundary: [-0.5334,-4.1624,0] to [5.5626,1.9336,1.8].
 
 Validation: deployed runtime config loader and fixed-course construction passed offline on Jetson, including start and goal agreement. No mission was started or flight-tested by this change.

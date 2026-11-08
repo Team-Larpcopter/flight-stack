@@ -1,16 +1,12 @@
+# Independent mission: original physical start, facing old-right.
+# Coordinates: x forward from launch, y left, z up.
 waypoints:
-- - 0.0
-  - 0.0
-  - 1.0
-- - 4.8261
-  - 0.0
-  - 1.0
-- - 4.8261
-  - -4.5863
-  - 1.0
-- - 0.77724
-  - -4.5863
-  - 1.0
-- - 0.77724
-  - -4.02128
-  - 1.0
+  - [0.0, 0.0, 1.0]
+  - [0.0, 1.2, 1.0]
+  - [4.8261, 1.2, 1.0]
+  - [4.8261, -3.3863, 1.0]
+  - [0.77724, -3.3863, 1.0]
+  - [0.77724, -2.82128, 1.0]
+# First leg moves sideways while looking along launch-forward (old-right).
+# All remaining legs retain the usual smoothed travel heading.
+segment_yaws_rad: [0.0, null, null, null, null]
