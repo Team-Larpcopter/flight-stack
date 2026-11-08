@@ -3,7 +3,8 @@ global_route:
   search_budget_ms: 250.0
 # Conservative development configuration; flight qualification pending.
 navigation_safety:
-  prefer_observable_heading: true
+  # Travel heading only: skip camera-view raycasting entirely.
+  prefer_observable_heading: false
   # SUPER uses soft penalties. Optimize below these independent hard bounds.
   max_velocity: 0.2
   max_acceleration: 0.3
@@ -27,7 +28,8 @@ super_planner:
   print_log: false
   visual_process: false
   frontend_in_known_free: true
-  goal_yaw_en: true
+  # Keep travel heading through arrival instead of forcing the mission goal yaw.
+  goal_yaw_en: false
   goal_vel_en: false
   corridor_bound_dis: 1.0
   corridor_line_max_length: 1.2
