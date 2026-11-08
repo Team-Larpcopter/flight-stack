@@ -173,7 +173,10 @@ int main(int argc, char** argv) {
   // A newly observed frontal wall must repair the cached master route, not
   // repeatedly return a short prefix ending at that same wall.
   body.yaw=0;body.rcv_time=now;map->setBody(body);
-  larp_route_follower::FollowerRoutePlanner repair(argv[1],map,clock);
+  auto repair_map=std::make_shared<navigation::ObservedMap>(argv[1],[&]{return now;});
+  repair_map->setBody(body);
+  for(int frame=0;frame<10;++frame)repair_map->integrate(shell,{body.p,body.q});
+  larp_route_follower::FollowerRoutePlanner repair(argv[1],repair_map,clock);
   require(repair.setGoal(1,{2.5,0,1},0), "repair goal rejected");repair.setMapRevision(1);
   auto prepare=[&] {
     const auto began=std::chrono::steady_clock::now();
@@ -185,8 +188,8 @@ int main(int argc, char** argv) {
   for(double y=-.5;y<=.5;y+=.05)for(double z=.2;z<=1.8;z+=.05) {
     rog_map::PointType point;point.x=1.;point.y=y;point.z=z;point.intensity=1;frontal_wall.push_back(point);
   }
-  for(int frame=0;frame<3;++frame)map->integrate(frontal_wall,{body.p,body.q});
-  require(map->isOccupied({1.,0.,1.}), "three observed wall frames did not update map");
+  for(int frame=0;frame<3;++frame)repair_map->integrate(frontal_wall,{body.p,body.q});
+  require(repair_map->isOccupied(navigation::Point(1.,0.,1.)), "three observed wall frames did not update map");
   repair.setMapRevision(2);prepare();
   require(repair.gridRoute()->searches()>searches, "blocked cached prefix did not trigger route repair");
   bool detour=false;

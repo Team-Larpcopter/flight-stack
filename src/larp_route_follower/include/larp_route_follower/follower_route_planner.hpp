@@ -36,7 +36,7 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
                        bool internal_grid_route = true)
       : map_(std::move(map)), clock_(std::move(clock)), limits_(navigation::PlannerLimits::load(config)),
         settings_(std::move(settings)),
-        route_(config, map_, clock_, [this](const Point& a, const Point& b) { return lineFree(a, b); }),
+        route_(config, map_, clock_, [this](const Point& a, const Point& b) { return chordCertified(a, b); }),
         validator_([this](const Point& lo, const Point& hi) { return boxFree(lo, hi); }, limits_.v, limits_.a,
                    limits_.budget),
         yaw_validator_([](const Point&, const Point&) { return true; }, limits_.yaw_rate,
@@ -140,12 +140,13 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
     if (!state.rcv || !state.p.allFinite() || !state.v.allFinite() || !state.a.allFinite() ||
         !std::isfinite(state.yaw + state.rcv_time) || now - state.rcv_time > .3 || now - state.rcv_time < -.005)
       return FAILED;
+    bool resume_scan = false;
     if (scanning_) {
       const auto opening = guideFrom(state.p, settings_.horizon, now);
       if (opening.size() < 2 || length(opening) < std::min(.2, (goal_-state.p).norm()))
         return scanForOpening(state, now);
       // Preserve the active yaw prefix for a continuous handoff out of scanning.
-      scanning_ = false; blocked_since_ = -1;
+      scanning_ = false; blocked_since_ = -1; resume_scan = true;
       clock_->warn("Follower found route during yaw scan; resuming");
     }
     const double end = position_.empty() ? now : position_.start_WT + position_.getTotalDuration();
@@ -156,8 +157,9 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
     if (!position_.empty() && !braking_ && (position_.getPos(position_.getTotalDuration()) - goal_).norm() < 1e-6 &&
         (state.p - goal_).norm() < .08 && state.v.norm() < .05)
       return NO_NEED;
-    // Consistency: keep a live certified curve instead of re-deriving it every tick.
-    if (live && now - last_commit_ < settings_.replan_period && end - now > 2 * settings_.replan_period + lead_)
+    // Execute committed corners instead of continually retiming their approach.
+    // ensureSafeCommand() still checks every map update and can brake immediately.
+    if (live && !resume_scan && end - now > std::max(2., 2 * settings_.replan_period + lead_))
       return NO_NEED;
     if (live && end - now < lead_ + .02) return NO_NEED;
     const double handoff = live ? now + lead_ : now;
@@ -289,7 +291,7 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
       // The preloaded/external route stays valid while the map allows it; the
       // validity predicate truncates it at the first blocked or unobserved span.
       guide_.renew(now);
-      guide = guide_.nearby(p, horizon, now, goal_id_, [this](const Point& a, const Point& b) { return lineFree(a, b); });
+      guide = guide_.nearby(p, horizon, now, goal_id_, [this](const Point& a, const Point& b) { return chordCertified(a, b); });
     }
     const double needed = std::min(.2, (p - goal_).norm());
     if ((guide.size() < 2 || length(guide) < needed) && internal_grid_route_)
