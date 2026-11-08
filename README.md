@@ -49,3 +49,6 @@ using its cached dependency layers, without compiling code or rebuilding the eng
 It includes localization, live LAS/ROG mapping, planning, DDS/PX4 integration, and
 the combined Foxglove layout. The separate tmux launcher starts camera, VINS and
 Foxglove in three panes with mouse mode enabled.
+
+For the eight-pane full-system and pilot-triggered PX4 mission launchers, see
+[full mission runtime](docs/full-mission-tmux.md).

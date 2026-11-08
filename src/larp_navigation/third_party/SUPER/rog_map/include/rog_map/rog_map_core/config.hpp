@@ -178,6 +178,14 @@ namespace rog_map {
             loader.LoadParam(name_space + "/raycasting/enable", raycasting_en, true);
             loader.LoadParam(name_space + "/raycasting/batch_update_size", batch_update_size, 1);
             loader.LoadParam(name_space + "/raycasting/frame_evidence", frame_evidence, false);
+            loader.LoadParam(name_space + "/raycasting/occupancy_confirmation_frames", occupancy_confirmation_frames, 1);
+            if (occupancy_confirmation_frames < 1 || occupancy_confirmation_frames > 127 ||
+                (occupancy_confirmation_frames > 1 && !frame_evidence))
+                throw std::invalid_argument("occupancy confirmation requires frame evidence and 1..127 frames");
+            loader.LoadParam(name_space + "/raycasting/clear_confirmation_frames", clear_confirmation_frames, 0);
+            if (clear_confirmation_frames < 0 || clear_confirmation_frames > 127 ||
+                (clear_confirmation_frames > 0 && !frame_evidence))
+                throw std::invalid_argument("clearing confirmation requires frame evidence and 0..127 frames");
             if (frame_evidence && batch_update_size != 1)
                 throw std::invalid_argument("frame_evidence requires one depth frame per map update");
             if (batch_update_size <= 0) {
@@ -334,6 +342,8 @@ namespace rog_map {
         double sqr_raycast_range_min{}, sqr_raycast_range_max{};
         int point_filt_num{}, batch_update_size{};
         bool frame_evidence{false};
+        int occupancy_confirmation_frames{1};
+        int clear_confirmation_frames{0};
         float p_hit{}, p_miss{}, p_min{}, p_max{}, p_occ{}, p_free{};
         float l_hit{}, l_miss{}, l_min{}, l_max{}, l_occ{}, l_free{};
 

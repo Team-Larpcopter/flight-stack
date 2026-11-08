@@ -24,3 +24,10 @@ def test_disparity_to_depth_mm_close_range():
     assert np.all(depth_mm[:, :90] == 0)
     # Valid overlapping region (>= 90 px) should be 250 mm
     assert np.all(depth_mm[:, 90:] == 250)
+
+
+def test_flight_depth_gate_discards_out_of_range_without_clamping():
+    disparity=np.array([[30.,20.,6.,2.,1.5,0.]],dtype=np.float32)
+    depth,_=disparity_to_depth_mm(disparity,fx_orig=80.,baseline_m=.075,
+        orig_w=6,orig_h=1,min_depth_m=.3,max_depth_m=3.,remove_invisible=False)
+    np.testing.assert_array_equal(depth,[[0,300,1000,3000,0,0]])

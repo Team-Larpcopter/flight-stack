@@ -62,7 +62,8 @@ stay in `~/flight-stack/deployment/gpu`. The host stops after transfer. It does 
 
 Builds always use `/flight-stack` inside the persistent volume to prevent CMake
 cache relocation errors. Do not share the volume between concurrent builds.
-The local build includes package tests and device-free camera/VINS checks.
+The offboard build compiles production targets and performs device-free camera/VINS
+checks. Set `RUN_TESTS=1` to also compile and run package tests.
 
 ## Launch separately on Jetson
 

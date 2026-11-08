@@ -80,6 +80,7 @@ void ProbMap::initProbMap() {
 
 
     occupancy_buffer_.resize(map_size, 0);
+    confirmation_hits_.resize(map_size, 0);
     raycast_data_.raycaster.setResolution(cfg_.resolution);
     raycast_data_.operation_cnt.resize(map_size, 0);
     raycast_data_.hit_cnt.resize(map_size, 0);
@@ -519,6 +520,7 @@ void ProbMap::boundBoxByLocalMap(Vec3f& box_min, Vec3f& box_max) const {
 }
 
 void ProbMap::resetCell(const int& hash_id) {
+    confirmation_hits_[hash_id] = 0;
     float& ret = occupancy_buffer_[hash_id];
     if (isOccupied(ret)) {
         /// if current state is occupied
@@ -568,18 +570,18 @@ void ProbMap::probabilisticMapFromCache() {
         if (raycast_data_.hit_cnt[hash_id] > 0) {
             // Stereo pixels in one frame share matching/pose error. Their
             // multiplicity must not masquerade as independent observations.
-            hitPointUpdate(pos, hash_id, cfg_.frame_evidence ? 1 : raycast_data_.hit_cnt[hash_id]);
+            hitPointUpdate(pos, hash_id, cfg_.frame_evidence ? 1 : raycast_data_.hit_cnt[hash_id], true);
         }
         else {
             missPointUpdate(pos, hash_id,
-                            cfg_.frame_evidence ? 1 : raycast_data_.operation_cnt[hash_id] - raycast_data_.hit_cnt[hash_id]);
+                            cfg_.frame_evidence ? 1 : raycast_data_.operation_cnt[hash_id] - raycast_data_.hit_cnt[hash_id], true);
         }
         raycast_data_.hit_cnt[hash_id] = 0;
         raycast_data_.operation_cnt[hash_id] = 0;
     }
 }
 
-void ProbMap::hitPointUpdate(const Vec3f& pos, const int& hash_id, const int& hit_num) {
+void ProbMap::hitPointUpdate(const Vec3f& pos, const int& hash_id, const int& hit_num, bool sensor_hit) {
     float& ret = occupancy_buffer_[hash_id];
     GridType from_type = UNDEFINED;
 
@@ -595,6 +597,15 @@ void ProbMap::hitPointUpdate(const Vec3f& pos, const int& hash_id, const int& hi
 
 
     ret += cfg_.l_hit * hit_num;
+    if (sensor_hit && cfg_.occupancy_confirmation_frames > 1) {
+        auto& hits = confirmation_hits_[hash_id];
+        if(hits & 128) hits=0; // a hit resets the clear streak
+        if (hits < cfg_.occupancy_confirmation_frames) ++hits;
+        // Only independent frames confirm new occupancy. Pending hits become
+        // unknown (never falsely free); existing occupied CAD is preserved.
+        if (from_type != GridType::OCCUPIED && hits < cfg_.occupancy_confirmation_frames)
+            ret = std::min(ret, std::nextafter(float(cfg_.l_occ), -std::numeric_limits<float>::infinity()));
+    }
     if (ret > cfg_.l_max) {
         ret = cfg_.l_max;
     }
@@ -627,7 +638,12 @@ void ProbMap::hitPointUpdate(const Vec3f& pos, const int& hash_id, const int& hi
     }
 }
 
-void ProbMap::missPointUpdate(const Vec3f& pos, const int& hash_id, const int& hit_num) {
+void ProbMap::missPointUpdate(const Vec3f& pos, const int& hash_id, const int& hit_num, bool sensor_miss) {
+    auto& evidence=confirmation_hits_[hash_id];
+    if(sensor_miss && cfg_.clear_confirmation_frames>0) {
+        const int misses=(evidence & 128)?(evidence & 127):0;
+        evidence=128 | std::min(misses+1,cfg_.clear_confirmation_frames);
+    } else evidence=0;
     float& ret = occupancy_buffer_[hash_id];
     GridType from_type;
     if (isOccupied(ret)) {
@@ -640,6 +656,12 @@ void ProbMap::missPointUpdate(const Vec3f& pos, const int& hash_id, const int& h
         from_type = GridType::UNKNOWN;
     }
     ret += cfg_.l_miss * hit_num;
+    if(sensor_miss && cfg_.clear_confirmation_frames>0 && from_type==GridType::OCCUPIED) {
+        if((evidence & 127)<cfg_.clear_confirmation_frames)
+            ret=std::max(ret,float(cfg_.l_occ));
+        else
+            ret=std::nextafter(float(cfg_.l_free),-std::numeric_limits<float>::infinity());
+    }
     if (ret < cfg_.l_min) {
         ret = cfg_.l_min;
     }
@@ -845,6 +867,7 @@ void ProbMap::resetLocalMap() {
     double unk_value = (cfg_.l_free + cfg_.l_occ)/2.0;
     // Clear local map
     std::fill(occupancy_buffer_.begin(), occupancy_buffer_.end(), unk_value);
+    std::fill(confirmation_hits_.begin(), confirmation_hits_.end(), 0);
     while (!raycast_data_.update_cache_id_g.empty()) {
         raycast_data_.update_cache_id_g.pop();
     }

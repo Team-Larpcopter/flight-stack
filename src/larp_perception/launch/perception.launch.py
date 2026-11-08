@@ -43,6 +43,8 @@ def relay(context):
     raw += ["/native_oak/right/image_undistorted"] if on("viz_right") else []
     raw += ["/native_oak/rectified/left/image", "/native_oak/rectified/right/image"] if on("viz_rectified") else []
     raw += ["/autonomy/trackhist"] if on("viz_tracks") else []
+    flight = on("flight_monitor_only")
+    throttle = ["/flight_executive/state@2", "/autonomy/map_state@2", "/autonomy/takeoff_ready@2"] if flight else THROTTLE
     arg = LaunchConfiguration
     return [
         Node(
@@ -55,15 +57,15 @@ def relay(context):
                     "topics": [""],
                     "raw_topics": raw,
                     "depth_topics": ["/stereo/depth/image"],
-                    "throttle_topics": THROTTLE,
-                    "path_pose_topic": "/autonomy/poseimu",
+                    "throttle_topics": throttle,
+                    "path_pose_topic": "" if flight else "/autonomy/poseimu",
                     "path_hz": 5.0,
                     "path_max_points": 1500,
                     "rate_hz": ParameterValue(arg("viz_rate_hz"), value_type=float),
                     "scale": ParameterValue(arg("viz_scale"), value_type=float),
                     "jpeg_quality": ParameterValue(arg("viz_quality"), value_type=int),
                     "min_depth_m": 0.3,
-                    "max_depth_m": 6.0,
+                    "max_depth_m": 3.0 if flight else 6.0,
                 }
             ],
         )
@@ -79,6 +81,7 @@ def generate_launch_description():
             DeclareLaunchArgument("viz_rate_hz", default_value="5.0"),
             DeclareLaunchArgument("viz_scale", default_value="0.5"),
             DeclareLaunchArgument("viz_quality", default_value="60"),
+            DeclareLaunchArgument("flight_monitor_only", default_value="false"),
             DeclareLaunchArgument("viz_right", default_value="false"),
             DeclareLaunchArgument("viz_rectified", default_value="false"),
             DeclareLaunchArgument("viz_tracks", default_value="false"),

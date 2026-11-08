@@ -14,7 +14,11 @@ class StateMachine:
     """Own mission state while extensions own state-specific behavior."""
 
     def __init__(self, started_at: float, takeoff_height: float = 1.0,
-                 hold_timeout: float = 5.0, landing_timeout: float = 45.0):
+                 hold_timeout: float = 5.0, landing_timeout: float = 45.0,
+                 takeoff_trigger: str = "position"):
+        if takeoff_trigger not in ("position", "offboard"):
+            raise ValueError("takeoff_trigger must be position or offboard")
+        self.takeoff_trigger = takeoff_trigger
         if not isfinite(takeoff_height) or takeoff_height <= 0:
             raise ValueError('takeoff_height must be finite and positive')
         for name, value in (('hold_timeout', hold_timeout),
@@ -135,7 +139,7 @@ class StateMachine:
             self.fail('PX4 reports failsafe')
             return Output()
         if self.state == State.WAITING:
-            if self._fresh(self.status, now) and self.status.armed:
+            if self._fresh(self.status, now) and self.status.armed and self.takeoff_trigger != "offboard":
                 self.fail('Refusing to adopt an armed vehicle')
             elif self._fresh(self.landed, now) and not self.landed.landed:
                 self.fail('Refusing to adopt an airborne vehicle')
@@ -148,7 +152,7 @@ class StateMachine:
                 p = self.position
                 origin = Setpoint(p.x, p.y, p.z, p.yaw)
                 self.resets = p.reset_counters
-                self.takeoff = Takeoff(origin, self.height, now)
+                self.takeoff = Takeoff(origin, self.height, now, self.takeoff_trigger)
                 self.state = State.TAKEOFF
                 return Output(origin)
             return Output()
@@ -160,7 +164,7 @@ class StateMachine:
         elif self.position.reset_counters != self.resets:
             self.fail('Local position or heading estimator reset')
         elif gap and self.phase not in (Phase.PREPARE, Phase.WAIT_ARM,
-                                        Phase.ARMED_IN_POSITION, Phase.WAIT_POSITION):
+                                        Phase.ARMED_IN_POSITION, Phase.WAIT_POSITION, Phase.WAIT_OFFBOARD):
             self.fail('Control timer gap exceeded 0.5 seconds')
         elif self.state in (State.HOLD, State.TRACKING):
             if not self.status.offboard:

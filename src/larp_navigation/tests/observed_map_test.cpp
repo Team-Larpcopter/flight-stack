@@ -15,7 +15,11 @@ int main(int argc,char** argv) {
   for(int y=-20;y<=20;++y)for(int z=-8;z<=8;++z) {
     rog_map::PointType p;p.x=3.05;p.y=y*.1+.05;p.z=1+z*.1+.05;p.intensity=1;cloud.push_back(p);
   }
-  for(int i=0;i<10;++i) map.integrate(cloud,{{0,0,1},Eigen::Quaterniond::Identity()});
+  for(int i=0;i<2;++i) {
+    map.integrate(cloud,{{0,0,1},Eigen::Quaterniond::Identity()});
+    require(!map.isOccupied(Eigen::Vector3d(3.05,.05,1.05)),"unknown voxel confirmed in fewer than three frames");
+  }
+  for(int i=0;i<8;++i) map.integrate(cloud,{{0,0,1},Eigen::Quaterniond::Identity()});
   require((map.getRobotState().p-body.p).norm()<1e-9,"ray origin replaced body planning position");
   require((map.getRobotState().v-body.v).norm()<1e-9,"map update lost body velocity");
   const Eigen::Vector3d lo(-4,-4,0),hi(4,4,3);
@@ -52,9 +56,17 @@ int main(int argc,char** argv) {
   map.integrate(duplicate,{{0,0,1},Eigen::Quaterniond::Identity()});
   require(map.isUnknown(Eigen::Vector3d(-1.65,.05,1.05)),"correlated pixels saturated CAD-free voxel in one frame");
   map.integrate(duplicate,{{0,0,1},Eigen::Quaterniond::Identity()});
-  require(map.isOccupied(Eigen::Vector3d(-1.65,.05,1.05)),"independent frame evidence did not accumulate");
+  require(!map.isOccupied(Eigen::Vector3d(-1.65,.05,1.05)),"two frames confirmed occupancy too soon");
+  map.integrate(duplicate,{{0,0,1},Eigen::Quaterniond::Identity()});
+  require(map.isOccupied(Eigen::Vector3d(-1.65,.05,1.05)),"three independent frames did not confirm occupancy");
   auto rear=cloud;for(auto& p:rear)p.x=-3.05;
-  for(int i=0;i<20;++i)map.integrate(rear,{{0,0,1},Eigen::Quaterniond::Identity()});
+  for(int i=0;i<2;++i) {
+    map.integrate(rear,{{0,0,1},Eigen::Quaterniond::Identity()});
+    require(map.isOccupied(Eigen::Vector3d(-1.65,.05,1.05)),"occupied voxel cleared before three empty views");
+  }
+  map.integrate(rear,{{0,0,1},Eigen::Quaterniond::Identity()});
+  require(map.isKnownFree(Eigen::Vector3d(-1.65,.05,1.05)),"three empty views did not clear occupied voxel");
+  for(int i=0;i<17;++i)map.integrate(rear,{{0,0,1},Eigen::Quaterniond::Identity()});
   require(map.isKnownFree(Eigen::Vector3d(-1.05,.05,1.05)),"observations could not clear outdated CAD wall");
   rog_map::PointCloud added;rog_map::PointType obstacle;obstacle.x=-1.65;obstacle.y=.05;obstacle.z=1.05;obstacle.intensity=1;added.push_back(obstacle);
   for(int i=0;i<20;++i)map.integrate(added,{{0,0,1},Eigen::Quaterniond::Identity()});

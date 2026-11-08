@@ -243,3 +243,15 @@ def test_status_reports_position_mode(node):
     node._status(status)
     assert not node.state_machine.status.in_position
     assert node.state_machine.status.offboard
+
+
+def test_map_readiness_withholds_heartbeat_and_rejects_unready_switch(node):
+    node.require_autonomy_ready=True
+    node.mode_pub=Publications();node.setpoint_pub=Publications();node.command_pub=Publications()
+    node.state_machine.status=Status(monotonic(),True,False,True)
+    node._tick()
+    assert not node.mode_pub.messages and not node.command_pub.messages
+    node.state_machine.status=Status(monotonic(),True,True,True)
+    node._tick()
+    assert node.state_machine.state==State.ERROR
+    assert not node.mode_pub.messages and not node.command_pub.messages

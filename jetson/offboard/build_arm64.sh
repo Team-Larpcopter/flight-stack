@@ -19,7 +19,7 @@ tar -C "$root" --exclude='*.engine' --exclude='__pycache__' --exclude='.pytest_c
 docker run --rm -i --platform linux/arm64 -v "$volume:/flight-stack" "$toolchain" \
   bash -c 'rm -rf /flight-stack/src /flight-stack/jetson; tar -xf - -C /flight-stack' < "$out/source.tar"
 docker run --rm --platform linux/arm64 --network host \
-  -v "$volume:/flight-stack" -e BUILD_JOBS="$jobs" -e FORCE_SDK_BUILD="${FORCE_SDK_BUILD:-0}" -w /flight-stack \
+  -v "$volume:/flight-stack" -e BUILD_JOBS="$jobs" -e FORCE_SDK_BUILD="${FORCE_SDK_BUILD:-0}" -e RUN_TESTS="${RUN_TESTS:-0}" -w /flight-stack \
   "$toolchain" bash jetson/integration_image/build_workspace.sh
 OUTPUT_DIR="$out" BUILD_IMAGE="$toolchain" BUILD_VOLUME="$volume" bash "$root/jetson/offboard/package_bundle.sh"
 # Validate the installed artifacts in an independent image without source/build mounts.

@@ -30,6 +30,9 @@ class DepthMapNode : public rclcpp::Node {
     if(rig["T_body_depth"])for(int r=0;r<4;++r)for(int c=0;c<4;++c)
       body_camera_.matrix()(r,c)=rig["T_body_depth"][r][c].as<double>();
     depth_frame_=rig["depth_frame"]?rig["depth_frame"].as<std::string>():"";
+    snapshot_include_free_=declare_parameter<bool>("snapshot_include_free",true);
+    takeoff_height_=declare_parameter<double>("takeoff_height",1.0);
+    ready_=create_publisher<std_msgs::msg::Bool>("/autonomy/takeoff_ready",1);
     epoch_=declare_parameter<int64_t>("localization_epoch",1);
     stride_=declare_parameter<int>("pixel_stride",4);
     min_depth_=declare_parameter<double>("min_depth_m",.3);
@@ -121,6 +124,20 @@ class DepthMapNode : public rclcpp::Node {
  private:
   void plan() {
     const int64_t t=now().nanoseconds();
+    std_msgs::msg::Bool readiness;
+    readiness.data=healthy_ && cad_prior_loaded_ && body_.rcv &&
+      std::chrono::steady_clock::now()-health_received_<std::chrono::seconds(1) &&
+      t*1e-9-body_.rcv_time>=-.005 && t*1e-9-body_.rcv_time<.3 &&
+      (static_cad_only_ || (t>=last_depth_ns_ && t-last_depth_ns_<300'000'000));
+    // Check the launch column above the ground-contact region. The lower
+    // section still requires the surveyed, physically clear launch fixture.
+    if(readiness.data && !boundary_lower_.empty()) {
+      const double top=body_.p.z()+takeoff_height_;
+      if(top>boundary_upper_[2]-.4)readiness.data=false;
+      for(double z=std::max(body_.p.z(),boundary_lower_[2]+.45);readiness.data && z<=top;z+=.05)
+        if(!map_->isKnownFreeInflate({body_.p.x(),body_.p.y(),z}))readiness.data=false;
+    }
+    ready_->publish(readiness);
     // Dynamic-map certificates retain the sensor capture timestamp. An
     // explicitly immutable CAD map is revalidated at the current time; it
     // does not acquire a new observation age from an unused depth image.
@@ -300,7 +317,17 @@ class DepthMapNode : public rclcpp::Node {
       launch_declared_=true;RCLCPP_WARN(get_logger(),"Applied launch fixture assumption to %zu unknown cells once",count);
     }
     last_depth_ns_=stamp;last_depth_pose_=*pose;++revision_;
-    if(stamp-last_snapshot_ns_<250'000'000) return;
+    dronehacks_msgs::msg::MapState state;
+    state.header.frame_id="map";state.header.stamp=rclcpp::Time(stamp);
+    state.localization_epoch=epoch_;state.revision=revision_;
+    state.body_pose.position=point(pose->position);
+    state.body_pose.orientation.w=pose->orientation.w();
+    state.body_pose.orientation.x=pose->orientation.x();
+    state.body_pose.orientation.y=pose->orientation.y();
+    state.body_pose.orientation.z=pose->orientation.z();
+    map_states_->publish(state);
+    // Planner shares this map directly; full snapshots are visualization only.
+    if(stamp-last_snapshot_ns_<1'000'000'000 || snapshots_->get_subscription_count()==0) return;
     auto msg=snapshot(stamp,*pose);
     snapshots_->publish(msg);last_snapshot_ns_=stamp;
     RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(),5000,"ROG snapshot %lu: %u occupied, %u free cells",revision_,msg.occupied.width,msg.free.width);
@@ -317,12 +344,15 @@ class DepthMapNode : public rclcpp::Node {
     map_->boundBoxByLocalMap(lo,hi);snapshot.lower=point(lo);snapshot.upper=point(hi);
     super_utils::vec_Vec3f cells;
     map_->boxSearch(lo,hi,super_utils::OCCUPIED,cells);snapshot.occupied=cloud(cells,snapshot.header);
-    map_->boxSearch(lo,hi,super_utils::KNOWN_FREE,cells);snapshot.free=cloud(cells,snapshot.header);
+    if(snapshot_include_free_) {map_->boxSearch(lo,hi,super_utils::KNOWN_FREE,cells);snapshot.free=cloud(cells,snapshot.header);}
     snapshot.body_pose.header=snapshot.header;
     snapshot.body_pose.pose.position=point(pose.position);
     auto& q=snapshot.body_pose.pose.orientation;q.w=pose.orientation.w();q.x=pose.orientation.x();q.y=pose.orientation.y();q.z=pose.orientation.z();
     return snapshot;
   }
+  bool snapshot_include_free_{true};
+  double takeoff_height_{1.0};
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr ready_;
   bool internal_grid_route_{false},map_ready_for_route_{false};uint64_t route_sequence_{0};
   rclcpp::Publisher<dronehacks_msgs::msg::RoutePolyline>::SharedPtr route_output_;
   std::string config_;
