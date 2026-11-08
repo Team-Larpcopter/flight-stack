@@ -143,7 +143,7 @@ class StateMachine:
                 self.fail('Refusing to adopt an armed vehicle')
             elif self._fresh(self.landed, now) and not self.landed.landed:
                 self.fail('Refusing to adopt an airborne vehicle')
-            elif now >= self.started_at + 30.0:
+            elif now >= self.started_at + 30.0 and self.takeoff_trigger != "offboard":
                 self.fail('PX4 readiness timed out')
             elif (self._fresh(self.status, now)
                   and self._fresh(self.position, now)

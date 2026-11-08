@@ -58,6 +58,7 @@ int main(int argc,char** argv) {
   // Exercise the real trajectory frontend using this exact shared map.
   super_utils::RobotState body;body.p=start;body.q.setIdentity();body.yaw=0;body.v.setZero();body.a.setZero();body.j.setZero();body.rcv=true;body.rcv_time=now;map->setBody(body);
   navigation::RoutePlanner planner(argv[1],map,clock,true);planner.setSearchBounds(lo,hi);planner.setMapRevision(5);
+  if(argc==4)planner.setFlightEnvelope(lo+navigation::Point::Constant(.4),hi-navigation::Point::Constant(.4));
   require(planner.setGoal(1,goal,0),"goal rejected");
   auto result=planner.plan();
   // Match the runtime coordinator: rejected curves remain uncommitted while

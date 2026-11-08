@@ -62,3 +62,10 @@ def test_whole_body_ceiling_and_ground_contact():
     shifted=Envelope([-2.,-2.,0.],[2.,2.,1.8],origin=(1.,2.,3.))
     assert shifted.contains((1.,2.,2.))
     assert not shifted.contains((1.,2.,1.5))
+
+
+def test_pilot_trigger_waits_without_startup_deadline_or_commands():
+    c=StateMachine(0.,takeoff_trigger='offboard')
+    out=c.tick(120.)
+    assert c.state==State.WAITING
+    assert out.command is None and out.setpoint is None
