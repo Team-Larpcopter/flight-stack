@@ -131,3 +131,17 @@ The tunnel and window coordinates are derived from the reference CAD, which
 the operator reports is outdated. Physical opening location and height are operator-confirmed.
 The planned path is shown through `/viz/autonomy/committed_path` and its goal
 through `/viz/autonomy/goal_pose`, using the frozen map-to-PX4 alignment.
+
+### Edit the fixed route on Jetson
+
+Edit `~/flight-stack-arm64/config/fixed_course.yaml` (or `fixed_course.yaml`
+inside your `DEPLOYMENT_CONFIG` directory). Each `waypoints` row is `[x, y, z]`
+in metres relative to the grounded launch pose: x forward, y left, z up.
+The first point's z sets vertical takeoff height; if its x/y are nonzero,
+the route visits that point after taking off. The last point is the goal,
+followed by landing. Points may have different heights; vertical-only legs hold yaw.
+
+Restart with `bash launch_fixed_course_tmux.sh` after saving. No compilation,
+image rebuild or transfer is needed for later waypoint edits. Updates preserve
+an existing configuration; the bundled example seeds it only when missing.
+The current stop-and-turn smoothing and 0.2 m/s speed remain unchanged.

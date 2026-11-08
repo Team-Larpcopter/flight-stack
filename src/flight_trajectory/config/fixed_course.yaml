@@ -1,0 +1,10 @@
+# Metres relative to the grounded start pose: x forward, y left, z up.
+# First z sets vertical takeoff height. Last point is the goal, then land.
+# Edit this file on Jetson; restart the fixed-course mission to reload it.
+waypoints:
+  - [0.0, 0.0, 1.0]
+  - [1.2, 0.0, 1.0]
+  - [1.2, -4.8261, 1.0]
+  - [-3.3863, -4.8261, 1.0]
+  - [-3.3863, -0.77724, 1.0]
+  - [-2.82128, -0.77724, 1.0]

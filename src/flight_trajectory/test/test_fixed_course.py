@@ -56,3 +56,22 @@ def test_runtime_compat_ignores_start_heading_age_and_tracking_error():
     follower.update_executive_state('HOLD')
     assert follower.tick(10.) is not None
     assert follower.tick(11.) is not None
+
+
+def test_yaml_xyz_changes_are_loaded_on_each_start(tmp_path):
+    from flight_trajectory.fixed_course import load_waypoints
+    p = tmp_path / 'fixed_course.yaml'
+    p.write_text('waypoints: [[0, 0, 0.8], [1, -2, 1.2], [1, -2, 0.9]]')
+    course = FixedCourse(load_waypoints(p))
+    assert course.sample(course.duration + 1).position == pytest.approx((1, -2, .9))
+    p.write_text('waypoints: [[0.2, 0.1, 1.1], [2, -1, 1.3]]')
+    changed = FixedCourse(load_waypoints(p))
+    assert changed.waypoints[0] == (0., 0., 1.1)
+    assert changed.sample(changed.duration + 1).position == pytest.approx((2, -1, 1.3))
+
+
+@pytest.mark.parametrize('points', [[], [[0,0,1]], [[0,0,1],[1,2]],
+    [[0,0,1],[1,2,float('nan')]], [[0,0,0],[1,2,1]], [[0,0,1],[0,0,1]]])
+def test_bad_waypoints_fail_before_flight(points):
+    with pytest.raises(ValueError):
+        FixedCourse(points)

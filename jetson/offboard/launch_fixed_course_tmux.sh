@@ -7,7 +7,7 @@ case ${1:-} in
   --check) check_only=true ;;
   --help|-h)
     echo 'Usage: bash launch_fixed_course_tmux.sh [--check]'
-    echo 'Six panes including manual recorder: pilot arms then selects Position; 1.0 m takeoff, fixed forward/right/tunnel/goal route, land. No depth, map or planner.'
+    echo 'Six panes including manual recorder: pilot arms then selects Position; YAML-configured takeoff and waypoints, land. No depth, map or planner.'
     echo '--check validates setup without launching sensors or flight publishers.'
     exit 0 ;;
   '') ;;
@@ -23,6 +23,9 @@ if ! $check_only; then source "$here/replace_stack.sh"; fi
 source "$here/runtime_mounts.sh"
 config=$(realpath "$DEPLOYMENT_CONFIG")
 [[ -f $config/mission.yaml ]] || { echo 'Missing DEPLOYMENT_CONFIG/mission.yaml' >&2; exit 2; }
+if [[ ! -f $config/fixed_course.yaml && -f $here/fixed_course.example.yaml ]]; then
+  cp "$here/fixed_course.example.yaml" "$config/fixed_course.yaml"
+fi
 transport=${PX4_TRANSPORT:-udp4}; devices=()
 case $transport in
   udp4) ;;
@@ -43,7 +46,7 @@ if [[ -n ${DDS_PROFILE:-} ]]; then
        -e FASTDDS_DEFAULT_PROFILES_FILE=/etc/flight-stack/dds.xml)
 fi
 docker run --rm --network none "${runtime_mounts[@]}" -v "$config:/config:ro" "$image" \
-  python3 -c 'import sys; from larp_autonomy.runtime_config import load_config; load_config("/config/mission.yaml",sys.argv[1])' "$mode"
+  python3 -c 'import sys; from larp_autonomy.runtime_config import load_config; load_config("/config/mission.yaml",sys.argv[1]); from pathlib import Path; from flight_trajectory.fixed_course import load_waypoints; from ament_index_python.packages import get_package_share_directory; p=Path("/config/fixed_course.yaml"); load_waypoints(p if p.is_file() else Path(get_package_share_directory("flight_trajectory"))/"config/fixed_course.yaml")' "$mode"
 if $check_only; then
   docker run --rm --network none "${runtime_mounts[@]}" "$image" bash -ec '
     test -x /flight-stack/install/flight_executive/lib/flight_executive/flight_executive_node

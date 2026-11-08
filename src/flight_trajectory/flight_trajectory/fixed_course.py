@@ -1,6 +1,8 @@
 """Operator-defined launch-relative route; no map queries or collision checking."""
 from dataclasses import replace
-from math import atan2, sqrt
+from math import atan2, sqrt, isfinite
+from pathlib import Path
+import yaml
 
 from flight_trajectory.course_follower import wrap
 from flight_trajectory.triangle_course import TriangleFollower
@@ -14,14 +16,42 @@ ROUTE_XY = ((0., 0.), (1.2, 0.), (1.2, -4.8261),
 HEIGHT = 1.0
 
 
+def load_waypoints(path):
+    with Path(path).open() as stream:
+        data = yaml.safe_load(stream)
+    return validate_waypoints(data.get('waypoints') if isinstance(data, dict) else None)
+
+
+def validate_waypoints(points):
+    if not isinstance(points, (list, tuple)) or len(points) < 2:
+        raise ValueError('fixed course needs at least two [x, y, z] waypoints')
+    result = []
+    for point in points:
+        if not isinstance(point, (list, tuple)) or len(point) != 3:
+            raise ValueError('each fixed-course waypoint must be [x, y, z]')
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not isfinite(v) for v in point):
+            raise ValueError('waypoint coordinates must be finite numbers')
+        result.append(tuple(float(v) for v in point))
+    if result[0][2] <= 0:
+        raise ValueError('first waypoint z must be positive: it sets takeoff height')
+    if any(a == b for a, b in zip(result, result[1:])):
+        raise ValueError('consecutive waypoints must differ')
+    return tuple(result)
+
+
 class FixedCourse:
-    def __init__(self):
-        self.waypoints = tuple((x, y, HEIGHT) for x, y in ROUTE_XY)
+    def __init__(self, waypoints=None):
+        self.waypoints = validate_waypoints(waypoints if waypoints is not None else
+                                            tuple((x, y, HEIGHT) for x, y in ROUTE_XY))
+        # Take off vertically first, then visit the first configured XY if needed.
+        if self.waypoints[0][:2] != (0., 0.):
+            self.waypoints = ((0., 0., self.waypoints[0][2]),) + self.waypoints
         self.segments = []
         self.length = 0.
         heading = 0.
         for a, b in zip(self.waypoints, self.waypoints[1:]):
-            target = heading + wrap(atan2(b[1]-a[1], b[0]-a[0])-heading)
+            target = (heading + wrap(atan2(b[1]-a[1], b[0]-a[0])-heading)
+                      if a[:2] != b[:2] else heading)
             delta = target-heading
             if abs(delta) > 1e-9:
                 # Quintic yaw transition: <=0.3 rad/s and <=0.4 rad/s^2.
