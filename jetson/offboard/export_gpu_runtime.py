@@ -8,7 +8,7 @@ import sys
 import tarfile
 
 output = sys.argv[1]
-modules = ['torch', 'tensorrt', 'filelock', 'fsspec', 'jinja2', 'networkx',
+modules = ['numpy', 'torch', 'torchgen', 'tensorrt', 'filelock', 'fsspec', 'jinja2', 'networkx',
            'sympy', 'typing_extensions', 'mpmath', 'markupsafe']
 paths = []
 versions = {}
@@ -17,6 +17,8 @@ for name in modules:
     path = Path(module.__file__)
     paths.append(path.parent if path.name == '__init__.py' else path)
     versions[name] = getattr(module, '__version__', 'unknown')
+    if name == 'numpy' and (path.parent.parent / 'numpy.libs').is_dir():
+        paths.append(path.parent.parent / 'numpy.libs')
 cuda = Path('/usr/local/cuda').resolve()
 for pattern in [str(cuda / 'targets/aarch64-linux/lib/*.so*'),
                 '/usr/lib/aarch64-linux-gnu/libnvinfer*.so*',

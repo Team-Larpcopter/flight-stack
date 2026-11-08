@@ -13,3 +13,11 @@ parser=/usr/lib/aarch64-linux-gnu/libnvonnxparser.so.10
 if [[ -f $parser ]]; then
   runtime_mounts+=(-v "$(realpath "$parser"):$parser:ro")
 fi
+
+# Supplement older GPU caches from the existing working LAS installation.
+for package in torchgen numpy numpy.libs; do
+  extra=${GPU_CACHE_DIR:-$here/../gpu}/python/$package
+  if [[ -d $extra ]]; then
+    runtime_mounts+=(-v "$(realpath "$extra"):/usr/local/lib/python3.10/dist-packages/$package:ro")
+  fi
+done
