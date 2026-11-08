@@ -39,7 +39,8 @@ class Tracking:
     def sample(self, now: float, yaw: float):
         if self.latest is None:
             return None
-        if not self.persistent and not fresh(self.latest, now):
+        if (not self.latest.received_at <= now <= self.latest.received_at + 1.0
+                or (not self.persistent and not fresh(self.latest, now))):
             self.settled_since = None
             return None
         t = self.latest
