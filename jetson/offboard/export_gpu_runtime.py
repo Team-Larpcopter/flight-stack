@@ -20,6 +20,7 @@ for name in modules:
 cuda = Path('/usr/local/cuda').resolve()
 for pattern in [str(cuda / 'targets/aarch64-linux/lib/*.so*'),
                 '/usr/lib/aarch64-linux-gnu/libnvinfer*.so*',
+                '/usr/lib/aarch64-linux-gnu/libnvonnxparser*.so*',
                 '/usr/lib/aarch64-linux-gnu/libcudnn*.so*',
                 '/usr/lib/aarch64-linux-gnu/libcusparseLt.so*',
                 '/usr/share/doc/libnvinfer*/copyright',
