@@ -4,6 +4,7 @@
 // velocity and acceleration, that ends at rest. Certification is separate.
 #include <data_structure/base/trajectory.h>
 #include <Eigen/Core>
+#include <Eigen/Geometry>
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -44,13 +45,43 @@ struct FollowOptions {
   bool stop_at_corners{false};  // true: straight segments only, no bowing
 };
 
+// Same circular-fillet geometry as flight_trajectory/trajectory.py::_build.
+// Fixed <=8 samples/corner and <=64 total knots; no duration-sized table or
+// iterative optimizer. Quintic interpolation below makes acceleration continuous.
+inline Waypoints roundedWaypoints(const Waypoints& w, double radius=.08) {
+  if(w.size()<3)return w;
+  Waypoints out{w.front()};
+  for(size_t i=1;i+1<w.size();++i) {
+    const Vec3 in=w[i]-w[i-1],next=w[i+1]-w[i];
+    if(in.norm()<1e-6 || next.norm()<1e-6)return {};
+    const Vec3 u=in.normalized(),v=next.normalized();
+    const double dot=std::clamp(u.dot(v),-1.,1.),turn=std::acos(dot);
+    if(turn<1e-4){out.push_back(w[i]);continue;}
+    if(turn>3.1)return {}; // corner-stop candidate handles reversals
+    const double trim=std::min({radius*std::tan(turn/2),.45*in.norm(),.45*next.norm()});
+    const double r=trim/std::tan(turn/2);
+    const Vec3 normal=(v-dot*u).normalized(),entry=w[i]-trim*u,centre=entry+r*normal;
+    const int count=std::clamp(int(std::ceil(turn/(M_PI/8))),1,8);
+    for(int k=0;k<=count;++k) {
+      const double phi=turn*k/count;
+      const Vec3 p=centre-r*std::cos(phi)*normal+r*std::sin(phi)*u;
+      if((p-out.back()).norm()>1e-6)out.push_back(p);
+    }
+    if(out.size()>63)return {};
+  }
+  if((w.back()-out.back()).norm()>1e-6)out.push_back(w.back());
+  return out;
+}
+
 // Position trajectory from (p, v0, a0) at waypoints.front() through every
 // waypoint, ending at rest at waypoints.back(). Interior knot velocity follows
 // the corner bisector, scaled by cos(turn angle): sharp corners slow to zero.
-inline geometry_utils::Trajectory followWaypoints(const Waypoints& w, const Vec3& v0, const Vec3& a0,
+inline geometry_utils::Trajectory followWaypoints(const Waypoints& input, const Vec3& v0, const Vec3& a0,
                                                   double start, const FollowOptions& o) {
   geometry_utils::Trajectory out;
   out.start_WT = start;
+  const Waypoints w=o.stop_at_corners?input:roundedWaypoints(input);
+  if (w.size()>64)return out;
   if (w.size() < 2 || !(o.cruise > 0) || !(o.accel > 0) || !(o.time_scale > 0)) return out;
   std::vector<Vec3, Eigen::aligned_allocator<Vec3>> vel(w.size(), Vec3::Zero()), acc(w.size(), Vec3::Zero());
   vel.front() = v0;
@@ -62,8 +93,22 @@ inline geometry_utils::Trajectory followWaypoints(const Waypoints& w, const Vec3
       const Vec3 u1 = in.normalized(), u2 = next.normalized(), bisector = u1 + u2;
       const double straightness = std::max(0., u1.dot(u2));
       if (bisector.norm() < 1e-6) continue;
-      vel[k] = o.cruise * straightness * bisector.normalized();
+      const double turn=std::acos(std::clamp(u1.dot(u2),-1.,1.));
+      const double curvature=turn/std::max(.001,.5*(in.norm()+next.norm()));
+      const double speed=std::min({o.cruise, std::sqrt(.5*o.accel/std::max(curvature,1e-6)),
+                                  .12/std::max(curvature,1e-6)});
+      vel[k] = speed/o.time_scale * straightness * bisector.normalized();
     }
+  }
+  // Linear forward/backward speed passes, as in flight_trajectory._profile.
+  // Keep the measured initial derivatives unchanged for a C2 handoff.
+  for(size_t k=1;k+1<w.size();++k) {
+    const double cap=std::sqrt(vel[k-1].squaredNorm()+o.accel*(w[k]-w[k-1]).norm());
+    if(vel[k].norm()>cap)vel[k]*=cap/vel[k].norm();
+  }
+  for(size_t k=w.size()-1;k>1;--k) {
+    const double cap=std::sqrt(vel[k].squaredNorm()+o.accel*(w[k]-w[k-1]).norm());
+    if(vel[k-1].norm()>cap)vel[k-1]*=cap/vel[k-1].norm();
   }
   for (size_t k = 0; k + 1 < w.size(); ++k) {
     const double length = (w[k + 1] - w[k]).norm();
@@ -71,7 +116,9 @@ inline geometry_utils::Trajectory followWaypoints(const Waypoints& w, const Vec3
     // and approaches the mean when both carry cruise speed: keep the peak at cruise.
     const double carried = std::clamp(std::min(vel[k].norm(), vel[k + 1].norm()) / o.cruise, 0., 1.);
     const double peak_factor = 1.875 - .875 * carried;
-    double t = o.time_scale * segmentDuration(peak_factor * length, o.cruise, o.accel);
+    const double mean=.5*(vel[k].norm()+vel[k+1].norm());
+    const double rest_time=o.time_scale * segmentDuration(peak_factor * length, o.cruise, o.accel);
+    double t=std::max(.05,length/std::max(mean,length/rest_time));
     // A moving first knot must also have time to absorb its own velocity.
     if (k == 0) t = std::max(t, o.time_scale * 2. * v0.norm() / o.accel);
     out.emplace_back(t, quinticHermite(w[k], vel[k], acc[k], w[k + 1], vel[k + 1], acc[k + 1], t));

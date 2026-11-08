@@ -13,36 +13,23 @@ compiled (A\* and the polynomial containers); no corridor or MINCO optimizer.
 
 ## How it plans
 
-Each 100 ms plan tick (the node's existing cadence):
+The current mission loads the precomputed CAD master route and repairs only
+blocked local sections toward forward rejoin points. Completed route sections
+are excluded from the rejoin candidates. Required tunnel/window passages stay
+ordered. The map, whole-body collision validator and stopping behavior remain
+active. See [cached-route runtime](../../docs/runtime/cached-route-and-vins.md)
+for the heuristic, bounds, regeneration command and recovery behavior.
 
-1. **Route section**: from the global route (SUPER A\*, or an optional preloaded
-   polyline), take the next `follower_horizon_m` metres from the drone's progress along
-   the route (`RouteGuide`: arc-length progress, 2 m association window, 0.5 m
-   connector). The section is **cut at the first span that is occupied or unobserved in
-   the live map** (minus 0.15 m). If the goal is within reach on a certified straight
-   chord, go straight to it.
-2. **Shortcut** corners only where the replacement chord passes the certifier's own
-   body-sphere check.
-3. **Closed-form curve**: quintic Hermite pieces through the waypoints (continuous
-   position, velocity, acceleration), corner speed scaled by `cos(turn)`, timed so the
-   nominal peak is the configured `traj_opt.boundary.max_vel`, ending at rest. From
-   rest with a large heading change it turns first, then moves.
-4. **Certify** the whole curve (sphere swept against occupied **and unknown** voxels,
-   hard velocity/acceleration limits, yaw rate/acceleration) with the existing
-   validator. Attempts: smooth, stop-at-corners, end pulled back 0.1/0.25 m, slower
-   timing. Typical plan time: 0.15-0.65 ms.
-5. **Consistency**: a live certified curve is kept for `follower_replan_period_s` and
-   replans hand over at the current state (no command jump). A failed replan never
-   blanks the command.
+Local curves use circular corner rounding, forward/backward speed passes and
+C2 quintic pieces. The curve ends at rest; a replacement preserves position,
+velocity and acceleration at its handoff. Yaw follows travel direction with
+continuous rate and acceleration. A rejected candidate leaves the current certified curve in place; there is no
+shorter/slower candidate cascade. A valid committed curve is retained until its
+last two seconds; live-map certification can interrupt it earlier.
 
-When nothing new certifies: keep the current curve only while it still certifies in the
-latest map (checked every 50 ms); otherwise the certified braking curve; otherwise the
-node publishes INVALID, exactly as with SUPER/EGO. A blocked preloaded route is truncated
-before the obstacle and the follower falls back to A\* from the current position.
-
-Not modelled explicitly: jerk, thrust and attitude limits (the hard velocity and
-acceleration limits are certified; at the configured 0.06 m/s and 0.04 m/s^2 the vehicle
-is far inside its envelope).
+Work caps are cooperative, not a hard Linux WCET guarantee. This implementation
+does not certify thrust/attitude or continuous jerk. It sends the same position,
+velocity, acceleration, yaw and yaw-rate fields as `flight_trajectory`.
 
 ## Package layout
 
@@ -80,9 +67,9 @@ ros2 launch larp_route_follower mission_runtime.launch.py component:=planner \
 ```
 
 Follower arguments (all launch files): `follower_horizon_m` (default 1.5),
-`follower_replan_period_s` (0.4), `follower_route_file` (empty). A route file is a
-map-frame text file, one `x y z` per line (`#` comments), ending within 0.3 m of the
-mission goal.
+`follower_replan_period_s` (0.4), `follower_route_file` (defaults to the installed CAD master route). A route file is a
+map-frame text file, one `x y z` per line, sampled at <=15 cm, with optional
+`# gates` passage indices. Its endpoint must match the mission goal within 0.1 mm.
 
 ## Deployment integration
 
@@ -101,10 +88,11 @@ source tree next to this package):
 - `follower_planner` (test and flight config): free-space shortcut, stop short of a
   depth-observed wall, follow a corner around a pillar, keep a live curve, preserve the
   committed curve on failure, route file parsing.
-- `closed_loop` (test and flight config): whole route around a pillar with depth-like
-  sensing as the body moves, at the node's cadence. Flight config: 63.6 s, 0 failures,
-  0 blank commands, 0 braking, 0 mm commanded jump between commits, max plan 0.31 ms,
-  6 mm from the goal.
+- `closed_loop`: fast-forward trajectory tracking against the map, including
+  command continuity and whole-body collision checking. Optional CAD and master
+  route arguments exercise the complete course.
+- `master_route`: forward repair, blocked/cleared map updates, bounded work, ordered
+  progress and unchanged-course traversal with zero A* searches.
 - `launch_wrapper`: planner parameters and remappings equal larp_autonomy's, except
   the executable and follower-only parameters; the whole-stack launch starts every
   component through the follower runtime.
