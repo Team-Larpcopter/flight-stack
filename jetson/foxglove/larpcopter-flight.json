@@ -122,6 +122,33 @@
     "RawMessages!executive": {
       "topicPath": "/viz/flight_executive/state",
       "diffEnabled": false
+    },
+    "3D!vins": {
+      "followMode": "follow-none",
+      "topics": {
+        "/viz/autonomy/poseimu": {
+          "visible": true
+        },
+        "/viz/autonomy/poseimu/path": {
+          "visible": true
+        },
+        "/viz/autonomy/points_slam": {
+          "visible": true
+        },
+        "/viz/autonomy/points_msckf": {
+          "visible": true
+        },
+        "/viz/autonomy/points_aruco": {
+          "visible": true
+        },
+        "/viz/autonomy/points_sim": {
+          "visible": true
+        }
+      }
+    },
+    "RawMessages!imu": {
+      "topicPath": "/viz/autonomy/imu/data",
+      "diffEnabled": false
     }
   },
   "globalVariables": {},
@@ -138,7 +165,16 @@
         "first": "Image!left",
         "second": "Image!depth"
       },
-      "second": "3D!planning",
+      "second": {
+        "direction": "row",
+        "first": "3D!planning",
+        "second": {
+          "direction": "column",
+          "first": "3D!vins",
+          "second": "RawMessages!imu"
+        },
+        "splitPercentage": 65
+      },
       "splitPercentage": 25
     },
     "second": {

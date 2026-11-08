@@ -120,7 +120,7 @@ class VizRelay(Node):
         self.period = 1.0 / float(self.declare_parameter("rate_hz", 5.0, number).value)
         self.scale = float(self.declare_parameter("scale", 0.5, number).value)
         self.quality = int(self.declare_parameter("jpeg_quality", 50, number).value)
-        self.min_m = float(self.declare_parameter("min_depth_m", 0.3, number).value)
+        self.min_m = float(self.declare_parameter("min_depth_m", 0.2, number).value)
         self.max_m = float(self.declare_parameter("max_depth_m", 6.0, number).value)
         self.prefix = self.declare_parameter("prefix", "/viz").value.rstrip("/")
         throttle = self.declare_parameter("throttle_topics", [""], strings).value
