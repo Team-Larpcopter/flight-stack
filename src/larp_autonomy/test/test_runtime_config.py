@@ -36,7 +36,8 @@ def test_shadow_does_not_require_hardware_alignment(tmp_path):
     load(tmp_path,cfg,'shadow')
 
 
-def test_each_runtime_component_constructs_without_starting_processes(tmp_path,monkeypatch):
+@pytest.mark.parametrize('planner',['super','ego'])
+def test_each_runtime_component_constructs_without_starting_processes(tmp_path,monkeypatch,planner):
     import importlib.util
     from launch import LaunchContext
     from larp_autonomy.runtime_config import COMPONENTS
@@ -47,7 +48,7 @@ def test_each_runtime_component_constructs_without_starting_processes(tmp_path,m
     cfg=fixture(tmp_path);p=tmp_path/'mission.yaml';p.write_text(yaml.safe_dump(cfg))
     for mode in ('shadow','hardware'):
         for part in COMPONENTS:
-            c=LaunchContext();c.launch_configurations.update(component=part,mode=mode,mission_file=str(p))
+            c=LaunchContext();c.launch_configurations.update(component=part,mode=mode,planner=planner,mission_file=str(p))
             actions=module.nodes(c)
             assert len(actions)>=2
 
@@ -57,3 +58,35 @@ def test_each_runtime_component_constructs_without_starting_processes(tmp_path,m
 def test_invalid_planner_timing_rejected(tmp_path,field,value):
     cfg=fixture(tmp_path);cfg[field]=value
     with pytest.raises(ValueError):load(tmp_path,cfg)
+
+
+@pytest.mark.parametrize('planner',['super','ego'])
+@pytest.mark.parametrize('mode',['shadow','hardware'])
+def test_runtime_planner_and_executive_contract(tmp_path,monkeypatch,planner,mode):
+    import importlib.util
+    from launch import LaunchContext
+    path=Path(__file__).parents[1]/'launch/mission_runtime.launch.py'
+    spec=importlib.util.spec_from_file_location('runtime_contract',path)
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    monkeypatch.setattr(module,'share',lambda pkg:str(Path(__file__).parents[2]/pkg))
+    monkeypatch.setattr(module,'Node',lambda **kwargs:kwargs)
+    cfg=fixture(tmp_path);p=tmp_path/'mission.yaml';p.write_text(yaml.safe_dump(cfg))
+    c=LaunchContext();c.launch_configurations.update(component='planner',mode=mode,planner=planner,mission_file=str(p))
+    mapper=module.nodes(c)[1]
+    assert mapper['executable']=='depth_map_node'
+    params=mapper['parameters'][0]
+    assert params['planner_backend']==planner and params['require_hard_boundary']
+    assert not params['static_cad_only']
+    assert ('/navigation/trajectory','/autonomy/committed_trajectory') in mapper['remappings']
+    c.launch_configurations['component']='executive'
+    actions=module.nodes(c)[1:]
+    assert actions[0]['executable']=='trajectory_bridge'
+    assert actions[0]['parameters'][0]['hardware_enabled']==(mode=='hardware')
+    if mode=='hardware':
+        executive=actions[-1]['parameters'][0]
+        assert executive['takeoff_trigger']=='position'
+        assert executive['wait_for_planner'] and executive['require_autonomy_ready'] and executive['enforce_boundary']
+    else:
+        assert all(a['package']!='flight_executive' for a in actions)
+    c.launch_configurations.update(planner='typo')
+    with pytest.raises(ValueError,match='planner must'):module.nodes(c)

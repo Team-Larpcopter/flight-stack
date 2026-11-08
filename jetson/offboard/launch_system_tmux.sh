@@ -4,14 +4,27 @@ set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 if [[ -f $here/deployment.env ]]; then source "$here/deployment.env"; fi
 mode=${1:-shadow}
-[[ $mode == shadow || $mode == hardware ]] || { echo 'Usage: launch_system_tmux.sh shadow|hardware' >&2; exit 2; }
+if (($#)); then shift; fi
+planner=super
+check=false
+usage() { echo 'Usage: launch_system_tmux.sh shadow|hardware [--planner super|ego] [--check]'; }
+[[ $mode == shadow || $mode == hardware ]] || { usage >&2; exit 2; }
+while (($#)); do
+  case $1 in
+    --planner) [[ $# -ge 2 ]] || { usage >&2; exit 2; }; planner=$2; shift 2 ;;
+    --check) check=true; shift ;;
+    --help|-h) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+done
+[[ $planner == super || $planner == ego ]] || { usage >&2; exit 2; }
 : "${DEPLOYMENT_CONFIG:?Set DEPLOYMENT_CONFIG to the directory containing mission.yaml, rig.json and bridge.yaml}"
 image=${RUNTIME_IMAGE:-larp-flight-stack:arm64-runtime}
-container=${CONTAINER:-flight-stack-mission-$mode}
-session=${SESSION:-flight-stack-$mode}
-command -v tmux >/dev/null
-source "$here/replace_stack.sh"
-source "$here/runtime_mounts.sh"
+suffix=''
+if [[ $planner == ego ]]; then suffix=-ego; fi
+container=${CONTAINER:-flight-stack-mission$suffix-$mode}
+session=${SESSION:-flight-stack$suffix-$mode}
+if ! $check; then command -v tmux >/dev/null; fi
 config=$(realpath "$DEPLOYMENT_CONFIG")
 [[ -f $config/mission.yaml ]] || { echo 'Missing DEPLOYMENT_CONFIG/mission.yaml' >&2; exit 2; }
 transport=${PX4_TRANSPORT:-udp4}; devices=()
@@ -19,7 +32,7 @@ case $transport in
   udp4) ;;
   serial)
     : "${PX4_DEVICE:?Set PX4_DEVICE for serial DDS}"
-    [[ -c $PX4_DEVICE ]] || { echo 'PX4_DEVICE must be a serial character device' >&2; exit 2; }
+    if ! $check; then [[ -c $PX4_DEVICE ]] || { echo 'PX4_DEVICE must be a serial character device' >&2; exit 2; }; fi
     devices=(--device "$PX4_DEVICE:/dev/px4") ;;
   *) echo 'PX4_TRANSPORT must be udp4 or serial' >&2; exit 2 ;;
 esac
@@ -32,8 +45,16 @@ if [[ -n ${DDS_PROFILE:-} ]]; then
        -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/flight-stack/dds.xml
        -e FASTDDS_DEFAULT_PROFILES_FILE=/etc/flight-stack/dds.xml)
 fi
+# An explicit launch replaces known stack owners before runtime extraction.
+# --check never stops a container or tmux session.
+if ! $check; then source "$here/replace_stack.sh"; fi
+source "$here/runtime_mounts.sh"
 docker run --rm --network none "${runtime_mounts[@]}" -v "$config:/config:ro" "$image" \
-  python3 -c 'import sys; from larp_autonomy.runtime_config import load_config; load_config("/config/mission.yaml",sys.argv[1])' "$mode"
+  python3 -c 'import ctypes, sys; from pathlib import Path; from ament_index_python.packages import get_package_prefix; from larp_autonomy.runtime_config import load_config; load_config("/config/mission.yaml",sys.argv[1]); ctypes.CDLL(str(Path(get_package_prefix("larp_ego_planner"))/"lib/libego_optimizer.so")); assert (Path(get_package_prefix("larp_navigation"))/"lib/larp_navigation/depth_map_node").is_file()' "$mode"
+if $check; then
+  echo "Mission preflight passed: planner=$planner mode=$mode; no mission processes started."
+  exit 0
+fi
 bag_dir=${ROSBAG_DIR:-$here/bags}
 mkdir -p "$bag_dir"
 bag_dir=$(realpath "$bag_dir")
@@ -51,10 +72,10 @@ pane() {
   fi
   printf '%q ' docker exec -it "$container" /flight-stack/jetson/offboard/entrypoint.sh \
     ros2 launch larp_autonomy mission_runtime.launch.py "component:=$1" \
-    "mode:=$mode" mission_file:=/config/mission.yaml
+    "mode:=$mode" "planner:=$planner" mission_file:=/config/mission.yaml
 }
-parts=(drivers foxglove vins dds depth map super executive rosbag)
-titles=(Drivers Foxglove sqrtVINS DDS LAS 'ROG map' SUPER 'Mission executive' 'Record bag — press Enter')
+parts=(drivers foxglove vins dds depth map planner executive rosbag)
+titles=(Drivers Foxglove sqrtVINS DDS LAS 'ROG map' "${planner^^}" 'Mission executive' 'Record bag — press Enter')
 first=$(tmux new-session -d -P -F '#{pane_id}' -s "$session" -n system "bash --noprofile --norc -i")
 tmux set-option -t "$session" mouse on
 tmux set-option -t "$session" remain-on-exit off

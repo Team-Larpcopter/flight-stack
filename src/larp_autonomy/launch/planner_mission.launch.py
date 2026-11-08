@@ -15,6 +15,9 @@ def nodes(context):
     mode = value('mode')
     if mode not in ('shadow', 'simulation', 'hardware'):
         raise ValueError('mode must be shadow, simulation, or hardware')
+    planner = value('planner')
+    if planner not in ('super', 'ego'):
+        raise ValueError('planner must be super or ego')
     backend = value('route_backend')
     if backend != 'super_astar':
         raise ValueError('route_backend must be super_astar')
@@ -37,6 +40,7 @@ def nodes(context):
         Node(package='larp_navigation', executable='depth_map_node', output='screen',
              parameters=[value('boundary_config'), {'rig_file': value('rig_file'),
                          'config_file': value('navigation_config'), 'cad_prior_file': value('cad_prior_file'),
+                         'planner_backend': planner, 'snapshot_include_free': True,
                          'require_hard_boundary': True, 'static_cad_only': value('static_cad_only').lower() == 'true', 'route_backend': backend, 'use_sim_time': clock}],
              remappings=remaps),
         Node(package='larp_autonomy', executable='trajectory_bridge', output='screen',
@@ -55,7 +59,7 @@ def nodes(context):
 
 def generate_launch_description():
     required = ('rig_file', 'navigation_config', 'cad_prior_file', 'boundary_config')
-    defaults = {'static_cad_only': 'true', 'mode': 'shadow', 'route_backend': 'super_astar', 'alignment_verified': 'false', 'mission_id': '',
+    defaults = {'planner': 'super', 'static_cad_only': 'true', 'mode': 'shadow', 'route_backend': 'super_astar', 'alignment_verified': 'false', 'mission_id': '',
                 'map_heading_ned': '0.0', 'map_origin_ned_x': '0.0', 'map_origin_ned_y': '0.0',
                 'map_origin_ned_z': '0.0', 'initial_map_x': '0.0', 'initial_map_y': '0.0',
                 'initial_map_z': '0.0', 'initial_map_yaw': '0.0',

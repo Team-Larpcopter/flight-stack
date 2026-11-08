@@ -19,7 +19,7 @@ def load_launch(name):
 def context(mode):
     c = launch.LaunchContext()
     c.launch_configurations.update({
-        'static_cad_only': 'true', 'mode': mode, 'route_backend': 'super_astar', 'alignment_verified': 'false', 'mission_id': '',
+        'planner': 'super', 'static_cad_only': 'true', 'mode': mode, 'route_backend': 'super_astar', 'alignment_verified': 'false', 'mission_id': '',
         'rig_file': '/unused/rig', 'navigation_config': '/unused/nav',
         'cad_prior_file': '/unused/cad',
         'boundary_config': '/unused/bounds', 'map_heading_ned': '0.0',
@@ -63,6 +63,35 @@ def test_removed_route_backend_is_rejected():
     c = context('shadow')
     c.launch_configurations['route_backend'] = 'unsupported'
     with pytest.raises(ValueError, match='super_astar'):
+        module.nodes(c)
+
+
+@pytest.mark.parametrize('mode', ['shadow', 'simulation', 'hardware'])
+def test_ego_selects_certified_backend_and_keeps_execution_gates(monkeypatch, mode):
+    module = load_launch('planner_mission.launch.py')
+    monkeypatch.setattr(module, 'Node', lambda **kwargs: kwargs)
+    c = context(mode)
+    c.launch_configurations.update(planner='ego', static_cad_only='false')
+    if mode != 'shadow':
+        with pytest.raises(ValueError, match='alignment_verified'):
+            module.nodes(c)
+        c.launch_configurations.update(alignment_verified='true', mission_id='test-flight')
+    actions = module.nodes(c)
+    body, mapper, bridge = actions[:3]
+    assert body['executable'] == 'body_odometry_node'
+    assert mapper['parameters'][1]['planner_backend'] == 'ego'
+    assert mapper['parameters'][1]['static_cad_only'] is False
+    assert bridge['executable'] == 'trajectory_bridge'
+    assert bridge['parameters'][0]['hardware_enabled'] == (mode == 'hardware')
+    assert bridge['parameters'][0]['simulation_only'] == (mode == 'simulation')
+    assert len(actions) == (3 if mode == 'shadow' else 4)
+
+
+def test_unknown_planner_is_rejected():
+    module = load_launch('planner_mission.launch.py')
+    c = context('shadow')
+    c.launch_configurations['planner'] = 'typo'
+    with pytest.raises(ValueError, match='planner must'):
         module.nodes(c)
 
 

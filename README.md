@@ -37,6 +37,7 @@ practice are in [CONTRIBUTING.md](CONTRIBUTING.md). PRs use
 - [Simulate automatic takeoff and hold](src/flight_executive/README.md)
 - [Fly the hard-coded DroneHacks course](src/flight_trajectory/README.md)
 - [Workspace setup](docs/workspace.md)
+- [EGO alternative planner and full mission launcher](docs/ego-planner.md)
 - [AI assistant setup](docs/ai-assistants.md)
 - [Agent / project contract](AGENTS.md)
 

@@ -3,7 +3,7 @@ import math
 from pathlib import Path
 import yaml
 
-COMPONENTS = ('drivers', 'foxglove', 'vins', 'dds', 'depth', 'map', 'super', 'executive')
+COMPONENTS = ('drivers', 'foxglove', 'vins', 'dds', 'depth', 'map', 'planner', 'super', 'executive')
 
 
 def load_config(path, mode):

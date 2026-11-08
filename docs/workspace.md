@@ -9,6 +9,7 @@
 | --- | --- |
 | `src/` | First-party ROS 2 packages |
 | `src/px4_msgs/` | Vendored PX4 messages; revision in `UPSTREAM_REVISION` |
+| `src/larp_ego_planner/` | Pinned EGO-Swarm ROS 2 optimizer and diagnostic adapter; [usage](ego-planner.md) |
 | `docs/` | Contributor and assistant guidance |
 | `.github/` | PR template and GitHub metadata |
 | `build/`, `install/`, `log/` | Generated colcon output (do not commit) |
