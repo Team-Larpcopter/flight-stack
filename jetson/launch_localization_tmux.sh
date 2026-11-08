@@ -21,12 +21,6 @@ attach() {
     tmux attach-session -t "=$session"
   fi
 }
-# Re-running the launcher must not start duplicate camera/estimator processes.
-if tmux has-session -t "=$session" 2>/dev/null; then
-  echo "Attaching to existing tmux session: $session"
-  attach
-  exit 0
-fi
 calibration=${1:-${CALIBRATION_DIR:-${WORKSPACE:-/flight-stack}/src/larp_localization/config/oak_d_s2}}
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 pane_script="$script_dir/integration_image/localization_pane.sh"
@@ -41,6 +35,12 @@ mounted=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/fligh
   echo "Container $container belongs to another checkout; set a different CONTAINER and SESSION." >&2
   exit 2
 }
+# Re-running the launcher must not start duplicate camera/estimator processes.
+if tmux has-session -t "=$session" 2>/dev/null; then
+  echo "Attaching to existing tmux session: $session"
+  attach
+  exit 0
+fi
 if [[ $running != true ]]; then docker start "$container" >/dev/null; fi
 # Calibration is a path inside the container, not on the host.
 docker exec -e "CALIBRATION_DIR=$calibration" "$container" bash -c '

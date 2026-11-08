@@ -7,6 +7,7 @@ source /opt/ros/humble/setup.bash
 export PYTHONNOUSERSITE=1
 export CMAKE_BUILD_PARALLEL_LEVEL=${BUILD_JOBS:-1}
 export MAKEFLAGS="-j$CMAKE_BUILD_PARALLEL_LEVEL"
+export VCPKG_MAX_CONCURRENCY="$CMAKE_BUILD_PARALLEL_LEVEL"
 mkdir -p sdk-source
 revision=623a3c02ca4440718fb45bfee5f30c6edff55d0c
 archive=depthai-core-$revision.tar.gz
