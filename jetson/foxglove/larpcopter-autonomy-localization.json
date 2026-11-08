@@ -5,11 +5,6 @@
         "imageTopic": "/viz/native_oak/left/image_undistorted/compressed"
       }
     },
-    "Image!right": {
-      "imageMode": {
-        "imageTopic": "/viz/native_oak/right/image_undistorted/compressed"
-      }
-    },
     "3D!sqrtvins": {
       "followTf": "global",
       "followMode": "follow-none",
@@ -22,12 +17,12 @@
       },
       "transforms": {},
       "topics": {
-        "/autonomy/pathimu": {
+        "/viz/autonomy/poseimu/path": {
           "visible": true,
           "lineWidth": 0.03,
           "color": "#ff7a45ff"
         },
-        "/autonomy/odomimu": {
+        "/viz/autonomy/odomimu": {
           "visible": true,
           "type": "arrow",
           "arrowScale": [
@@ -37,13 +32,13 @@
           ],
           "color": "#ff7a45ff"
         },
-        "/autonomy/points_slam": {
+        "/viz/autonomy/points_slam": {
           "visible": true,
           "pointSize": 5,
           "colorMode": "flat",
           "flatColor": "#ffd166ff"
         },
-        "/autonomy/points_msckf": {
+        "/viz/autonomy/points_msckf": {
           "visible": true,
           "pointSize": 3,
           "colorMode": "flat",
@@ -89,7 +84,7 @@
       }
     },
     "RawMessages!sqrtvins": {
-      "topicPath": "/autonomy/odomimu.pose.pose",
+      "topicPath": "/viz/autonomy/odomimu.pose.pose",
       "diffEnabled": false,
       "expansion": "all"
     },
@@ -97,17 +92,17 @@
       "title": "sqrtVINS IMU position, global (m)",
       "paths": [
         {
-          "value": "/autonomy/odomimu.pose.pose.position.x",
+          "value": "/viz/autonomy/odomimu.pose.pose.position.x",
           "enabled": true,
           "timestampMethod": "receiveTime"
         },
         {
-          "value": "/autonomy/odomimu.pose.pose.position.y",
+          "value": "/viz/autonomy/odomimu.pose.pose.position.y",
           "enabled": true,
           "timestampMethod": "receiveTime"
         },
         {
-          "value": "/autonomy/odomimu.pose.pose.position.z",
+          "value": "/viz/autonomy/odomimu.pose.pose.position.z",
           "enabled": true,
           "timestampMethod": "receiveTime"
         }
@@ -124,17 +119,17 @@
       "title": "Corrected acceleration, raw IMU axes (m/s\u00b2)",
       "paths": [
         {
-          "value": "/autonomy/imu/data.linear_acceleration.x",
+          "value": "/viz/autonomy/imu/data.linear_acceleration.x",
           "enabled": true,
           "timestampMethod": "receiveTime"
         },
         {
-          "value": "/autonomy/imu/data.linear_acceleration.y",
+          "value": "/viz/autonomy/imu/data.linear_acceleration.y",
           "enabled": true,
           "timestampMethod": "receiveTime"
         },
         {
-          "value": "/autonomy/imu/data.linear_acceleration.z",
+          "value": "/viz/autonomy/imu/data.linear_acceleration.z",
           "enabled": true,
           "timestampMethod": "receiveTime"
         }
@@ -151,17 +146,17 @@
       "title": "Angular velocity, raw IMU axes (rad/s)",
       "paths": [
         {
-          "value": "/autonomy/imu/data.angular_velocity.x",
+          "value": "/viz/autonomy/imu/data.angular_velocity.x",
           "enabled": true,
           "timestampMethod": "receiveTime"
         },
         {
-          "value": "/autonomy/imu/data.angular_velocity.y",
+          "value": "/viz/autonomy/imu/data.angular_velocity.y",
           "enabled": true,
           "timestampMethod": "receiveTime"
         },
         {
-          "value": "/autonomy/imu/data.angular_velocity.z",
+          "value": "/viz/autonomy/imu/data.angular_velocity.z",
           "enabled": true,
           "timestampMethod": "receiveTime"
         }
@@ -173,27 +168,22 @@
       "isSynced": true,
       "xAxisVal": "timestamp",
       "followingViewWidth": 20
-    },
-    "Image!tracks": {
-      "imageMode": {
-        "imageTopic": "/viz/autonomy/trackhist/compressed"
-      }
     },
     "Plot!velocity": {
       "title": "sqrtVINS velocity, IMU frame (m/s)",
       "paths": [
         {
-          "value": "/autonomy/odomimu.twist.twist.linear.x",
+          "value": "/viz/autonomy/odomimu.twist.twist.linear.x",
           "enabled": true,
           "timestampMethod": "receiveTime"
         },
         {
-          "value": "/autonomy/odomimu.twist.twist.linear.y",
+          "value": "/viz/autonomy/odomimu.twist.twist.linear.y",
           "enabled": true,
           "timestampMethod": "receiveTime"
         },
         {
-          "value": "/autonomy/odomimu.twist.twist.linear.z",
+          "value": "/viz/autonomy/odomimu.twist.twist.linear.z",
           "enabled": true,
           "timestampMethod": "receiveTime"
         }
@@ -205,6 +195,11 @@
       "isSynced": true,
       "xAxisVal": "timestamp",
       "followingViewWidth": 20
+    },
+    "Image!depth": {
+      "imageMode": {
+        "imageTopic": "/viz/stereo/depth/image/compressed"
+      }
     }
   },
   "globalVariables": {},
@@ -216,14 +211,9 @@
     "direction": "row",
     "first": {
       "direction": "column",
-      "first": {
-        "direction": "column",
-        "first": "Image!left",
-        "second": "Image!right",
-        "splitPercentage": 50
-      },
-      "second": "Image!tracks",
-      "splitPercentage": 66
+      "first": "Image!left",
+      "second": "Image!depth",
+      "splitPercentage": 50
     },
     "second": {
       "direction": "column",

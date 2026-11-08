@@ -19,11 +19,8 @@ identity, PX4 parameters, or `/fmu/in/*`.
 | `larp` | Helper CLI, linked as `~/.local/bin/larp`. Run `larp help`. |
 | `install.sh` | One-time host setup: tmux, htop, jq, `larp`, Claude Code, Node 22, Codex CLI. Needs internet. |
 | `tmux.conf` | Copied to `~/.tmux.conf` if none exists. `Ctrl-b Ctrl-b` sends the prefix to the stack's nested tmux. |
-| `foxglove/larpcopter-drone.json` | Foxglove layout: L/R cameras + filtered depth (`/viz`), IMU and VIO plots, 3D VIO view, `/skybeta/state`, VIO status. |
-| `team_image/Dockerfile` | Team overlay image (`skybeta-team:<VERSION>`): bakes `larp_oak` (`1280×800@30` `mono8` VIO + `800×500@30` stereo depth + CUDA pyramid `depth_filter`) and `larp_viz` into `/root/skybeta_ws`. |
-| `oak_test/` | Standalone container harness + monitor for camera/depth/cuVSLAM stress tests. |
-| `../src/larp_oak` | ROS package: `oak_node` (direct DepthAI driver: `1280×800@30` `mono8` L/R + `800×500@30` `ROBOTICS` subpixel depth + `200 Hz` IMU) and `depth_filter` (CUDA multi-scale edge-consistent hole fill + temporal filter → `/oak/stereo/filtered/image`). |
-| `../src/larp_viz` | ROS package: `viz_relay` republishes downscaled camera and colourised depth JPEGs on `/viz/<topic>/compressed` at 5 Hz. |
+| `integration_image/` | Native integration image (DepthAI 3.10 SDK build, planner deps) and run helpers: `localization_pane.sh camera\|vio\|monitor\|las\|fox`, `launch_localization.sh` (bounded test). |
+| `foxglove/larpcopter-autonomy-localization.json` | Foxglove layout for the native path: left camera, depth, 3D sqrtVINS, plots. Bridge and relay: `src/larp_perception`. |
 
 ## `larp` commands
 
@@ -34,43 +31,20 @@ identity, PX4 parameters, or `/fmu/in/*`.
 | `larp ros CMD` | one ROS command inside the stack |
 | `larp attach` | the stack's tmux (`Ctrl-b d` to leave) |
 | `larp build` | `team_build.sh` (colcon build of `~/team_ws`) inside the stack |
-| `larp image build` / `off` / `status` | build/disable/inspect `skybeta-team:<VERSION>` (`larp_oak` + `depth_filter` + `larp_viz`) |
-| `larp fox start [--images]` | read-only Foxglove bridge on port 8766 (no client publish, services or params, rule 5.5). Telemetry only by default; `--images` adds 5 Hz camera + depth copies on `/viz` (see below) |
-| `larp fox stop` / `status` | stop the bridge and image relay / show whether they run |
 | `larp bag` | organisers' `host/run.sh bag` |
 | `larp doctor` | organisers' `host/doctor.sh` |
 | `larp restart` | restart the stack. **Power-cycle the flight controller afterwards** (skybeta bug #15) |
 | `larp work` | host tmux session `larp` for dev work |
 | `larp portal` | press ACCEPT on the Stanford Visitor guest portal when HTTPS stops working |
 
-## Foxglove
+## Camera, depth and Foxglove
 
-```bash
-larp fox start                       # telemetry only
-larp fox start --images              # + both cameras, 5 Hz, half size, JPEG 50
-larp fox start --images --rate 2 --scale 1.0 --quality 80
-larp fox start --topics /some/image/compressed   # relay other CompressedImage topics
-larp fox start --buffer 262144       # bridge send buffer in bytes (default 131072)
-larp fox stop
-```
-
-Connect the Foxglove desktop app to `ws://<tailscale-ip>:8766` (8765 belongs to
-the organisers' skybeta-status agent), then **Layouts → Import from file →
-`jetson/foxglove/larpcopter-drone.json`**.
-
-Full-rate image topics are never served: one OAK JPEG stream is ~250 KB per
-frame at 30 Hz (~60 Mbit/s), more than the drone's Wi-Fi uplink, and it cost
-the bridge ~50% CPU. The `--images` copies measured ~97 KB/s per camera at
-5 Hz; `viz_relay` uses ~22% of one core because it still receives every
-30 Hz frame. Any topic containing `/image` is hidden unless it is under `/viz`.
-
-Latest data only: the bridge's send buffer is 128 KB (default 10 MB), so when
-the Wi-Fi falls behind it drops old messages instead of queueing seconds of
-them. ROS queues are capped at 5 (`/tf_static` needs its 4 static transforms),
-and the relay keeps only the newest frame.
-
-The bridge and relay run as `foxglove` and `viz` windows in the stack's tmux,
-so they stop whenever the stack restarts; run `larp fox start` again.
+The skybeta-era camera node (`larp_oak`), team image, depth benchmarks and
+`larp fox` are gone. On the native path: `src/larp_hardware` (camera: stereo, IMU
+and the camera's rectified pair), `src/larp_liteanystereo` (Lite Any Stereo depth
+on the Jetson GPU) and `src/larp_perception` (read-only Foxglove bridge on 8766
+with throttled `/viz` copies, `stack` run commands, benchmarks). See
+`src/larp_perception/README.md`.
 
 ## Setup on a fresh drone
 

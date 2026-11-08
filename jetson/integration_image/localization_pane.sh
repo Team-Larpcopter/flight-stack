@@ -4,6 +4,8 @@ set -eo pipefail
 workspace=${WORKSPACE:-/flight-stack}
 source /opt/ros/humble/setup.bash
 source "${INSTALL_PREFIX:-$workspace/install}/setup.bash"
+# Optional overlay (e.g. a branch built separately on top of the main install).
+if [[ -n ${OVERLAY_PREFIX:-} ]]; then source "$OVERLAY_PREFIX/setup.bash"; fi
 export LD_LIBRARY_PATH="${SDK_PREFIX:-$workspace/sdk_install}/lib:${LD_LIBRARY_PATH:-}"
 case ${1:-} in
 camera)
@@ -25,5 +27,13 @@ vio)
 monitor)
   exec ros2 topic hz /autonomy/poseimu
   ;;
-*) echo 'Usage: localization_pane.sh camera|vio|monitor'; exit 2;;
+las)
+  # Lite Any Stereo depth from the camera's rectified pair -> /stereo/depth/image
+  exec ros2 launch larp_liteanystereo las_depth.launch.py publish_as_primary:=true "${@:2}"
+  ;;
+fox)
+  # read-only Foxglove bridge on 8766 + throttled /viz relay
+  exec ros2 launch larp_perception perception.launch.py "${@:2}"
+  ;;
+*) echo 'Usage: localization_pane.sh camera|vio|monitor|las|fox'; exit 2;;
 esac

@@ -59,10 +59,14 @@ for ((i=0;i<40;i++)); do
   [[ -s $run/raw.csv.left.json && -s $run/raw.csv.right.json ]] && break
   sleep 1
 done
+# Stereo depth (larp_liteanystereo) is in the camera's rectified left frame; its
+# geometry is exported with the first rectified pair (oak_native_node publish_rectified).
+for ((i=0;i<10;i++)); do [[ -s $run/factory.json.rectified.json ]] && break; sleep 1; done
+depth_args=(); [[ -s $run/factory.json.rectified.json ]] && depth_args=(--depth "$run/factory.json.rectified.json")
 python3 -m larp_autonomy.native_calibration \
   --extrinsics "$run/factory.json.extrinsics.json" \
   --left "$run/raw.csv.left.json" --right "$run/raw.csv.right.json" \
-  --out "$run/calibration" \
+  "${depth_args[@]}" --out "$run/calibration" \
   --template-dir /flight-stack/src/larp_localization/config/oak_d_s2 --bench-only
 setsid "$vio" --ros-args -r __ns:=/autonomy \
   -r /sim/processed/vio:=/autonomy/processed_vio \

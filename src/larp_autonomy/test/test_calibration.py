@@ -139,3 +139,29 @@ def test_bundled_camera_configuration_matches_native_raw_frames():
     imu=yaml.safe_load((TEMPLATES/'kalibr_imu_chain.yaml').read_text().split('\n',1)[1])['imu0']
     assert imu['rostopic']=='/autonomy/imu/data'
     assert imu['update_rate']==400
+
+
+def test_native_rig_places_stereo_depth_in_rectified_left(tmp_path, monkeypatch):
+    from larp_autonomy.native_calibration import main
+    infos, transforms = fixture()
+    matrices = {}
+    for side in ('left', 'right'):
+        matrix = transforms['T_imu_'+side].copy()
+        matrix[:3, 3] *= 100
+        matrices[side] = matrix.tolist()
+        (tmp_path/(side+'.json')).write_text(json.dumps(dict(
+            width=1280, height=800, intrinsics=np.array(infos[side]['k']).reshape(3,3).tolist(), D=[0.]*5)))
+    (tmp_path/'extrinsics.json').write_text(json.dumps({'camera_to_imu_cm': matrices}))
+    a = np.radians(.4); r = np.array([[np.cos(a), 0, np.sin(a)], [0, 1, 0], [-np.sin(a), 0, np.cos(a)]])
+    (tmp_path/'rectified.json').write_text(json.dumps({'frame': 'native_oak_depth_optical', 'width': 800, 'height': 500,
+        'k': [500., 0, 400, 0, 500., 250, 0, 0, 1], 'p': [500., 0, 400, 0, 0, 500., 250, 0, 0, 0, 1, 0], 'r': r.ravel().tolist()}))
+    out = tmp_path/'generated'
+    monkeypatch.setattr('sys.argv', ['native_calibration', '--extrinsics', str(tmp_path/'extrinsics.json'),
+        '--left', str(tmp_path/'left.json'), '--right', str(tmp_path/'right.json'),
+        '--out', str(out), '--template-dir', str(TEMPLATES), '--bench-only', '--depth', str(tmp_path/'rectified.json')])
+    main()
+    rig = json.loads((out/'rig.json').read_text())
+    assert rig['depth_frame'] == 'native_oak_depth_optical'
+    left_depth = np.eye(4); left_depth[:3, :3] = r.T
+    np.testing.assert_allclose(rig['T_body_depth'],
+        np.array(rig['T_body_imu']) @ np.array(rig['T_imu_left']) @ left_depth, atol=1e-9)
