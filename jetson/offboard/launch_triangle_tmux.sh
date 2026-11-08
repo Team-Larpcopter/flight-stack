@@ -7,7 +7,7 @@ case ${1:-} in
   --check) check_only=true ;;
   --help|-h)
     echo 'Usage: bash launch_triangle_tmux.sh [--check]'
-    echo 'Six panes including manual recorder: pilot arms then selects Position; 0.5 m takeoff, 0.75 m forward, 0.75 m left, return, land.'
+    echo 'Six panes including manual recorder: pilot arms then selects Position; 0.75 m takeoff, 0.75 m forward, 0.75 m left, return, land.'
     echo '--check validates setup without launching sensors or flight publishers.'
     exit 0 ;;
   '') ;;

@@ -1,4 +1,4 @@
-"""Pilot-triggered 0.5 m takeoff, 0.75 m forward/left triangle, then land."""
+"""Pilot-triggered 0.75 m takeoff, 0.75 m forward/left triangle, then land."""
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
@@ -14,7 +14,7 @@ def nodes(context):
         Node(package='flight_executive', executable='flight_executive_node',
              output='screen', parameters=[dict(
                  simulation_only=False, hardware_enabled=True,
-                 takeoff_trigger='position', takeoff_height=.5, hold_timeout=2.,
+                 takeoff_trigger='position', takeoff_height=.75, hold_timeout=2.,
                  target_system=cfg.get('target_system', 1),
                  target_component=cfg.get('target_component', 1),
                  trajectory_topic='/triangle/trajectory_in',
