@@ -34,7 +34,7 @@ class DepthMapNode : public rclcpp::Node {
     takeoff_height_=declare_parameter<double>("takeoff_height",1.0);
     ready_=create_publisher<std_msgs::msg::Bool>("/autonomy/takeoff_ready",1);
     epoch_=declare_parameter<int64_t>("localization_epoch",1);
-    const double depth_age=declare_parameter<double>("max_depth_age_s",.3);
+    const double depth_age=declare_parameter<double>("max_depth_age_s",.5);
     if(!std::isfinite(depth_age) || depth_age<=0 || depth_age>1.)throw std::invalid_argument("max_depth_age_s must be (0,1]");
     max_depth_age_ns_=int64_t(depth_age*1e9);
     stride_=declare_parameter<int>("pixel_stride",4);
@@ -385,7 +385,7 @@ class DepthMapNode : public rclcpp::Node {
   std::unique_ptr<navigation::RoutePlanner> planner_;
   int64_t last_plan_ns_{0},last_certificate_ns_{0};
   uint64_t trajectory_sequence_{0};
-  int64_t max_depth_age_ns_{300'000'000};
+  int64_t max_depth_age_ns_{500'000'000};
   rclcpp::Publisher<dronehacks_msgs::msg::CommittedTrajectory>::SharedPtr trajectories_;
   rclcpp::Subscription<dronehacks_msgs::msg::NavigationGoal>::SharedPtr goals_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_;
