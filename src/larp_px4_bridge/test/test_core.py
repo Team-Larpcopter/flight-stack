@@ -81,3 +81,14 @@ def test_latest_at_each_timer_tick(input_hz):
     assert 49 <= len(delivered) <= 51
     assert len(set(delivered)) == len(delivered)
     assert gate.take(2_100_000_000) is None
+
+
+def test_map_body_odometry_converts_flu_to_frd_without_second_mount():
+    s=sample()
+    s.position=[0,0,0]
+    s.quaternion=[1,0,0,0]
+    out=Converter([0,1,0,0]).convert(s)
+    assert out['position']==[0,0,0]
+    np.testing.assert_allclose(rotation(out['q']),np.eye(3),atol=1e-14)
+    s.position=[1,2,.5]
+    assert Converter([0,1,0,0]).convert(s)['position']==[1,-2,-.5]

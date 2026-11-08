@@ -14,6 +14,8 @@
   <exec_depend>flight_executive_msgs</exec_depend>
   <exec_depend>flight_trajectory</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 

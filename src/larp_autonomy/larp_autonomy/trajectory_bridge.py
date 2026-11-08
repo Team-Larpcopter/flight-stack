@@ -49,6 +49,7 @@ def main():
     from dronehacks_msgs.msg import CommittedTrajectory,NavigationGoal
     from flight_executive_msgs.msg import TrajectorySetpoint
     from std_msgs.msg import Bool, String
+    from geometry_msgs.msg import PoseStamped
     rclpy.init();node=Node('autonomy_trajectory_bridge')
     simulation=bool(node.declare_parameter('simulation_only',False).value)
     hardware=bool(node.declare_parameter('hardware_enabled',False).value)
@@ -59,6 +60,8 @@ def main():
     alignment=bool(node.declare_parameter('alignment_verified',False).value)
     heading=float(node.declare_parameter('map_heading_ned',0.).value)
     origin=tuple(node.declare_parameter('map_origin_ned',[0.,0.,0.]).value)
+    auto_alignment=bool(node.declare_parameter('align_px4_to_map_on_ground',False).value)
+    alignment_received=not auto_alignment
     if len(origin)!=3 or not all(math.isfinite(x) for x in (*origin,heading)):
         raise ValueError('Invalid map to PX4 alignment')
     # Fixed shadow destination prevents accidental remapping through a parameter.
@@ -67,6 +70,22 @@ def main():
     pub=node.create_publisher(TrajectorySetpoint,topic,4)
     state={'goal':None,'curve':None,'health':False,'health_at':-math.inf,'sequence':-1,'clock':None}
     def now():return node.get_clock().now().nanoseconds*1e-9
+    def align(m):
+        nonlocal origin,heading,alignment_received
+        if not auto_alignment or m.header.frame_id!='local_ned':return
+        p,q=m.pose.position,m.pose.orientation
+        values=(p.x,p.y,p.z,q.w,q.x,q.y,q.z)
+        if not all(math.isfinite(v) for v in values) or abs(sum(v*v for v in values[3:])-1)>.002:return
+        new_origin=(p.x,p.y,p.z)
+        new_heading=math.atan2(2*(q.w*q.z+q.x*q.y),1-2*(q.y*q.y+q.z*q.z))
+        if alignment_received:
+            if any(abs(a-b)>1e-6 for a,b in zip(origin,new_origin)) or abs(math.atan2(math.sin(heading-new_heading),math.cos(heading-new_heading)))>1e-6:
+                gate.fault=True
+            return
+        origin,heading,alignment_received=new_origin,new_heading,True
+    if auto_alignment:
+        node.create_subscription(PoseStamped,'/autonomy/map_to_px4',align,
+                                 QoSProfile(depth=1,durability=DurabilityPolicy.TRANSIENT_LOCAL))
     def executive(m):
         if not active:return
         gate.phase=m.data
@@ -93,7 +112,7 @@ def main():
         except ValueError:
             state['curve']=None
     def tick():
-        if not gate.ready:return
+        if not gate.ready or not alignment_received:return
         stamp=now();previous=state['clock'];state['clock']=stamp
         if previous is not None and stamp<previous:
             state.update(curve=None,goal=None,sequence=-1);return

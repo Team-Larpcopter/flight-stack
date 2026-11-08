@@ -43,7 +43,9 @@ def nodes(context):
                 node('larp_navigation','body_odometry_node',[{k:cfg[k] for k in ('rig_file','initial_position_m','initial_yaw_rad')}],
                      remappings=[('/odomimu','/autonomy/odomimu'),('/poseimu','/autonomy/poseimu'),*remaps])]
         if active: result.append(node('larp_px4_bridge','vins_px4_bridge',[cfg['bridge_params'],
-            {'input_topic':'/autonomy/odomimu','output_topic':'/fmu/in/vehicle_visual_odometry'}]))
+            {'input_topic':'/autonomy/odometry','world_frame':'map','imu_frame':'base_link',
+             'imu_to_body_frd_quaternion_wxyz':[0.,1.,0.,0.], 'require_vio_health':True,
+             'output_topic':'/fmu/in/vehicle_visual_odometry'}]))
     elif part=='dds':
         transport=os.environ.get('PX4_TRANSPORT','udp4')
         if transport=='udp4': command=['MicroXRCEAgent','udp4','-p',os.environ.get('PX4_PORT','8888')]
@@ -66,12 +68,13 @@ def nodes(context):
         result=[node('larp_navigation','depth_map_node',[params],remappings=remaps)]
     else:
         params=dict(simulation_only=False,hardware_enabled=active,alignment_verified=cfg['alignment_verified'],
-            mission_id=cfg['mission_id'],map_heading_ned=cfg['map_heading_ned'],map_origin_ned=cfg['map_origin_ned'])
+            mission_id=cfg['mission_id'],map_heading_ned=cfg['map_heading_ned'],map_origin_ned=cfg['map_origin_ned'],
+            align_px4_to_map_on_ground=active)
         result=[node('larp_autonomy','trajectory_bridge',[params]),
             node('larp_autonomy','mission_goal',[dict(zip(('x','y','z','yaw'),cfg['goal']),wait_for_hold=active)])]
         if active:
             result.append(node('flight_executive','flight_executive_node',[dict(
-                simulation_only=False,hardware_enabled=True,takeoff_trigger='position',
+                simulation_only=False,hardware_enabled=True,takeoff_trigger='position',align_px4_to_map_on_ground=True,
                 target_system=cfg.get('target_system',1),target_component=cfg.get('target_component',1),
                 takeoff_height=cfg['takeoff_height'],require_autonomy_ready=True,enforce_boundary=True,
                 map_boundary_lower=cfg['hard_boundary_lower'],map_boundary_upper=cfg['hard_boundary_upper'],
