@@ -7,7 +7,7 @@ case ${1:-} in
   --check) check_only=true ;;
   --help|-h)
     echo 'Usage: bash launch_fixed_course_tmux.sh [--check]'
-    echo 'Six panes including manual recorder: pilot arms then selects Position; YAML-configured takeoff and waypoints, land. No depth, map or planner.'
+    echo 'Seven panes including manual recorder and abort/land: pilot arms then selects Position; YAML-configured takeoff and waypoints, land. No depth, map or planner.'
     echo '--check validates setup without launching sensors or flight publishers.'
     exit 0 ;;
   '') ;;
@@ -69,6 +69,11 @@ docker create --init --name "$container" -v "$bag_dir:/bags" "${runtime_mounts[@
   -e OPENBLAS_NUM_THREADS=1 -e OMP_NUM_THREADS=1 "$image" sleep infinity >/dev/null
 docker start "$container" >/dev/null
 pane() {
+  if [[ $1 == land ]]; then
+    printf '%q ' docker exec -it "$container" /flight-stack/jetson/offboard/entrypoint.sh \
+      ros2 service call /flight_executive/hold_and_land std_srvs/srv/Trigger '{}'
+    return
+  fi
   if [[ $1 == rosbag ]]; then
     printf '%q ' docker exec -it "$container" /flight-stack/jetson/offboard/entrypoint.sh \
       python3 /flight-stack/jetson/offboard/record_bag.py
@@ -83,8 +88,8 @@ pane() {
       "mode:=$mode" mission_file:=/config/mission.yaml
   fi
 }
-parts=(drivers foxglove vins dds executive rosbag)
-titles=(Drivers Foxglove sqrtVINS DDS 'Fixed course and land' 'Record bag — press Enter')
+parts=(drivers foxglove vins dds executive rosbag land)
+titles=(Drivers Foxglove sqrtVINS DDS 'Fixed course and land' 'Record bag — press Enter' 'ABORT → HOLD → LAND — press Enter')
 first=$(tmux new-session -d -P -F '#{pane_id}' -s "$session" -n system "bash --noprofile --norc -i")
 tmux set-option -t "$session" mouse on
 tmux set-option -t "$session" remain-on-exit off
@@ -96,7 +101,7 @@ for ((i=1; i<${#parts[@]}; ++i)); do
   created=$(tmux split-window -d -P -F '#{pane_id}' -t "$session:system" "bash --noprofile --norc -i")
   tmux select-pane -t "$created" -T "${titles[i]}"
   tmux send-keys -t "$created" -l "$(pane "${parts[i]}")"
-  if [[ ${parts[i]} != rosbag ]]; then tmux send-keys -t "$created" Enter; fi
+  if [[ ${parts[i]} != rosbag && ${parts[i]} != land ]]; then tmux send-keys -t "$created" Enter; fi
   tmux select-layout -t "$session:system" tiled >/dev/null
 done
 tmux select-pane -t "$first"

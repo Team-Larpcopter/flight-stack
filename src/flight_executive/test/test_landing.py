@@ -232,3 +232,50 @@ def test_stale_landing_telemetry_stops_all_outputs(snapshot, age):
     output = r.machine.tick(r.now)
     assert r.machine.state == State.ERROR
     assert output.command is None and output.setpoint is None
+
+
+@pytest.mark.parametrize('compat', [False, True])
+def test_manual_abort_holds_then_lands_and_rejects_new_route(compat):
+    r = Rig(skybeta_compat=compat)
+    r.tick()
+    r.sample()
+    r.tick()
+    assert r.machine.state == State.TRACKING
+    accepted, _ = r.machine.request_hold_land(r.now)
+    assert accepted
+    deadline = r.machine.manual_land_at
+    for _ in range(39):
+        assert not r.sample()
+        output = r.tick()
+        assert output.command is None
+        assert output.setpoint.x == 3
+        assert output.setpoint.velocity == (0., 0., 0.)
+    assert r.machine.request_hold_land(r.now)[0]
+    assert r.machine.manual_land_at == deadline
+    assert r.tick().command == Command.LAND
+    assert r.machine.state == State.LAND
+    assert not r.sample()
+
+
+def test_manual_abort_does_not_take_control_from_pilot():
+    r = Rig(skybeta_compat=True)
+    r.tick()
+    assert r.machine.request_hold_land(r.now)[0]
+    r.status = replace(r.status, offboard=False)
+    assert r.tick().command is None
+    assert r.machine.state == State.ERROR
+    assert not r.machine.request_hold_land(r.now)[0]
+    r.status = replace(r.status, offboard=True)
+    for _ in range(45):
+        assert r.tick().command is None
+
+
+def test_manual_abort_refuses_inactive_or_unavailable_position():
+    r = Rig()
+    assert not r.machine.request_hold_land(0)[0]
+    r.tick()
+    r.machine.position = replace(r.machine.position, valid=False)
+    assert not r.machine.request_hold_land(r.now)[0]
+    r.tick()
+    r.machine.state = State.WAITING
+    assert not r.machine.request_hold_land(r.now)[0]

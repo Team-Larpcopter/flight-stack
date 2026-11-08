@@ -47,6 +47,7 @@ class StateMachine:
         self.hold_target = None
         self.last_tracking_target = None
         self.last_tick = None
+        self.manual_land_at = None
 
     @property
     def phase(self):
@@ -68,7 +69,27 @@ class StateMachine:
             if self.takeoff.reason:
                 self.fail(self.takeoff.reason)
 
+    def request_hold_land(self, now: float):
+        """Latch operator cancellation; never let later route samples resume it."""
+        if self.state in (State.ERROR, State.DONE):
+            return False, 'Mission is stopped; no automatic landing in progress'
+        if self.manual_land_at is not None or self.state == State.LAND:
+            return True, 'Abort/landing already in progress'
+        if self.state not in (State.TAKEOFF, State.HOLD, State.TRACKING):
+            return False, 'No active mission to abort'
+        if (not self._fresh(self.status, now) or not self.status.armed
+                or not self.status.offboard):
+            return False, 'Hold then land requires an armed vehicle in Offboard'
+        p = self.position
+        if not self._fresh(p, now) or not p.usable():
+            return False, 'Cannot capture hold position: local position unavailable'
+        self.manual_land_at = now + 2.0
+        self._hold(Setpoint(p.x, p.y, p.z, p.yaw), now)
+        return True, 'Mission aborted: holding current position for 2 seconds, then landing'
+
     def accept_trajectory(self, trajectory: Trajectory) -> bool:
+        if self.manual_land_at is not None:
+            return False
         if self.state not in (State.HOLD, State.TRACKING):
             return False
         if self.active_trajectory_id not in (None, trajectory.trajectory_id):
@@ -137,6 +158,15 @@ class StateMachine:
             return Output()
         if self.state == State.LAND:
             return self._land(now)
+        if self.manual_land_at is not None:
+            # Pilot mode changes retain priority over the pending land request.
+            if not self._fresh(self.status, now) or not self.status.armed or not self.status.offboard:
+                self.fail('Manual landing cancelled: PX4 left armed Offboard or telemetry was lost')
+                return Output()
+            self.last_tick = now
+            if now >= self.manual_land_at:
+                return self._start_land(now)
+            return Output(self.hold_target)
         gap = self.last_tick is not None and now - self.last_tick > 0.5
         self.last_tick = now
         if not self.skybeta_compat and self._fresh(self.status, now) and self.status.failsafe:

@@ -299,3 +299,16 @@ pose age, tracking distance or start heading/position tolerances.
 
 These settings allow delayed pose streams through; they do not repair upstream
 camera/VINS delay or override PX4 firmware's own validity/failsafe decisions.
+
+### Manual abort, hold and land
+
+The fixed-course and full-system tmux launchers include an **ABORT → HOLD → LAND**
+pane. Select it and press Enter to call `/flight_executive/hold_and_land`
+(`std_srvs/srv/Trigger`). The command is staged, never executed at startup.
+An accepted request permanently ignores further trajectory samples, captures the
+current PX4 position/yaw, holds for two seconds, then uses the normal PX4 Land
+handoff. The terminal reports acceptance or the reason for refusal; the executive
+pane reports LAND and touchdown completion. Repeated requests do not restart the
+hold timer. This requires an active mission, armed Offboard and a current usable
+position. A pilot mode change during the hold cancels the automatic handoff.
+Restart the mission to fly another route after an abort.
