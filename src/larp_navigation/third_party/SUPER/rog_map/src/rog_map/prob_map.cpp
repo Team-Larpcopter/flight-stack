@@ -567,6 +567,15 @@ void ProbMap::probabilisticMapFromCache() {
         globalIndexToLocalIndex(id_g, id_l);
         int hash_id = getLocalIndexHash(id_l);
         globalIndexToPos(id_g, pos);
+        // The immutable boundary already makes these cells non-traversable.
+        // Do not classify/inflate space outside it. Keep ray traversal intact
+        // so out-of-bound returns still clear their observed in-bound prefix.
+        // Always drain counters: stale hits must not leak into later frames.
+        if (outsideHardBoundary(pos)) {
+            raycast_data_.hit_cnt[hash_id] = 0;
+            raycast_data_.operation_cnt[hash_id] = 0;
+            continue;
+        }
         if (raycast_data_.hit_cnt[hash_id] > 0) {
             // Stereo pixels in one frame share matching/pose error. Their
             // multiplicity must not masquerade as independent observations.

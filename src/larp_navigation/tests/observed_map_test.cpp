@@ -80,5 +80,22 @@ int main(int argc,char** argv) {
   require(map.isOccupied(Eigen::Vector3d(2.1,0,1)),"ray clearing erased boundary");
   bool boundary_refused=false;try{map.setHardBoundary({-3,-3,0},{3,3,3},.4);}catch(const std::invalid_argument&){boundary_refused=true;}
   require(boundary_refused,"boundary could be changed in flight");
-  std::cout<<"capture-origin rays, retained body state, classified cells and unseen-space checks passed\n";
+  // Entirely exterior rays must not trigger expensive unknown inflation.
+  // Crossing rays must still update the measured prefix inside the boundary.
+  auto& bounded=map; // reuse the existing immutable [-2,2] boundary
+  rog_map::PointCloud exterior;
+  rog_map::PointType endpoint;endpoint.x=3.05;endpoint.y=.05;endpoint.z=1.05;endpoint.intensity=1;
+  exterior.push_back(endpoint);
+  bounded.integrate(exterior,{{2,0,1},Eigen::Quaterniond::Identity()});
+  const auto timings=std::filesystem::temp_directory_path()/std::string("boundary-timings-"+std::to_string(getpid()));
+  {std::ofstream f(timings);bounded.writeTimeConsumingToLog(f);}
+  std::string line;{std::ifstream f(timings);std::getline(f,line);}
+  std::filesystem::remove(timings);
+  require(std::stod(line.substr(line.find_last_of(',')+1))==0,
+          "exterior observations still triggered inflation work");
+  for(int i=0;i<10;++i)bounded.integrate(exterior,{{0,0,1},Eigen::Quaterniond::Identity()});
+  require(bounded.isKnownFree(Eigen::Vector3d(.55,.05,1.05)),"exterior return lost in-bound free ray prefix");
+  require(bounded.isOccupied(Eigen::Vector3d(2.05,.05,1.05)),"boundary became traversable after ray misses");
+  require(!bounded.isKnownFreeInflate(Eigen::Vector3d(1.85,.05,1.05)),"boundary clearance was weakened");
+  std::cout<<"capture-origin rays, classification, boundary filtering and clearance passed\n";
 }
