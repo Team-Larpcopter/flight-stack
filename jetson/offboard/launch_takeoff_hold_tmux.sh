@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Jetson: pilot Position trigger, 0.5 m ascent, two-second hold, then PX4 Land.
-# Uses the deployed runtime helpers next to this script. Stop other stack owners.
+# Uses the deployed runtime helpers next to this script. Replaces existing stack owners.
 # No map/obstacle readiness gate. No trajectory publisher is started.
 set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -23,11 +23,7 @@ image=${RUNTIME_IMAGE:-larp-flight-stack:arm64-runtime}
 container=${CONTAINER:-flight-stack-takeoff-hold}
 session=${SESSION:-flight-stack-takeoff-hold}
 command -v tmux >/dev/null
-# Reattach without launching another set of sensor/command publishers.
-if ! $check_only && tmux has-session -t "$session" 2>/dev/null; then
-  tmux set-option -t "$session" mouse on
-  exec tmux attach-session -t "$session"
-fi
+if ! $check_only; then source "$here/replace_stack.sh"; fi
 source "$here/runtime_mounts.sh"
 config=$(realpath "$DEPLOYMENT_CONFIG")
 [[ -f $config/mission.yaml ]] || { echo 'Missing DEPLOYMENT_CONFIG/mission.yaml' >&2; exit 2; }
@@ -50,12 +46,6 @@ if [[ -n ${DDS_PROFILE:-} ]]; then
        -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/flight-stack/dds.xml
        -e FASTDDS_DEFAULT_PROFILES_FILE=/etc/flight-stack/dds.xml)
 fi
-# A stopped container is not silently reused after configuration/image changes.
-# No automatic restart of an executive that might have already flown.
-if ! $check_only && docker container inspect "$container" >/dev/null 2>&1; then
-  echo "Container $container already exists. Stop its processes and remove it before a new mission." >&2
-  exit 2
-fi
 docker run --rm --network none "${runtime_mounts[@]}" -v "$config:/config:ro" "$image" \
   python3 -c 'import sys; from larp_autonomy.runtime_config import load_config; load_config("/config/mission.yaml",sys.argv[1])' "$mode"
 if $check_only; then
@@ -67,12 +57,6 @@ if $check_only; then
   echo 'Configuration and executable checks passed. No sensors or flight publishers launched.'
   exit 0
 fi
-for other in flight-stack-mission-hardware flight-stack-mission-shadow flight-stack-localization-runtime; do
-  if [[ $(docker inspect --format '{{.State.Running}}' "$other" 2>/dev/null || true) == true ]]; then
-    echo "Stop $other before starting this test; it shares the camera/PX4 connection." >&2
-    exit 2
-  fi
-done
 bag_dir=${ROSBAG_DIR:-$here/bags}
 mkdir -p "$bag_dir"
 bag_dir=$(realpath "$bag_dir")
