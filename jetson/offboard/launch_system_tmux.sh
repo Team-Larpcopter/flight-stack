@@ -27,8 +27,11 @@ case $transport in
   *) echo 'PX4_TRANSPORT must be udp4 or serial' >&2; exit 2 ;;
 esac
 dds=()
+if [[ -n ${XRCE_REFS:-} ]]; then
+  dds+=(-v "$(realpath "$XRCE_REFS"):/etc/flight-stack/agent_refs.xml:ro" -e XRCE_REFS=/etc/flight-stack/agent_refs.xml)
+fi
 if [[ -n ${DDS_PROFILE:-} ]]; then
-  dds=(-v "$(realpath "$DDS_PROFILE"):/etc/flight-stack/dds.xml:ro"
+  dds+=(-v "$(realpath "$DDS_PROFILE"):/etc/flight-stack/dds.xml:ro"
        -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/flight-stack/dds.xml
        -e FASTDDS_DEFAULT_PROFILES_FILE=/etc/flight-stack/dds.xml)
 fi
