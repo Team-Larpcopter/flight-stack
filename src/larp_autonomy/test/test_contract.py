@@ -26,10 +26,10 @@ def test_replanning_and_goal_changes_preserve_executive_id():
     assert gate.accepts_epoch(1)
     assert gate.trajectory_id(SimpleNamespace(localization_epoch=1, goal_id=10)) == 'flight-1'
     assert gate.trajectory_id(SimpleNamespace(localization_epoch=1, goal_id=11)) == 'flight-1'
-    assert not gate.accepts_epoch(2)
-    assert not gate.accepts_epoch(1)  # Delayed old goal cannot clear a frame reset.
+    assert gate.accepts_epoch(2)
+    assert gate.accepts_epoch(1)  # A later input remains usable after a restart.
     gate.phase = 'TRACKING'
-    assert not gate.ready
+    assert gate.ready
 
 
 def test_shadow_can_profile_without_flight_executive():

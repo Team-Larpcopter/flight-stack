@@ -74,7 +74,7 @@ def test_certified_super_sample_reaches_executive_input_after_hold():
         deadline=sample.valid_until.sec+sample.valid_until.nanosec*1e-9
         sent=sample.header.stamp.sec+sample.header.stamp.nanosec*1e-9
         assert 0 < deadline-sent < .25, 'Capture time must bound remaining lease'
-        # A healthy stream without new map certificates must stop producing commands.
+        # Without a new curve, keep sending the sampled endpoint to PX4.
         until=time.monotonic()+1.2
         while time.monotonic()<until:
             health.publish(Bool(data=True))
@@ -84,7 +84,7 @@ def test_certified_super_sample_reaches_executive_input_after_hold():
         while time.monotonic()<until:
             health.publish(Bool(data=True))
             rclpy.spin_once(node,timeout_sec=.02)
-        assert len(received)==count
+        assert len(received)>count
     finally:
         process.terminate()
         process.wait(timeout=5)

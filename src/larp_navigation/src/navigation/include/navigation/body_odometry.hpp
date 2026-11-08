@@ -33,16 +33,13 @@ class BodyOdometryTransform {
   BodyOdometry convert(const Eigen::Vector3d& p_gi, const Eigen::Quaterniond& q_gi,
                        const Eigen::Vector3d& v_i, const Eigen::Vector3d& w_i,
                        const Matrix6& pose_cov, const Matrix6& twist_cov) {
-    if (!p_gi.allFinite() || !v_i.allFinite() || !w_i.allFinite() ||
-        !q_gi.coeffs().allFinite() || std::abs(q_gi.norm()-1)>1e-3 ||
-        !pose_cov.allFinite() || !twist_cov.allFinite())
-      throw std::invalid_argument("invalid IMU odometry");
     const Eigen::Matrix3d r_gi = q_gi.normalized().toRotationMatrix();
     const Eigen::Matrix3d r_bi = body_imu_.linear();
     const Eigen::Vector3d p_bi = body_imu_.translation();
     const Eigen::Matrix3d r_gb = r_gi*r_bi.transpose();
     const Eigen::Vector3d p_gb = p_gi-r_gb*p_bi;
-    if (!anchored_) {
+    // Invalid first input must not permanently poison the registration.
+    if (!anchored_ && p_gb.allFinite() && r_gb.allFinite() && q_gi.norm()>0.) {
       origin_ = p_gb;
       const double yaw = std::atan2(r_gb(1,0), r_gb(0,0));
       r_wg_ = Eigen::AngleAxisd(initial_yaw_-yaw, Eigen::Vector3d::UnitZ()).toRotationMatrix();
@@ -50,7 +47,7 @@ class BodyOdometryTransform {
     }
     BodyOdometry out;
     out.position = initial_position_+r_wg_*(p_gb-origin_);
-    out.orientation = Eigen::Quaterniond(r_wg_*r_gb);
+    out.orientation = Eigen::Quaterniond(r_wg_)*q_gi*Eigen::Quaterniond(r_bi.transpose());
     out.angular_velocity = r_bi*w_i;
     out.linear_velocity = r_bi*v_i-out.angular_velocity.cross(p_bi);
     Matrix6 jp = Matrix6::Zero(), jt = Matrix6::Zero();

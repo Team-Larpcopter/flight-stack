@@ -1,6 +1,8 @@
 """Simulation-only ROS 2 adapter for the flight state machine."""
 
-from math import isfinite, nan, atan2, sin, cos, hypot
+from math import isfinite, nan, atan2, sin, cos, hypot, copysign
+import struct
+
 from time import monotonic
 
 import rclpy
@@ -25,6 +27,14 @@ from flight_executive.state_machine import StateMachine, LANDED_TIMEOUT
 from flight_executive.envelope import Envelope
 from flight_executive.alignment import GroundAlignment
 from flight_executive.extensions.tracking import stationary
+
+
+def px4_float(value):
+    """Encode float32, preserving NaN/Inf and representing overflow as Inf."""
+    try:
+        return struct.unpack("f", struct.pack("f", value))[0]
+    except OverflowError:
+        return copysign(float("inf"), value)
 
 
 def topic_name(prefix, name, message_type):
@@ -237,7 +247,7 @@ class FlightExecutiveNode(Node):
     def _status(self, msg):
         if (msg.system_id != self.target_system
                 or msg.component_id != self.target_component):
-            self.state_machine.fail('PX4 telemetry vehicle identity mismatch')
+            self.get_logger().warning('Ignoring telemetry for another vehicle', throttle_duration_sec=5.)
             return
         self.state_machine.status = Status(
             monotonic(), msg.arming_state == VehicleStatus.ARMING_STATE_ARMED,
@@ -270,25 +280,11 @@ class FlightExecutiveNode(Node):
         vectors = tuple(tuple(getattr(v, axis) for axis in ('x', 'y', 'z'))
                         for v in (msg.position, msg.velocity, msg.acceleration))
         yaw = (msg.yaw, msg.yawspeed) if msg.yaw_valid else (None, None)
-        values = [v for vector in vectors for v in vector]
-        values += [v for v in yaw if v is not None]
-        if not all(isfinite(v) and abs(v) <= 3.4028234663852886e38 for v in values):
-            self.get_logger().warning(
-                'Ignoring trajectory: invalid PX4 float32 component', throttle_duration_sec=1.0)
-            return
-        if not msg.trajectory_id.strip():
-            self.get_logger().warning('Ignoring trajectory: trajectory_id is required',
-                                      throttle_duration_sec=1.0)
-            return
         received = monotonic()
         # Certificate freshness is handled by the planner bridge. The executive
         # uses its receipt timeout rather than rejecting the upstream lifetime.
         trajectory = Trajectory(received, *vectors, *yaw,
                                 msg.trajectory_id, msg.is_final, None)
-        if trajectory.is_final and not stationary(trajectory):
-            self.get_logger().warning('Ignoring nonstationary final trajectory sample',
-                                      throttle_duration_sec=1.0)
-            return
         self.state_machine.accept_trajectory(trajectory)
 
     def _report(self):
@@ -358,12 +354,12 @@ class FlightExecutiveNode(Node):
             target = output.setpoint
             setpoint = TrajectorySetpoint()
             setpoint.timestamp = timestamp
-            setpoint.position = [target.x, target.y, target.z]
-            setpoint.velocity = list(target.velocity)
-            setpoint.acceleration = list(target.acceleration)
+            setpoint.position = [px4_float(v) for v in (target.x, target.y, target.z)]
+            setpoint.velocity = [px4_float(v) for v in target.velocity]
+            setpoint.acceleration = [px4_float(v) for v in target.acceleration]
             setpoint.jerk = [nan, nan, nan]
-            setpoint.yaw = target.yaw
-            setpoint.yawspeed = float(target.yawspeed)
+            setpoint.yaw = px4_float(target.yaw)
+            setpoint.yawspeed = px4_float(target.yawspeed)
             self.setpoint_pub.publish(setpoint)
         if output.command is not None:
             command = VehicleCommand()

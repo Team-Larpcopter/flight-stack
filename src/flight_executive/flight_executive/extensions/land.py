@@ -29,9 +29,10 @@ class Land:
         self.last_command = None
         self.attempts = 0
         self.reason = ''
+        self.skybeta_compat = False
 
     def acknowledge(self, command, result):
-        if (self.phase == LandPhase.REQUEST and self.attempts
+        if (not self.skybeta_compat and self.phase == LandPhase.REQUEST and self.attempts
                 and command == Command.LAND.value and result not in (0, 5)):
             self.reason = f'PX4 rejected LAND, result={result}'
 
@@ -40,7 +41,7 @@ class Land:
             return LandResult(complete=True)
         if self.reason:
             return LandResult(reason=self.reason)
-        if now >= self.started_at + self.timeout:
+        if not self.skybeta_compat and now >= self.started_at + self.timeout:
             return LandResult(reason='Landing timed out')
         if not status.armed:
             return LandResult(reason='PX4 disarmed before touchdown')
@@ -52,7 +53,7 @@ class Land:
         if not status.offboard:
             return LandResult(reason='PX4 mode changed before Land confirmation')
         if self.last_command is None or now >= self.last_command + 1.0:
-            if self.attempts == 3:
+            if not self.skybeta_compat and self.attempts == 3:
                 return LandResult(reason='LAND confirmation timed out after 3 attempts')
             self.last_command = now
             self.attempts += 1

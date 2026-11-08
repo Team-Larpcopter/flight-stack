@@ -111,14 +111,14 @@ def test_nonfinal_and_changed_endpoint_reset_terminal_dwell():
     assert r.tick().command == Command.LAND
 
 
-def test_other_trajectory_id_and_moving_final_do_not_refresh_input():
+def test_other_trajectory_id_and_moving_final_are_forwarded():
     r = Rig()
     r.sample()
     previous = r.machine.tracking.latest
-    assert not r.sample(final=True, trajectory_id='old-run')
+    assert r.sample(final=True, trajectory_id='old-run')
     moving = replace(previous, is_final=True, velocity=(1, 0, 0))
-    assert not r.machine.accept_trajectory(moving)
-    assert r.machine.tracking.latest is previous
+    assert r.machine.accept_trajectory(moving)
+    assert r.machine.tracking.latest is moving
 
 
 def test_expired_final_sample_does_not_count_as_completion():

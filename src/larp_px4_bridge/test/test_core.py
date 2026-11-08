@@ -104,3 +104,27 @@ def test_disabled_age_gate_forwards_delayed_sample_once():
     assert not gate.offer(sample, 20_000_000_002)
     newer = replace(sample, stamp_ns=101)
     assert gate.offer(newer, 20_000_000_003)
+
+
+def test_disabled_age_gate_recovers_after_source_clock_restart():
+    gate = LatestSample(0)
+    assert gate.offer(sample(10_000), 10_000)
+    assert gate.take(10_001).stamp_ns == 10_000
+    assert gate.offer(sample(100), 10_002)
+    assert gate.take(10_003).stamp_ns == 100
+    assert gate.offer(sample(101), 10_004)
+    assert gate.take(10_005).stamp_ns == 101
+
+
+def test_nonfinite_measurement_and_invalid_covariance_are_not_filtered():
+    s = sample()
+    s.position = [float('nan'), 2., 3.]
+    s.velocity = [float('inf'), 0., 0.]
+    s.quaternion = [0., 0., 0., 0.]
+    s.pose_covariance = -np.eye(6)
+    with np.errstate(invalid='ignore'):
+        out = Converter([0, 1, 0, 0]).convert(s)
+    assert np.isnan(out['position']).any()
+    assert not np.isfinite(out['velocity']).all()
+    assert out['q'] == [0., 0., 0., 0.]
+    assert out['position_variance'] == [-1., -1., -1.]

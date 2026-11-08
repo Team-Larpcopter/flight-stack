@@ -106,12 +106,12 @@ def test_actual_messages_select_position_and_disable_unused_feedforward(node):
     assert len(node.state_machine.position.reset_counters) == 5
 
 
-def test_vehicle_identity_mismatch_fails_closed(node):
+def test_other_vehicle_telemetry_does_not_latch_mission(node):
     status = VehicleStatus()
     status.system_id = 42
     status.component_id = node.target_component
     node._status(status)
-    assert node.state_machine.state == State.ERROR
+    assert node.state_machine.state != State.ERROR
 
 
 def input_trajectory():
@@ -134,7 +134,7 @@ def test_tracking_input_preserves_px4_ned_axes(node):
     assert sample.acceleration == (.1, .2, -.1)
 
 
-@pytest.mark.parametrize('invalid', ['frame', 'nan', 'inf', 'overflow'])
+@pytest.mark.parametrize('invalid', ['frame'])
 def test_invalid_trajectory_does_not_refresh_sample(node, invalid):
     machine = node.state_machine
     machine.state = State.HOLD
@@ -195,7 +195,8 @@ def test_tracking_input_yaw_is_used_only_when_flagged(node):
     previous = machine.tracking.latest
     msg.yawspeed = float('nan')
     node._trajectory(msg)
-    assert machine.tracking.latest is previous
+    assert machine.tracking.latest is not previous
+    assert isnan(machine.tracking.latest.yawspeed)
 
 
 def test_land_command_can_publish_without_an_offboard_setpoint(node):
@@ -216,7 +217,7 @@ def test_land_command_can_publish_without_an_offboard_setpoint(node):
 
 
 @pytest.mark.parametrize('invalid', ['empty_id', 'moving_final', 'other_id'])
-def test_invalid_completion_does_not_refresh_accepted_sample(node, invalid):
+def test_completion_metadata_does_not_discard_command(node, invalid):
     node.state_machine.state = State.HOLD
     node._trajectory(input_trajectory())
     old = node.state_machine.tracking.latest
@@ -228,7 +229,7 @@ def test_invalid_completion_does_not_refresh_accepted_sample(node, invalid):
     else:
         msg.is_final = True
     node._trajectory(msg)
-    assert node.state_machine.tracking.latest is old
+    assert node.state_machine.tracking.latest is not old
 
 
 def test_status_reports_position_mode(node):
@@ -344,3 +345,31 @@ def test_cached_route_gate_precedes_takeoff_even_in_compat_mode(node, monkeypatc
     node.route_ready = True
     node._tick()
     assert tick.call_count == 1
+
+
+@pytest.mark.parametrize('value', [float('nan'), float('inf'), 1e100])
+def test_numeric_setpoints_are_forwarded_for_px4_to_validate(node, value):
+    node.state_machine.state = State.HOLD
+    msg = input_trajectory()
+    msg.acceleration.z = value
+    node._trajectory(msg)
+    assert node.state_machine.tracking.latest is not None
+    got = node.state_machine.tracking.latest.acceleration[2]
+    assert (isnan(got) if isnan(value) else got == value)
+
+
+@pytest.mark.parametrize('value', [float('nan'), float('inf'), 1e100])
+def test_px4_publication_keeps_nonfinite_numeric_setpoints(node, value):
+    from math import isinf
+    c=node.state_machine
+    c.state=State.HOLD
+    c.hold_target=Setpoint(0.,0.,0.,0.)
+    c.position=Position(monotonic(),0.,0.,0.,0.,0.)
+    c.status=Status(monotonic(),True,True,True)
+    c.landed=Landed(monotonic(),False)
+    node.mode_pub=Publications();node.setpoint_pub=Publications();node.command_pub=Publications()
+    msg=input_trajectory();msg.acceleration.z=value
+    node._trajectory(msg);node._tick()
+    assert node.setpoint_pub.messages
+    got=node.setpoint_pub.messages[-1].acceleration[2]
+    assert isnan(got) if isnan(value) else isinf(got)

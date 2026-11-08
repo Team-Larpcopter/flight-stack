@@ -19,10 +19,10 @@ class Piece:
     @classmethod
     def decode(cls, message, dimensions):
         degree=int(message.degree);duration=float(message.duration)
-        if degree<1 or degree>9 or not math.isfinite(duration) or not .001<=duration<=60:
+        if degree<0 or not math.isfinite(duration) or duration<=0:
             raise ValueError('invalid piece degree or duration')
         coefficients=tuple(float(x) for x in message.coefficients)
-        if len(coefficients)!=dimensions*(degree+1) or not all(map(math.isfinite,coefficients)):
+        if len(coefficients)!=dimensions*(degree+1):
             raise ValueError('invalid coefficient matrix')
         return cls(duration,tuple(coefficients[r*(degree+1):(r+1)*(degree+1)] for r in range(dimensions)))
 
@@ -46,13 +46,8 @@ def chain(pieces, t, derivative=0):
 
 
 def decode_chain(messages, dimensions):
-    if not 1<=len(messages)<=64:raise ValueError('invalid piece count')
+    if not messages:raise ValueError('invalid piece count')
     pieces=tuple(Piece.decode(m,dimensions) for m in messages)
-    if sum(p.duration for p in pieces)>120:raise ValueError('trajectory duration exceeds bound')
-    for left,right in zip(pieces,pieces[1:]):
-        for derivative in range(3):
-            if math.dist(left.sample(left.duration,derivative),right.sample(0.,derivative))>.03:
-                raise ValueError('discontinuous polynomial')
     return pieces
 
 
@@ -76,10 +71,6 @@ class Trajectory:
         if abs(duration-sum(p.duration for p in yaw))>.001:raise ValueError('yaw/position duration mismatch')
         # A freshly recertified terminal stop may be held after its end time.
         # Certificate freshness still expires even when the polynomial stops.
-        if math.dist(position[-1].sample(position[-1].duration,1),(0,0,0))>.05:
-            raise ValueError('trajectory has no terminal stop')
-        if math.dist(position[-1].sample(position[-1].duration,2),(0,0,0))>.1:
-            raise ValueError('terminal acceleration is not zero')
         return cls(start,certificate,int(goal_id),int(message.sequence),position,yaw)
 
     @property

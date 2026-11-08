@@ -1,6 +1,4 @@
-"""Publish one latched map goal in the first observed localization epoch.
-
-A changed epoch is never automatically accepted as a new mission.
+"""Publish the configured goal in the current localization epoch.
 """
 import math
 
@@ -44,9 +42,10 @@ def main():
         node.get_logger().info(f'Published mission goal in localization epoch {epoch}')
 
     def receive(message):
-        nonlocal epoch
-        if epoch is None and message.localization_epoch != 0:
+        nonlocal epoch, published
+        if message.localization_epoch != 0 and message.localization_epoch != epoch:
             epoch = message.localization_epoch
+            published = False
         publish()
 
     def executive(message):

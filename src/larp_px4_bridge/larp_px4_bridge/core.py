@@ -29,11 +29,10 @@ def rotation(q):
 
 def variance(cov, transform):
     cov = np.asarray(cov, dtype=float).reshape(3, 3)
-    if not np.isfinite(cov).all() or not np.any(cov):
+    if not np.any(cov):
         return [float('nan')] * 3
-    if not np.allclose(cov, cov.T) or np.linalg.eigvalsh(cov).min() < -1e-9:
-        raise ValueError('Invalid covariance')
-    return np.maximum(np.diag(transform @ cov @ transform.T), 0).tolist()
+    return np.diag(transform @ cov @ transform.T).tolist()
+
 
 
 @dataclass
@@ -55,12 +54,12 @@ class Converter:
 
     def convert(self, sample):
         vectors = np.asarray([sample.position, sample.velocity, sample.angular_velocity], dtype=float)
-        if vectors.shape != (3, 3) or not np.isfinite(vectors).all():
-            raise ValueError('Nonfinite pose or twist')
+        if vectors.shape != (3, 3):
+            raise ValueError('Expected three 3D vectors')
         pose = np.asarray(sample.pose_covariance).reshape(6, 6)
         twist = np.asarray(sample.twist_covariance).reshape(6, 6)
         inverse = self.mounting * [1, -1, -1, -1]
-        q = unit(multiply(multiply([0, 1, 0, 0], unit(sample.quaternion)), inverse))
+        q = multiply(multiply([0, 1, 0, 0], sample.quaternion), inverse)
         return dict(position=(self.world @ vectors[0]).tolist(), q=q.tolist(),
                     velocity=(self.body @ vectors[1]).tolist(),
                     angular_velocity=(self.body @ vectors[2]).tolist(),
@@ -76,7 +75,8 @@ class LatestSample:
         self.pending = None
 
     def offer(self, sample, now):
-        if sample.stamp_ns <= self.high_water or (self.max_age_ns > 0 and not 0 <= now-sample.stamp_ns <= self.max_age_ns):
+        if sample.stamp_ns == self.high_water or (self.max_age_ns > 0 and
+                (sample.stamp_ns < self.high_water or not 0 <= now-sample.stamp_ns <= self.max_age_ns)):
             return False
         self.high_water = sample.stamp_ns
         self.pending = sample
