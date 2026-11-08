@@ -33,7 +33,9 @@ sqrtVINS, DDS, LAS, ROG map status, EGO, Mission executive and a manual recorder
 They use the same `mission.yaml`, calibrated rig, surveyed boundaries, goal and
 PX4 bridge parameters as SUPER. Hardware mode retains verified alignment,
 ground-start checks, takeoff readiness, pilot arming and Position-mode transition,
-HOLD/TRACKING gating, certificate freshness and executive boundary enforcement.
+HOLD/TRACKING gating and certificate freshness. Following the current `main`
+configuration, the tmux mission sets `enforce_boundary=False` in the executive;
+the planner's hard map boundary and flight envelope remain enabled.
 Shadow mode starts no flight executive or external-vision injection, and the
 trajectory bridge publishes only `/autonomy/shadow/trajectory_in`. It still
 starts sensors and the DDS agent.

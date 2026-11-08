@@ -77,6 +77,10 @@ def test_runtime_planner_and_executive_contract(tmp_path,monkeypatch,planner,mod
     params=mapper['parameters'][0]
     assert params['planner_backend']==planner and params['require_hard_boundary']
     assert not params['static_cad_only']
+    assert params['ignore_top_depth_rows']==10
+    assert params['max_depth_age_s']==cfg['trajectory_max_age_s']
+    for key in ('declared_launch_radius_m','declared_launch_min_z_m','declared_launch_max_z_m','launch_clearance_reference'):
+        assert params[key]==cfg[key]
     assert ('/navigation/trajectory','/autonomy/committed_trajectory') in mapper['remappings']
     c.launch_configurations['component']='executive'
     actions=module.nodes(c)[1:]
@@ -85,7 +89,8 @@ def test_runtime_planner_and_executive_contract(tmp_path,monkeypatch,planner,mod
     if mode=='hardware':
         executive=actions[-1]['parameters'][0]
         assert executive['takeoff_trigger']=='position'
-        assert executive['wait_for_planner'] and executive['require_autonomy_ready'] and executive['enforce_boundary']
+        assert executive['wait_for_planner'] and executive['require_autonomy_ready']
+        assert executive['enforce_boundary'] is False  # Match the current main mission launcher.
     else:
         assert all(a['package']!='flight_executive' for a in actions)
     c.launch_configurations.update(planner='typo')

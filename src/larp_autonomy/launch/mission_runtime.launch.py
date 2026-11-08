@@ -72,8 +72,13 @@ def nodes(context):
         params={k:cfg[k] for k in ('rig_file','hard_boundary_lower','hard_boundary_upper','hard_boundary_reference','takeoff_height')}
         params.update(config_file=cfg.get('navigation_config',str(nav/'navigation_fine.yaml')),
             cad_prior_file=cfg.get('cad_prior_file',str(nav/'course_cad_prior_fine.txt')),
-            min_depth_m=.2,max_depth_m=float("inf"),snapshot_include_free=False,
+            min_depth_m=.2,max_depth_m=float("inf"),ignore_top_depth_rows=10,snapshot_include_free=False,
             max_depth_age_s=cfg['trajectory_max_age_s'],
+            declared_launch_radius_m=float(cfg.get('declared_launch_radius_m', .52)),
+            declared_launch_min_z_m=float(cfg.get('declared_launch_min_z_m', .1)),
+            declared_launch_max_z_m=float(cfg.get('declared_launch_max_z_m', 1.5)),
+            launch_clearance_reference=cfg.get('launch_clearance_reference',
+                'Operator-declared clear course launch cylinder at map origin: radius 0.52 m, z=0.1 to 1.5 m'),
             require_hard_boundary=True,static_cad_only=False,route_backend='super_astar',planner_backend=planner,
             flight_envelope_lower=[v+.4 for v in cfg['hard_boundary_lower']],
             flight_envelope_upper=[v-.4 for v in cfg['hard_boundary_upper']])
@@ -92,7 +97,7 @@ def nodes(context):
             result.append(node('flight_executive','flight_executive_node',[dict(
                 simulation_only=False,hardware_enabled=True,takeoff_trigger='position',align_px4_to_map_on_ground=True,
                 target_system=cfg.get('target_system',1),target_component=cfg.get('target_component',1),
-                takeoff_height=cfg['takeoff_height'],hold_timeout=cfg['planner_hold_timeout_s'],wait_for_planner=True,require_autonomy_ready=True,enforce_boundary=True,
+                takeoff_height=cfg['takeoff_height'],hold_timeout=cfg['planner_hold_timeout_s'],wait_for_planner=True,require_autonomy_ready=True,enforce_boundary=False,
                 map_boundary_lower=cfg['hard_boundary_lower'],map_boundary_upper=cfg['hard_boundary_upper'],
                 map_heading_ned=cfg['map_heading_ned'],map_origin_ned=cfg['map_origin_ned'])]))
     return [RegisterEventHandler(OnProcessExit(on_exit=[EmitEvent(event=Shutdown(reason='Component exited'))])),*result]

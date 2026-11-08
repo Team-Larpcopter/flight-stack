@@ -91,5 +91,15 @@ An exhausted search can still report no path and retry as the map changes.
 The full mission sets `wait_for_planner=true`: initial or replacement-plan delays
 hold the aircraft instead of triggering the planner hold timeout. Fresh certified
 trajectories resume tracking; goal completion still lands. PX4 failsafes, pilot
-mode takeover, estimator-reset detection and body geofence enforcement remain.
+mode takeover, estimator-reset detection and planner map boundaries remain.
+The mission launchers currently disable the executive's independent geofence
+checks with `enforce_boundary=False`.
 The dedicated takeoff/hold test retains its timed landing behavior.
+
+Full-mission planning disables SUPER's separate backup trajectory optimizer.
+A failed replacement leaves the existing certified curve executing; successful
+replacements commit atomically. After its duration, the curve commands its final
+position with zero velocity/acceleration and remains visible as a hold point.
+Localization health, map/collision certificate freshness, planner boundaries, and
+collision-triggered braking remain enforced. A planner failure alone does not
+expire the curve or trigger landing; reaching the mission goal still does.

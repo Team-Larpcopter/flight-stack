@@ -23,11 +23,12 @@ body-frame adapter and, in hardware mode, the PX4 external-vision bridge.
 Copy `src/larp_autonomy/config/mission.yaml` to the configuration directory,
 alongside calibrated `rig.json` and PX4 `bridge.yaml`. Set the surveyed map/PX4
 alignment and `alignment_verified: true` for hardware. The nominal course XY
-boundary is only appropriate at the matching surveyed placement. The entire
-vehicle is bounded below map z=1.8 m, with 0.4 m clearance: commanded body-centre
-altitude stays at or below 1.4 m. The executive independently checks measured
-position and outgoing setpoints against the same boundary. Ground contact is
-allowed during takeoff and landing, but never relaxes the ceiling or XY limits.
+boundary is only appropriate at the matching surveyed placement. The planner
+retains the map z=1.8 m ceiling and 0.4 m flight-envelope margin: planned
+body-centre altitude stays at or below 1.4 m. The current mission launchers set
+`enforce_boundary=False` in the executive, so its independent measured-position
+and outgoing-setpoint geofence checks are disabled. Planner map boundaries and
+trajectory clearance checks remain enabled.
 
 The mission matches the successful `sqrtvins-course-053` simulation configuration:
 take off 1.0 m, navigate to map `[-1.90688, -0.47244, 1.0]`, yaw 0, then land.
@@ -131,7 +132,7 @@ quality 60, with latest-only queues and dropping before conversion. LAS's own
 preview/disparity JPEGs, right-camera preview, feature clouds, IMU plots and raw
 trajectory/map diagnostics are disabled in this flight-monitor profile.
 
-The 1.8 m limit here is the companion planner/executive boundary; this does not
+The 1.8 m limit here is the companion planner boundary; this does not
 upload or claim to configure PX4's independent onboard geofence parameters.
 
 Each pane runs its launch command from an interactive Bash shell. Ctrl+C stops
@@ -146,7 +147,8 @@ DDS and executive. It loads an adjacent `deployment.env` when present. The pilot
 arms then selects Position; the executive requests Offboard, ascends 0.5 m,
 holds for 2 seconds, then requests landing. It starts no planner or trajectory
 publisher and intentionally does not require map/obstacle readiness. PX4
-preflight, pilot sequencing, telemetry and body-envelope checks remain active.
+preflight, pilot sequencing and telemetry checks remain active. Like the current
+full mission and triangle launchers, this launcher disables the executive geofence.
 This does not resolve or qualify unstable VIO.
 
 Run `bash launch_takeoff_hold_tmux.sh --check` for configuration/import checks

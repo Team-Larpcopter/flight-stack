@@ -56,16 +56,25 @@ int main(int argc,char** argv) {
   require(arrived,"local replanning never completed the final goal");
   const auto final_start=planner.position().start_WT;
   require(planner.plan()==super_utils::NO_NEED && planner.position().start_WT==final_start,"final command was restarted");
+  // Match main's persistent endpoint hold when a replacement cannot be routed.
+  require(planner.setGoal(3,{50,0,1},0),"unreachable replacement goal rejected");
+  require(planner.plan()==super_utils::FAILED && planner.ensureSafeCommand(),"failed replacement lost the terminal certificate");
+  require(planner.position().start_WT==final_start &&
+    (planner.position().getPos(planner.position().getTotalDuration())-body.p).norm()<1e-9,
+    "failed replacement changed the endpoint hold");
   // New geometry invalidates a future segment. Recovery must certify a stop,
   // and a failed subsequent route search must never restore the old command.
-  require(planner.setGoal(3,{0,0,1},0),"return goal rejected");
+  require(planner.setGoal(4,{0,0,1},0),"return goal rejected");
   require(planner.plan()==super_utils::SUCCESS,"return trajectory failed");
   const auto returning=planner.position();now+=.1;
   body.p=returning.getPos(.1);body.v=returning.getVel(.1);body.a=returning.getAcc(.1);
   body.rcv_time=now;map->setBody(body);
+  // Put the obstruction on the actual future endpoint. A fixed x=.2 wall can
+  // become clear of the trajectory when production radius/inflation changes.
+  const double wall_x=returning.getPos(returning.getTotalDuration()).x();
   rog_map::PointCloud wall;
   for(int y=-15;y<=15;++y)for(int z=-10;z<=10;++z) {
-    rog_map::PointType p;p.x=.2;p.y=y*.1+.05;p.z=1+z*.1+.05;p.intensity=1;wall.push_back(p);
+    rog_map::PointType p;p.x=wall_x;p.y=y*.1+.05;p.z=1+z*.1+.05;p.intensity=1;wall.push_back(p);
   }
   for(int i=0;i<10;++i)map->integrate(wall,{body.p,body.q});
   require(planner.ensureSafeCommand() && planner.braking(),"new wall did not trigger certified braking");
@@ -73,15 +82,15 @@ int main(int argc,char** argv) {
   require(planner.plan()==super_utils::NO_NEED,"replanned during braking");
   now=stop.start_WT+stop.getTotalDuration()+.3;
   body.p=stop.getPos(stop.getTotalDuration());body.v.setZero();body.a.setZero();body.rcv_time=now;map->setBody(body);
-  planner.setGoal(4,{.2,0,1},0);planner.setMapRevision(3);
+  planner.setGoal(5,{wall_x,0,1},0);planner.setMapRevision(3);
   require(planner.plan()==super_utils::FAILED && planner.braking(),"blocked goal resumed old command");
   require(planner.position().start_WT==stop.start_WT,"failed replan replaced certified stop");
   // Cancel does not leave an executable trajectory; clock rollback latches shut.
   planner.cancel();require(!planner.active() && !planner.ensureSafeCommand() && planner.position().empty(),"cancel retained command");
-  require(planner.setGoal(5,body.p+Eigen::Vector3d(0,.15,0),0),"nearby goal rejected");
+  require(planner.setGoal(6,body.p+Eigen::Vector3d(0,.15,0),0),"nearby goal rejected");
   require(planner.plan()==super_utils::SUCCESS && planner.ensureSafeCommand(),"terminal capture failed");
   now-=1.;require(planner.plan()==super_utils::FAILED && !planner.ensureSafeCommand(),"clock rollback authorized command");
-  require(!planner.setGoal(6,{.5,0,1},0),"clock fault did not latch");
+  require(!planner.setGoal(7,{.5,0,1},0),"clock fault did not latch");
   std::cout<<"EGO unknown rejection, exact endpoints, moving handoff, final arrival, cancellation and clock fault passed\n";
   rclcpp::shutdown();
 }

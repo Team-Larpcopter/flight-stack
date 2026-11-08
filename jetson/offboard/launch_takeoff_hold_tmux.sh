@@ -76,7 +76,7 @@ params = dict(simulation_only=False, hardware_enabled=True,
     takeoff_trigger='position', takeoff_height=0.5, hold_timeout=2.0,
     target_system=cfg.get('target_system',1), target_component=cfg.get('target_component',1),
     trajectory_topic='/takeoff_hold/unused_trajectory_in',
-    require_autonomy_ready=False, enforce_boundary=True, align_px4_to_map_on_ground=True,
+    require_autonomy_ready=False, enforce_boundary=False, align_px4_to_map_on_ground=True,
     map_boundary_lower=cfg['hard_boundary_lower'],
     map_boundary_upper=cfg['hard_boundary_upper'],
     map_heading_ned=cfg['map_heading_ned'], map_origin_ned=cfg['map_origin_ned'])
