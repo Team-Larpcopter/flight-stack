@@ -21,12 +21,22 @@ ordered. The map, whole-body collision validator and stopping behavior remain
 active. See [cached-route runtime](../../docs/runtime/cached-route-and-vins.md)
 for the heuristic, bounds, regeneration command and recovery behavior.
 
-Local curves use C2 quintics whose Bernstein controls stay within 3 cm of
-checked route chords. Route clearance reserves that extra 3 cm without reducing
-the configured body radius. There is one construction and one candidate validation,
-no smoothing retry cascade. Replacements preserve position, velocity, acceleration
-and yaw derivatives through a future handoff; failures retain the current valid
-curve. Unchanged map revisions do not revalidate the same committed curve.
+Local curves use straight waypoint segments, stopping at sharp corners rather
+than rounding them. The 3 cm smoothing-containment construction is no longer used.
+A moving initial handoff preserves its inherited derivatives and still undergoes
+whole-curve collision validation. Replacements preserve the active prefix;
+failures retain the current valid curve. Unchanged map revisions do not revalidate
+the same committed curve. Construction failures distinguish yaw transitions from
+piece/duration limits instead of the former generic bounded-representation error.
+
+At the first execution step of a goal, already overlapping occupied voxels can be
+used for outward-only escape. The bounded list (maximum 2048 cells) is captured
+once, never grows, and never modifies the ROG map. Penetration may not increase;
+re-entry is rejected and each exception retires when the measured body clears it.
+Unknown cells, new obstacles and flight-envelope limits remain blocking. A body
+centre embedded inside an occupied voxel is not exempted because an outward normal
+is ambiguous. After exit, validation covers the remaining curve, not already
+executed points that were inside the original overlap.
 
 Search has a 2 ms prefix slice plus a 5 ms search slice, 64 collision-query and
 256 queue-pop caps. Candidate generation has a cooperative 40 ms deadline and

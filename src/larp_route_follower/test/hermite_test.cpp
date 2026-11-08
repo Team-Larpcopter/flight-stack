@@ -1,4 +1,5 @@
 #include <larp_route_follower/hermite.hpp>
+#include <larp_route_follower/initial_overlap.hpp>
 #include <iostream>
 #include <stdexcept>
 
@@ -68,6 +69,25 @@ int main() {
       require((bounded[i].getAcc(end)-bounded[i+1].getAcc(0)).norm()<1e-8,"bounded acceleration jump");
     }
   }
+  // Initial occupied overlap is an outward-only, one-shot exception.
+  larp_route_follower::InitialOverlap escape;
+  const Vec3 start(-.466,.062,.510), cell(-.625,.075,.525), exit(.034,.062,.510);
+  std::vector<Vec3> occupied{cell};
+  escape.capture(start,occupied,.05,.3);
+  require(escape.size()==1,"initial overlap not captured");
+  require(escape.permitsBox(start,start,cell),"initial overlap not permitted");
+  require(escape.permitsChord(start,exit),"outward escape blocked");
+  require(!escape.permitsChord(start,start-Vec3(.1,0,0)),"inward escape permitted");
+  require(!escape.permitsBox(start,start,Vec3(-.475,.075,.525)),"new occupied voxel ignored");
+  auto outward=larp_route_follower::followWaypoints({start,exit},Vec3::Zero(),Vec3::Zero(),0.,{.06,.04,1.,true});
+  require(escape.permitsTrajectory(outward),"straight escape rejected");
+  auto returning=larp_route_follower::followWaypoints({start,exit,start},Vec3::Zero(),Vec3::Zero(),0.,{.06,.04,1.,true});
+  require(!escape.permitsTrajectory(returning),"trajectory reentered initial obstacle");
+  escape.update(start+Vec3(.1,0,0));
+  require(!escape.permitsBox(start,start,cell),"escape allowed previous penetration");
+  escape.update(exit);require(!escape.active(),"exception not retired after exit");
+  escape.capture(start,occupied,.05,.3);require(!escape.active(),"exception recaptured during same mission");
+
   // Yaw piece: scalar in row 0, ends at rest at the target.
   geometry_utils::Trajectory yaw;
   const double ty = larp_route_follower::yawDuration(1.2, .28, .4);
