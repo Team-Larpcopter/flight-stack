@@ -177,6 +177,23 @@ int main(int argc, char** argv) {
   require((scanning.position().getPos(0)-body.p).norm()<1e-9, "scan resume jumped position");
 
   if(argc>3 && std::string(argv[3])=="handoff") {
+    // Reproduce a start 13 cm from a known occupied wall; escape is permitted
+    // without deleting the wall or ignoring any unrelated cells.
+    rog_map::PointCloud overlap_wall;
+    for(double y=-.45;y<=.45;y+=.05)for(double z=.15;z<=1.3;z+=.05) {
+      rog_map::PointType point;point.x=-.625;point.y=y;point.z=z;point.intensity=1;overlap_wall.push_back(point);
+    }
+    for(int i=0;i<3;++i)map->integrate(overlap_wall,{body.p,body.q});
+    body.p={-.466,.062,.510};body.v.setZero();body.a.setZero();body.yaw=0;body.rcv_time=now;map->setBody(body);
+    larp_route_follower::FollowerRoutePlanner escaping(argv[1],map,clock,{},false);
+    const navigation::Point escape_goal(-.066,.062,.510);
+    require(escaping.setGoal(1,escape_goal,0),"escape goal rejected");
+    require(escaping.plan()==super_utils::SUCCESS,"initial occupied overlap prevented outward plan");
+    require(escaping.ensureSafeCommand(),"escape command not accepted");
+    const auto escape_curve=escaping.position();
+    require(escape_curve.getPos(escape_curve.getTotalDuration()).x()>body.p.x()+.3,"escape did not move away from wall");
+    now+=escape_curve.getTotalDuration();body.p=escape_goal;body.rcv_time=now;map->setBody(body);
+    escaping.plan();require(escaping.ensureSafeCommand(),"retiring exceptions invalidated completed escape");
     std::cout<<"fixed-rate handoff, retention, collision and scan tests passed\n";
     return 0;
   }

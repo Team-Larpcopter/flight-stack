@@ -44,6 +44,7 @@ class MasterRoute {
   bool enabled()const{return enabled_;}
   const Polyline& path()const{return path_;}
   const std::string& reason()const{return reason_;}
+  void clearCollisionCache(){edge_cache_.clear();}
   size_t progress()const{return progress_;}
   size_t searches()const{return searches_;}
   size_t lastPops()const{return last_pops_;}

@@ -10,6 +10,7 @@
 #include <navigation/route_guide.hpp>
 #include <larp_route_follower/hermite.hpp>
 #include <larp_route_follower/master_route.hpp>
+#include <larp_route_follower/initial_overlap.hpp>
 #include <yaml-cpp/yaml.h>
 #include <chrono>
 #include <fstream>
@@ -82,6 +83,7 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
   bool setGoal(uint64_t id, const Point& goal, double yaw) override {
     if (clock_fault_ || !id || id <= goal_id_ || !goal.allFinite() || !std::isfinite(yaw)) return false;
     scanning_ = false; blocked_since_ = -1; scan_leg_ = 0;
+    escape_.reset();certified_revision_=UINT64_MAX;
     goal_id_ = id;
     goal_ = goal;
     goal_yaw_ = yaw;
@@ -130,11 +132,20 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
   bool ensureSafeCommand() override {
     if (!validClock() || !active_) return false;
     if (certified_revision_==revision_ && certified_start_==position_.start_WT && !position_.empty()) return true;
-    if (validator_(position_) && yaw_validator_(yaw_)) {
+    geometry_utils::Trajectory remaining,remaining_yaw;
+    const double at=position_.empty()?0.:std::clamp(clock_->getSimTime()-position_.start_WT,0.,position_.getTotalDuration());
+    if(!position_.empty() && at<position_.getTotalDuration()-1e-6) {
+      navigation::polynomialSlice(position_,at,position_.getTotalDuration(),remaining);
+      navigation::polynomialSlice(yaw_,at,yaw_.getTotalDuration(),remaining_yaw);
+    } else if(!position_.empty()) {
+      remaining.emplace_back(.1,holdPiece(position_.getPos(position_.getTotalDuration())));
+      remaining_yaw.emplace_back(.1,holdPiece(yaw_.getPos(yaw_.getTotalDuration())));
+    }
+    if (escape_.permitsTrajectory(remaining) && validator_(remaining) && yaw_validator_(remaining_yaw)) {
       certified_revision_=revision_;certified_start_=position_.start_WT;return true;
     }
     auto stop = navigation::certifiedStop(position_, yaw_, clock_->getSimTime(), validator_);
-    if (!stop || !yaw_validator_(stop->yaw)) return false;
+    if (!stop || !escape_.permitsTrajectory(stop->position) || !yaw_validator_(stop->yaw)) return false;
     position_ = std::move(stop->position);
     yaw_ = std::move(stop->yaw);
     braking_ = true;
@@ -154,6 +165,17 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
     if (!state.rcv || !state.p.allFinite() || !state.v.allFinite() || !state.a.allFinite() ||
         !std::isfinite(state.yaw + state.rcv_time) || now - state.rcv_time > .3 || now - state.rcv_time < -.005)
       return FAILED;
+    if(!escape_.captured()) {
+      super_utils::vec_Vec3f occupied;
+      const Point extent=Point::Constant(limits_.radius+map_->getResolution()*.5);
+      map_->boxSearch(state.p-extent,state.p+extent,super_utils::OCCUPIED,occupied);
+      escape_.capture(state.p,occupied,map_->getResolution(),limits_.radius);
+      if(escape_.active())clock_->warn("Initial overlap: outward-only escape from "+std::to_string(escape_.size())+" occupied voxels");
+    }
+    if(escape_.active()) {
+      escape_.update(state.p);master_.clearCollisionCache();certified_revision_=UINT64_MAX;
+      if(!escape_.active())clock_->warn("Initial overlap cleared; normal collision checking restored");
+    }
     bool resume_scan = false;
     if (scanning_) {
       const auto opening = guideFrom(state.p, settings_.horizon, now);
@@ -202,10 +224,11 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
     // One deterministic candidate, with timing derived from its speed profile.
     // Failure retains the existing certified curve; no shorter/slower retries.
     geometry_utils::Trajectory position,yaw;
-    if(!build(guide,p,v,a,y,yv,ya,handoff,!live,1.,false,position,yaw))return failed("curve exceeds bounded representation");
+    if(!build(guide,p,v,a,y,yv,ya,handoff,!live,1.,true,position,yaw))return failed(build_failure_);
     geometry_utils::Trajectory candidate=prefix,candidate_yaw=prefix_yaw;
     candidate.append(position);candidate.start_WT=now;
     candidate_yaw.append(yaw);candidate_yaw.start_WT=now;
+    if(!escape_.permitsTrajectory(candidate))return failed("escape candidate turns into initial overlap");
     if(!validator_(candidate))return failed("position: "+validator_.failure());
     if(!yaw_validator_(candidate_yaw))return failed("yaw: "+yaw_validator_.failure());
     if(std::abs(candidate.getTotalDuration()-candidate_yaw.getTotalDuration())>1e-3)return failed("yaw duration mismatch");
@@ -295,7 +318,8 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
   }
   bool build(const Polyline& guide, const Point& p, const Point& v, const Point& a, double y, double yv, double ya,
              double start, bool from_rest, double scale, bool corners, geometry_utils::Trajectory& position,
-             geometry_utils::Trajectory& yaw) const {
+             geometry_utils::Trajectory& yaw) {
+    build_failure_.clear();
     Waypoints w(guide.begin(), guide.end());
     w.front() = p;
     // Heading follows the first meaningful travel direction; at the goal it
@@ -319,8 +343,8 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
     const bool turn_first = from_rest && std::abs(delta) > .5;
     if (turn_first) position.emplace_back(yaw_time, quinticHermite(p, v, a, p, Point::Zero(), Point::Zero(), yaw_time));
     FollowOptions options{cruise_, accel_, scale, corners};
-    const auto path = followBoundedWaypoints(w, turn_first ? Point::Zero() : v, turn_first ? Point::Zero() : a, start, options);
-    if (path.empty()) return false;
+    const auto path = followWaypoints(w, turn_first ? Point::Zero() : v, turn_first ? Point::Zero() : a, start, options);
+    if (path.empty()) {build_failure_="straight-segment construction failed";return false;}
     position.append(path);
     position.start_WT = start;
     const double total = position.getTotalDuration();
@@ -337,7 +361,7 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
       const double d1=yv+settle*ya/4.;
       const double lo=std::max({-yaw_rate,d1-yaw_accel*settle/4.,-yaw_accel*settle/4.});
       const double hi=std::min({yaw_rate,d1+yaw_accel*settle/4.,yaw_accel*settle/4.});
-      if(lo>hi || std::abs(d1)>limits_.yaw_rate)return false;
+      if(lo>hi || std::abs(d1)>limits_.yaw_rate) {build_failure_="inherited yaw derivatives exceed transition bounds";return false;}
       const double base=y+2.*settle*yv/5.+settle*settle*ya/20.;
       const double desired=5.*(y+wrapAngle(target-y)-base)/settle;
       const double end_heading=base+settle*std::clamp(desired,lo,hi)/5.;
@@ -362,7 +386,8 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
       yaw.emplace_back(duration,yawPiece(heading,0,0,heading+change,duration));
       heading+=change;elapsed+=duration;
     }
-    return position.size() <= 64 && total <= 28.;
+    if(position.size()>64 || total>28.) {build_failure_="straight trajectory exceeds piece or duration limit";return false;}
+    return true;
   }
   static double length(const Polyline& line) {
     double out = 0;
@@ -388,7 +413,12 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
   bool inside(const Point& p) const {
     return p.allFinite() && (p.array() >= lower_.array()).all() && (p.array() <= upper_.array()).all();
   }
-  bool lineFree(const Point& a, const Point& b) const { return inside(a) && inside(b) && map_->isLineFree(a, b, true, true); }
+  bool lineFree(const Point& a, const Point& b) const {
+    if(!inside(a) || !inside(b))return false;
+    // The ordinary inflated lookup cannot distinguish the captured cells from
+    // new obstacles. During escape use exact occupied/unknown tests below.
+    return escape_.active()?escape_.permitsChord(a,b):map_->isLineFree(a,b,true,true);
+  }
   // Straight chord swept by the certified body sphere, in short boxes.
   bool chordCertified(const Point& a, const Point& b) const {
     if (planning_ && std::chrono::steady_clock::now()>work_deadline_) return false;
@@ -398,20 +428,37 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
     for (int i = 0; i < chunks; ++i) {
       if(planning_ && std::chrono::steady_clock::now()>work_deadline_)return false;
       const Point lo_end = a + (b - a) * (double(i) / chunks), hi_end = a + (b - a) * (double(i + 1) / chunks);
-      if (!navigation::certifiedBoxFree(map_, limits_.radius+.03, lower_, upper_,
-          lo_end.cwiseMin(hi_end), hi_end.cwiseMax(lo_end))) return false;
+      if (!boxFree(lo_end.cwiseMin(hi_end),hi_end.cwiseMax(lo_end)))return false;
     }
     return true;
   }
   bool boxFree(const Point& lo, const Point& hi) const {
     if(planning_ && std::chrono::steady_clock::now()>work_deadline_)return false;
-    return navigation::certifiedBoxFree(map_, limits_.radius, lower_, upper_, lo, hi);
+    if(!escape_.active())return navigation::certifiedBoxFree(map_,limits_.radius,lower_,upper_,lo,hi);
+    if(!lo.allFinite() || !hi.allFinite() || !(lo.array()>=lower_.array()).all() ||
+       !(hi.array()<=upper_.array()).all())return false;
+    Eigen::Vector3i a,b;map_->infMapPosToGlobalIndex(lo,a);map_->infMapPosToGlobalIndex(hi,b);
+    const Eigen::Vector3i count=b-a+Eigen::Vector3i::Ones();
+    if(count.minCoeff()<=0 || count.maxCoeff()>64 || int64_t(count.x())*count.y()*count.z()>4096)return false;
+    const Point extent=Point::Constant(limits_.radius+map_->getResolution()*.5);
+    const Point expanded_lo=lo-extent,expanded_hi=hi+extent;
+    if(!map_->insideLocalMap(expanded_lo) || !map_->insideLocalMap(expanded_hi))return false;
+    super_utils::vec_Vec3f cells;
+    for(auto type:{super_utils::OCCUPIED,super_utils::UNKNOWN}) {
+      map_->boxSearch(lo-extent,hi+extent,type,cells);
+      for(const auto& c:cells) {
+        if(navigation::sphereBoxClear(lo,hi,c,map_->getResolution(),limits_.radius))continue;
+        if(type!=super_utils::OCCUPIED || !escape_.permitsBox(lo,hi,c))return false;
+      }
+    }
+    return true;
   }
 
   rog_map::ROGMap::Ptr map_;
   std::shared_ptr<navigation::PlannerClock> clock_;
   navigation::PlannerLimits limits_;
   FollowerSettings settings_;
+  InitialOverlap escape_;
   MasterRoute master_;
   navigation::GlobalGridRoute route_;
   navigation::RouteGuide guide_;
@@ -432,6 +479,6 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
   Point scan_anchor_{Point::Zero()};
   bool planning_{false};
   std::chrono::steady_clock::time_point work_deadline_;
-  std::string last_failure_;
+  std::string last_failure_,build_failure_;
 };
 }  // namespace larp_route_follower
