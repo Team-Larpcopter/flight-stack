@@ -18,7 +18,8 @@ fsm:
   mpc_cmd_topic: /planning_cmd/poly_traj
   timer_en: true
 super_planner:
-  backup_traj_en: true
+  # Retain the certified forward curve when replacement planning fails.
+  backup_traj_en: false
   detailed_log_en: false
   visualization_en: false
   use_fov_cut: false
