@@ -255,3 +255,42 @@ def test_map_readiness_withholds_heartbeat_and_rejects_unready_switch(node):
     node._tick()
     assert node.state_machine.state==State.ERROR
     assert not node.mode_pub.messages and not node.command_pub.messages
+
+
+def test_ground_alignment_waits_then_freezes_before_geofence(node,monkeypatch):
+    import flight_executive.flight_executive_node as adapter
+    from flight_executive.envelope import Envelope
+    t=[0.]
+    monkeypatch.setattr(adapter,'monotonic',lambda:t[0])
+    node.auto_alignment=True
+    node.envelope=Envelope([-4,-5,0],[2,.6,1.8])
+    node.mode_pub=Publications();node.setpoint_pub=Publications();node.command_pub=Publications()
+    node.alignment_pub=Publications()
+    c=node.state_machine;c.started_at=0.
+    # PX4 can report an invalid below-map-floor estimate during initialization.
+    c.position=Position(0.,0.,0.,.403,0.,0.,valid=False)
+    c.status=Status(0.,False,False,False);c.landed=Landed(0.,True)
+    node._tick()
+    assert c.state==State.WAITING and not node.mode_pub.messages
+    for i in range(22):
+        t[0]=i*.05
+        c.position=Position(t[0],0.,0.,.403,0.,0.)
+        c.status=Status(t[0],False,False,True);c.landed=Landed(t[0],True)
+        node.map_pose=((0.,0.,0.),0.,0.);node.map_pose_at=t[0]
+        node.vio_ready=True;node.vio_ready_at=t[0]
+        node._tick()
+    assert c.state==State.TAKEOFF
+    assert node.envelope.origin==(0.,0.,.403)
+    assert len(node.alignment_pub.messages)==1
+    assert not node.command_pub.messages
+    # Once initialized, a genuine boundary violation remains terminal.
+    t[0]+=0.05;c.position=Position(t[0],10.,0.,.403,0.,0.)
+    node._tick()
+    assert c.state==State.ERROR
+
+
+def test_ground_alignment_never_adopts_armed_start(node):
+    node.auto_alignment=True
+    node.state_machine.status=Status(monotonic(),True,False,True)
+    node._tick()
+    assert node.state_machine.state==State.ERROR

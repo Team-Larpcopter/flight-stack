@@ -1,6 +1,6 @@
 """Simulation-only ROS 2 adapter for the flight state machine."""
 
-from math import isfinite, nan
+from math import isfinite, nan, atan2, sin, cos, hypot
 from time import monotonic
 
 import rclpy
@@ -16,10 +16,13 @@ from rclpy.qos import (
     DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy,
 )
 from std_msgs.msg import String, Bool
+from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Odometry
 
 from flight_executive.model import Command, Landed, Position, Status, Trajectory, State, Phase
 from flight_executive.state_machine import StateMachine
 from flight_executive.envelope import Envelope
+from flight_executive.alignment import GroundAlignment
 from flight_executive.extensions.tracking import stationary
 
 
@@ -91,6 +94,19 @@ class FlightExecutiveNode(Node):
         self.autonomy_ready_at = -float('inf')
         self.input_subscriptions.append(self.create_subscription(
             Bool, '/autonomy/takeoff_ready', self._autonomy_ready, telemetry_qos))
+        self.auto_alignment = self.declare_parameter('align_px4_to_map_on_ground', False).value
+        self.ground_alignment = GroundAlignment()
+        self.map_pose = None
+        self.map_pose_at = -float('inf')
+        self.vio_ready = False
+        self.vio_ready_at = -float('inf')
+        self.alignment_pub = self.create_publisher(PoseStamped, '/autonomy/map_to_px4',
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        if self.auto_alignment:
+            self.input_subscriptions.append(self.create_subscription(
+                Odometry, '/autonomy/odometry', self._map_pose, telemetry_qos))
+            self.input_subscriptions.append(self.create_subscription(
+                Bool, '/autonomy/vio_healthy', self._vio_ready, telemetry_qos))
         self.last_report = None
         self.timer = self.create_timer(
             0.05, self._tick, clock=Clock(clock_type=ClockType.STEADY_TIME))
@@ -99,6 +115,68 @@ class FlightExecutiveNode(Node):
             f'Pilot arming then {trigger} switch authorizes automatic takeoff. '
             'simulation_only is operator acknowledgement, not vehicle identification.')
         self._report()
+
+    def _map_pose(self, msg):
+        if msg.header.frame_id != 'map' or msg.child_frame_id != 'base_link':
+            return
+        stamp = msg.header.stamp.sec+msg.header.stamp.nanosec*1e-9
+        if not -.005 <= self.get_clock().now().nanoseconds*1e-9-stamp < .3:
+            return
+        p, q, v = msg.pose.pose.position, msg.pose.pose.orientation, msg.twist.twist.linear
+        values = (p.x,p.y,p.z,q.w,q.x,q.y,q.z,v.x,v.y,v.z)
+        if not all(isfinite(x) for x in values) or abs(q.w*q.w+q.x*q.x+q.y*q.y+q.z*q.z-1.) > .002:
+            return
+        self.map_pose = ((p.x,p.y,p.z), atan2(2*(q.w*q.z+q.x*q.y),1-2*(q.y*q.y+q.z*q.z)),
+                         hypot(v.x,v.y,v.z))
+        self.map_pose_at = monotonic()
+
+    def _vio_ready(self, msg):
+        self.vio_ready, self.vio_ready_at = msg.data, monotonic()
+
+    def _align_on_ground(self, now):
+        c = self.state_machine
+        if self.ground_alignment.value is not None:
+            return True
+        if c.state == State.ERROR:
+            return False
+        fresh = lambda msg: msg is not None and 0 <= now-msg.received_at < .3
+        if fresh(c.status) and (c.status.armed or c.status.offboard):
+            c.fail('Start disarmed outside Offboard before ground-frame alignment')
+            self._report()
+            return False
+        if fresh(c.landed) and not c.landed.landed:
+            c.fail('Refusing airborne ground-frame alignment')
+            self._report()
+            return False
+        good = (fresh(c.status) and fresh(c.position) and fresh(c.landed) and
+                c.status.preflight_ok and not c.status.failsafe and c.landed.landed and
+                c.position.usable() and c.position.velocity_valid and
+                hypot(c.position.vx,c.position.vy,c.position.vz) < .1 and
+                self.map_pose is not None and now-self.map_pose_at < .3 and
+                self.map_pose[2] < .1 and self.vio_ready and now-self.vio_ready_at < .3)
+        if not good:
+            self.ground_alignment.reset_pending()
+            return False
+        p = c.position
+        alignment = self.ground_alignment.observe(now,self.map_pose[0],self.map_pose[1],
+                                                  (p.x,p.y,p.z),p.yaw)
+        if alignment is None:
+            return False
+        if self.envelope is not None:
+            self.envelope.origin, self.envelope.heading = alignment.origin, alignment.heading
+            if not self.envelope.contains((p.x,p.y,p.z), ground_contact=True):
+                c.fail('Aligned start position violates body geofence')
+                self._report()
+                return False
+        msg = PoseStamped()
+        msg.header.frame_id = 'local_ned'
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.pose.position.x,msg.pose.position.y,msg.pose.position.z = alignment.origin
+        msg.pose.orientation.w = cos(alignment.heading/2)
+        msg.pose.orientation.z = sin(alignment.heading/2)
+        self.alignment_pub.publish(msg)
+        self.get_logger().info(f'Map/PX4 ground alignment frozen: origin={alignment.origin}, heading={alignment.heading:.4f}')
+        return True
 
     def _autonomy_ready(self, msg):
         self.autonomy_ready = msg.data
@@ -188,6 +266,8 @@ class FlightExecutiveNode(Node):
     def _tick(self):
         now = monotonic()
         c = self.state_machine
+        if self.auto_alignment and not self._align_on_ground(now):
+            return
         waiting = c.state == State.WAITING or (c.state == State.TAKEOFF and c.phase != Phase.ASCEND)
         if self.require_autonomy_ready and waiting and not (
                 self.autonomy_ready and 0 <= now-self.autonomy_ready_at < .3):
@@ -203,7 +283,7 @@ class FlightExecutiveNode(Node):
                     c.takeoff.heartbeat_started = now
             return
         output = c.tick(now)
-        if self.envelope is not None:
+        if self.envelope is not None and c.state not in (State.WAITING, State.ERROR):
             ground = c.state in (State.WAITING, State.TAKEOFF, State.LAND, State.DONE)
             p = c.position
             points = [] if p is None else [(p.x, p.y, p.z)]

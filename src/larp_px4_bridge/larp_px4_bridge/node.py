@@ -1,4 +1,5 @@
 import math
+import time
 import rclpy
 from rclpy.node import Node
 from rclpy.parameter import Parameter
@@ -6,6 +7,7 @@ from rclpy.exceptions import ParameterUninitializedException
 from rclpy.executors import ExternalShutdownException
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from nav_msgs.msg import Odometry
+from std_msgs.msg import Bool
 from px4_msgs.msg import VehicleOdometry
 from .core import Converter, LatestSample, Sample
 
@@ -37,7 +39,16 @@ class Bridge(Node):
                          durability=DurabilityPolicy.VOLATILE)
         self.publisher = self.create_publisher(VehicleOdometry, param('output_topic', '/fmu/in/vehicle_visual_odometry'), qos)
         self.subscription = self.create_subscription(Odometry, param('input_topic', '/autonomy/odomimu'), self.receive, qos)
+        self.require_vio_health = param('require_vio_health', False)
+        self.vio_healthy = False
+        self.vio_health_at = -math.inf
+        if self.require_vio_health:
+            self.health_subscription = self.create_subscription(
+                Bool, '/autonomy/vio_healthy', self.health, qos)
         self.timer = self.create_timer(1.0/rate, self.publish)
+
+    def health(self, msg):
+        self.vio_healthy, self.vio_health_at = msg.data, time.monotonic()
 
     def receive(self, msg):
         if msg.header.frame_id != self.frame or msg.child_frame_id != self.child:
@@ -63,6 +74,8 @@ class Bridge(Node):
         now = self.get_clock().now().nanoseconds
         sample = self.queue.take(now)
         if sample is None:
+            return
+        if self.require_vio_health and not (self.vio_healthy and time.monotonic()-self.vio_health_at < .3):
             return
         out = VehicleOdometry()
         out.timestamp = now // 1000
