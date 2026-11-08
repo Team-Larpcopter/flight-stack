@@ -27,7 +27,7 @@ sdk-source/
 sdk_install/
 *.bag
 *.mcap
-core
+/core
 core.[0-9]*
 
 # Upstream demo media is not needed by the vendored estimator
