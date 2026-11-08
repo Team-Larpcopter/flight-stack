@@ -11,10 +11,10 @@ class Envelope:
         self.lower, self.upper, self.origin = lower, upper, origin
         self.heading, self.margin = heading, margin
 
-    def contains(self, position, ground_contact=False):
+    def contains(self, position, ground_contact=False, ground_tolerance=0.0):
         dx,dy,dz = (v-o for v,o in zip(position,self.origin))
         c,s = math.cos(self.heading), math.sin(self.heading)
         p = (c*dx+s*dy, s*dx-c*dy, -dz)
         return all(math.isfinite(v) and
-                   (self.lower[i] if ground_contact and i==2 else self.lower[i]+self.margin)-1e-6 <= v <=
+                   (self.lower[i]-ground_tolerance if ground_contact and i==2 else self.lower[i]+self.margin)-1e-6 <= v <=
                    self.upper[i]-self.margin+1e-6 for i,v in enumerate(p))
