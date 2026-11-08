@@ -31,7 +31,8 @@ class GroundAlignment:
     """Only the adapter's disarmed/landed/healthy branch may offer samples.
 
     A stable one-second window rejects estimator startup changes. Once accepted,
-    the transform is immutable until the executive process is restarted.
+    the transform is immutable until the adapter explicitly restarts ground
+    registration after a PX4 position/heading reset.
     """
     def __init__(self):
         self.value = None

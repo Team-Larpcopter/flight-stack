@@ -99,6 +99,7 @@ class FlightExecutiveNode(Node):
             Bool, '/autonomy/takeoff_ready', self._autonomy_ready, telemetry_qos))
         self.auto_alignment = self.declare_parameter('align_px4_to_map_on_ground', False).value
         self.ground_alignment = GroundAlignment()
+        self.alignment_reset_counters = None
         self.map_pose = None
         self.map_pose_at = -float('inf')
         self.vio_ready = False
@@ -139,7 +140,24 @@ class FlightExecutiveNode(Node):
     def _align_on_ground(self, now):
         c = self.state_machine
         if self.ground_alignment.value is not None:
-            return True
+            p, status, landed = c.position, c.status, c.landed
+            # Only position/heading resets change the coordinate transform.
+            # Keep the VIO/map origin fixed; refresh the map-to-PX4 relation.
+            changed = (p is not None and self.alignment_reset_counters is not None
+                       and p.reset_counters[:3] != self.alignment_reset_counters)
+            grounded = (status is not None and landed is not None
+                        and 0 <= now-status.received_at < 1.
+                        and 0 <= now-landed.received_at < LANDED_TIMEOUT
+                        and not status.armed and not status.offboard and landed.landed)
+            if not (changed and grounded and c.state in (State.WAITING, State.TAKEOFF)):
+                return True
+            self.ground_alignment = GroundAlignment()
+            c.state = State.WAITING
+            c.takeoff = c.hold_target = None
+            c.tracking.clear()
+            c.active_trajectory_id = None
+            c.started_at = now
+            self.get_logger().info('PX4 ground frame reset: refreshing map alignment and takeoff origin')
         if c.state == State.ERROR:
             return False
         def fresh(msg):
@@ -191,6 +209,7 @@ class FlightExecutiveNode(Node):
         msg.pose.position.x,msg.pose.position.y,msg.pose.position.z = alignment.origin
         msg.pose.orientation.w = cos(alignment.heading/2)
         msg.pose.orientation.z = sin(alignment.heading/2)
+        self.alignment_reset_counters = p.reset_counters[:3]
         self.alignment_pub.publish(msg)
         self.get_logger().info(f'Map/PX4 ground alignment frozen: origin={alignment.origin}, heading={alignment.heading:.4f}')
         return True
