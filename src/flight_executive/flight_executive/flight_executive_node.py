@@ -88,7 +88,8 @@ class FlightExecutiveNode(Node):
         enforce = self.declare_parameter('enforce_boundary', False).value
         heading = self.declare_parameter('map_heading_ned', 0.0).value
         origin = self.declare_parameter('map_origin_ned', [0.0, 0.0, 0.0]).value
-        self.envelope = Envelope(lower, upper, heading, origin) if enforce else None
+        padding = self.declare_parameter('geofence_padding_m', .5 if hardware else 0.).value
+        self.envelope = Envelope(lower, upper, heading, origin, padding=padding) if enforce else None
         self.require_autonomy_ready = self.declare_parameter('require_autonomy_ready', False).value
         self.autonomy_ready = False
         self.autonomy_ready_at = -float('inf')

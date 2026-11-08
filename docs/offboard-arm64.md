@@ -182,3 +182,13 @@ The recorder includes all topics (including compressed images), excluding raw
 A name filter also excludes the stack's raw-image topics when publishers start
 later. It records the existing compressed preview streams without creating more
 image encoders. Bags split at 1 GiB; no additional bag compression is applied.
+
+The operator-requested hardware `geofence_padding_m` now defaults to 0.5 m on
+all six sides of the executive envelope. With the current course and 0.4 m body
+margin, body-position limits are X [-4.2624, 2.0336], Y [-5.6626, 0.6334],
+and airborne HOLD/TRACKING Z [-0.1, 1.9] metres in map coordinates. During
+TAKEOFF/LAND the lower Z is -0.5 m, or -1.0 m with fresh confirmed ground contact
+(the existing 0.5 m ground allowance plus the new padding). This supersedes the
+previous executive ceiling; planner/CAD obstacle bounds remain conservative.
+Simulation defaults retain zero padding. Set `geofence_padding_m:=0.0` on the
+executive to restore its previous envelope.
