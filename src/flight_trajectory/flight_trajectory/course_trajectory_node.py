@@ -1,4 +1,4 @@
-"""Simulation-only ROS 2 node that publishes a hard-coded course trajectory.
+"""ROS 2 node that publishes a hard-coded course trajectory.
 
 It feeds flight_executive_msgs/TrajectorySetpoint on the executive's input
 topic. The flight executive owns arming, takeoff, mode, and safety checks.
@@ -19,8 +19,9 @@ from std_msgs.msg import String
 
 from flight_trajectory.course_follower import CourseFollower, Phase, Pose
 from flight_trajectory.dronehacks_course import course_trajectory
+from flight_trajectory.triangle_course import TriangleCourse, TriangleFollower
 
-COURSES = {'dronehacks': course_trajectory}
+COURSES = {'dronehacks': course_trajectory, 'triangle': TriangleCourse}
 
 
 def topic_name(prefix, name, message_type):
@@ -35,9 +36,11 @@ class CourseTrajectoryNode(Node):
 
     def __init__(self):
         super().__init__('course_trajectory')
-        if not self.declare_parameter('simulation_only', False).value:
-            raise ValueError('Use the simulation launch file; hardware is not supported')
+        simulation = self.declare_parameter('simulation_only', False).value
+        hardware = self.declare_parameter('hardware_enabled', False).value
         course = self.declare_parameter('course', 'dronehacks').value
+        if simulation == hardware or (hardware and course != 'triangle'):
+            raise ValueError('Select simulation, or explicitly enable triangle hardware')
         if course not in COURSES:
             raise ValueError(f'Unknown course {course!r}; choose from {sorted(COURSES)}')
         height = self.declare_parameter('cruise_height', 0.75).value
@@ -51,9 +54,14 @@ class CourseTrajectoryNode(Node):
             raise ValueError('px4_topic_prefix must be an absolute nonempty topic prefix')
         if not 20.0 <= rate <= 200.0:
             raise ValueError('publish_rate_hz must be within 20..200')
-        trajectory = COURSES[course](max_speed=max_speed, height=height,
-                                     yaw_mode=yaw_mode, max_yaw_rate=max_yaw_rate)
-        self.follower = CourseFollower(trajectory, max_error)
+        if course == 'triangle':
+            trajectory = TriangleCourse()
+            max_speed, yaw_mode = .2, 'fixed'
+        else:
+            trajectory = COURSES[course](max_speed=max_speed, height=height,
+                                         yaw_mode=yaw_mode, max_yaw_rate=max_yaw_rate)
+        follower = TriangleFollower if course == 'triangle' else CourseFollower
+        self.follower = follower(trajectory, max_error)
         self.trajectory_id = str(uuid4())
         self.landed = None
 

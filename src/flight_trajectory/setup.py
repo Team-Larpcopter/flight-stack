@@ -14,7 +14,7 @@ setup(
     zip_safe=True,
     maintainer="Team Larpcopter",
     maintainer_email="team@larpcopter.local",
-    description="Simulation-only hard-coded course trajectories for the flight executive.",
+    description="Hard-coded course trajectories for the flight executive.",
     license="Apache-2.0",
     tests_require=["pytest"],
     entry_points={

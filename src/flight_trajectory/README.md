@@ -1,7 +1,7 @@
-# Fly the hard-coded DroneHacks course
+# Hard-coded flight courses
 
 `flight_trajectory` streams a hard-coded, kinematically feasible course
-trajectory into the flight executive's `/larper/trajectory_in` input. It is a
+trajectory into the flight executive's `/larper/trajectory_in` input. The DroneHacks course is a
 SITL prototype for the parent repository's `comp` world with GPS on. The
 executive still owns Offboard entry, arming, takeoff, HOLD, and every safety
 check; this package never commands PX4.
@@ -87,3 +87,24 @@ period. The DroneHacks launch exposes `hold_timeout` and `landing_timeout` for
 this behavior. A different planner must publish the same custom message with a
 nonempty trajectory ID and a stationary final sample; completion does not depend
 on `/course_trajectory/status`. Rebuild both packages after message changes.
+
+## Jetson triangle
+
+`bash jetson/offboard/launch_triangle_tmux.sh --check` checks the deployed
+runtime. Omit `--check` to start the same sensor, VIO, DDS, Foxglove and manual
+recording panes as the takeoff/hold launcher, plus
+`ros2 launch larp_autonomy triangle.launch.py mission_file:=/config/mission.yaml`.
+Build `flight_trajectory` and `larp_autonomy` into the deployed runtime first.
+
+Start with the vehicle disarmed. The pilot arms and selects Position to trigger
+the existing executive. It climbs 0.5 m, then follows the hardcoded route
+`(0, 0) -> (0.75, 0) -> (0.75, 0.75) -> (0, 0)` in metres forward/left from
+the last landed position and heading. Each straight leg starts and ends at
+rest, with speed capped at 0.2 m/s. Heading stays fixed. The final stationary
+sample lets the executive verify arrival and request PX4 Land.
+
+This reuses the surveyed boundary and ground alignment from `mission.yaml`.
+Like the takeoff/hold launcher, it does not run obstacle planning or require
+map readiness. Stale telemetry or excessive tracking error stops the course;
+the existing executive handles loss of trajectory with HOLD, then landing.
+The DroneHacks course remains simulation-only.
