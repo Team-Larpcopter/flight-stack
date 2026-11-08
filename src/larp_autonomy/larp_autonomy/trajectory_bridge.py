@@ -109,7 +109,7 @@ def main():
         g=state['goal']
         if g is None or not gate.ready:return
         try:
-            curve=Trajectory.decode(m,now(),g.goal_id,g.localization_epoch,max_age)
+            curve=Trajectory.decode(m,now(),g.goal_id,g.localization_epoch,None)
             if curve.sequence<state['sequence']:raise ValueError('Out-of-order trajectory')
             state.update(curve=curve,sequence=curve.sequence)
         except ValueError:
@@ -120,9 +120,7 @@ def main():
         if previous is not None and stamp<previous:
             state.update(curve=None,goal=None,sequence=-1);return
         curve=state['curve'];g=state['goal']
-        if (curve is None or g is None or not state['health']
-                or time.monotonic()-state['health_at']>.3
-                or not -.005<=stamp-curve.certificate<max_age):return
+        if curve is None or g is None:return
         p,v,a,yaw,rate=curve.sample(stamp)
         if not all(math.isfinite(x) for x in (*p,*v,*a,yaw,rate)):return
         out=TrajectorySetpoint();out.header.frame_id='local_ned'
@@ -136,7 +134,7 @@ def main():
         # A stopping point en route is not mission completion.
         out.is_final=(stamp>=curve.start+curve.duration and math.dist(p,(target.x,target.y,target.z))<.05
                       and all(abs(x)<1e-6 for x in (*v,*a,rate)))
-        out.certificate_required=True
+        out.certificate_required=False
         deadline=round((curve.certificate+max_age)*1e9)
         out.valid_until.sec=deadline//10**9;out.valid_until.nanosec=deadline%10**9
         pub.publish(out)

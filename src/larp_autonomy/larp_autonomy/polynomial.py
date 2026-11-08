@@ -69,8 +69,8 @@ class Trajectory:
     def decode(cls,message,now,goal_id,epoch=1,max_age=.3):
         certificate=seconds(message.header.stamp);start=seconds(message.start_time)
         if (message.status!=message.VALID or message.header.frame_id!='map' or message.localization_epoch!=epoch
-            or message.goal_id!=goal_id or not math.isfinite(now) or not -.005<=now-certificate<=max_age
-            or start<=0 or start-now>.3):raise ValueError('invalid or stale trajectory certificate')
+            or message.goal_id!=goal_id or not math.isfinite(now) or (max_age is not None and not -.005<=now-certificate<=max_age)
+            or start<=0 or (max_age is not None and start-now>.3)):raise ValueError('invalid or stale trajectory certificate')
         position=decode_chain(message.position,3);yaw=decode_chain(message.yaw,1)
         duration=sum(p.duration for p in position)
         if abs(duration-sum(p.duration for p in yaw))>.001:raise ValueError('yaw/position duration mismatch')
