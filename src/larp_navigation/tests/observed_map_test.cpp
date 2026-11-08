@@ -54,9 +54,9 @@ int main(int argc,char** argv) {
   rog_map::PointType hit;hit.x=-1.65;hit.y=.05;hit.z=1.05;hit.intensity=1;
   for(int i=0;i<100;++i)duplicate.push_back(hit);
   map.integrate(duplicate,{{0,0,1},Eigen::Quaterniond::Identity()});
-  require(map.isUnknown(Eigen::Vector3d(-1.65,.05,1.05)),"correlated pixels saturated CAD-free voxel in one frame");
+  require(map.isKnownFree(Eigen::Vector3d(-1.65,.05,1.05)),"unconfirmed correlated pixels blocked prior free space");
   map.integrate(duplicate,{{0,0,1},Eigen::Quaterniond::Identity()});
-  require(!map.isOccupied(Eigen::Vector3d(-1.65,.05,1.05)),"two frames confirmed occupancy too soon");
+  require(map.isKnownFree(Eigen::Vector3d(-1.65,.05,1.05)),"two unconfirmed frames blocked prior free space");
   map.integrate(duplicate,{{0,0,1},Eigen::Quaterniond::Identity()});
   require(map.isOccupied(Eigen::Vector3d(-1.65,.05,1.05)),"three independent frames did not confirm occupancy");
   auto rear=cloud;for(auto& p:rear)p.x=-3.05;

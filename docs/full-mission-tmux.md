@@ -61,7 +61,9 @@ pixels are unknown; they never count as free-space rays.
 
 New occupancy needs three hit-bearing depth frames. Clearing occupied cells needs
 three valid empty-ray observations. Opposing evidence resets the pending streak;
-multiple correlated pixels from one frame count once. One byte per voxel stores
+multiple correlated pixels from one frame count once. Pending hits preserve the
+previous classification, so a single noisy hit does not block a CAD-free route;
+previously unknown cells remain unknown. One byte per voxel stores
 both streak directions (roughly 6 MB for the configured map), with constant work
 only on touched cells. Hard boundaries cannot be cleared by sensor observations.
 

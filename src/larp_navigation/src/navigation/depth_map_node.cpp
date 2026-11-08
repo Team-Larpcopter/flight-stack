@@ -305,13 +305,13 @@ class DepthMapNode : public rclcpp::Node {
       rog_map::PointType xyz;xyz.x=p.x();xyz.y=p.y();xyz.z=p.z();xyz.intensity=1;points.push_back(xyz);
     }
     if(points.empty() && !static_cad_only_) return;
-    // Static mode initializes directly from CAD without any measurement.
-    if(!static_cad_only_)
-      map_->integrate(points,{world_camera.translation(),Eigen::Quaterniond(world_camera.linear())});
+    // Seed once before observations so initial rays obey the same three-frame
+    // hit/clear rule as every later update (and pending hits are not reset).
     if(!cad_prior_.empty() && !cad_prior_loaded_) {
-      const auto count=map_->loadCadPrior(cad_prior_,static_cad_only_);cad_prior_loaded_=true;
-      RCLCPP_INFO(get_logger(),"Loaded %s CAD prior into %zu previously unknown cells",static_cad_only_?"static":"revisable",count);
+      const auto count=map_->loadCadPrior(cad_prior_,true);cad_prior_loaded_=true;
+      RCLCPP_INFO(get_logger(),"Loaded revisable CAD prior into %zu cells",count);
     }
+    map_->integrate(points,{world_camera.translation(),Eigen::Quaterniond(world_camera.linear())});
     if(!static_cad_only_ && launch_radius_>0 && !launch_declared_) {
       const auto count=map_->declareLaunchCylinder(launch_radius_,launch_min_z_,launch_max_z_);
       launch_declared_=true;RCLCPP_WARN(get_logger(),"Applied launch fixture assumption to %zu unknown cells once",count);

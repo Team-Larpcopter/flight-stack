@@ -596,16 +596,20 @@ void ProbMap::hitPointUpdate(const Vec3f& pos, const int& hash_id, const int& hi
     }
 
 
-    ret += cfg_.l_hit * hit_num;
-    if (sensor_hit && cfg_.occupancy_confirmation_frames > 1) {
+    int evidence_hits=hit_num;
+    if (sensor_hit) {
         auto& hits = confirmation_hits_[hash_id];
         if(hits & 128) hits=0; // a hit resets the clear streak
+        const bool newly_confirmed=hits+1==cfg_.occupancy_confirmation_frames;
         if (hits < cfg_.occupancy_confirmation_frames) ++hits;
-        // Only independent frames confirm new occupancy. Pending hits become
-        // unknown (never falsely free); existing occupied CAD is preserved.
-        if (from_type != GridType::OCCUPIED && hits < cfg_.occupancy_confirmation_frames)
-            ret = std::min(ret, std::nextafter(float(cfg_.l_occ), -std::numeric_limits<float>::infinity()));
+        if (from_type != GridType::OCCUPIED) {
+            // Pending noise must not turn prior free space into UNKNOWN,
+            // which would block the planner just like a confirmed obstacle.
+            if(hits < cfg_.occupancy_confirmation_frames) return;
+            if(newly_confirmed) evidence_hits=cfg_.occupancy_confirmation_frames;
+        }
     }
+    ret += cfg_.l_hit * evidence_hits;
     if (ret > cfg_.l_max) {
         ret = cfg_.l_max;
     }
