@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>larp_route_follower</name>
+  <version>0.1.0</version>
+  <description>Deterministic route-following planner: the larp_navigation depth_map_node with SUPER's trajectory optimizer replaced by closed-form certified quintic segments along the global route.</description>
+  <maintainer email="hariom.chadha@mail.utoronto.ca">Hari Om Chadha</maintainer>
+  <license>MIT</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>visualization_msgs</depend>
+  <depend>pcl_msgs</depend>
+  <depend>pcl_conversions</depend>
+  <depend>message_filters</depend>
+  <depend>dronehacks_msgs</depend>
+  <depend>eigen</depend>
+  <depend>yaml-cpp</depend>
+  <depend>libpcl-all-dev</depend>
+  <depend>pkg-config</depend>
+  <!-- Shared configuration (navigation_fine.yaml, CAD prior) and the unchanged mission launch. -->
+  <exec_depend>larp_navigation</exec_depend>
+  <exec_depend>larp_autonomy</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <test_depend>python3-pytest</test_depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

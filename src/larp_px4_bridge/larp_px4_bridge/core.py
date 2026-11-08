@@ -76,7 +76,7 @@ class LatestSample:
         self.pending = None
 
     def offer(self, sample, now):
-        if sample.stamp_ns <= self.high_water or not 0 <= now-sample.stamp_ns <= self.max_age_ns:
+        if sample.stamp_ns <= self.high_water or (self.max_age_ns > 0 and not 0 <= now-sample.stamp_ns <= self.max_age_ns):
             return False
         self.high_water = sample.stamp_ns
         self.pending = sample
@@ -84,6 +84,6 @@ class LatestSample:
 
     def take(self, now):
         sample, self.pending = self.pending, None
-        if sample is not None and 0 <= now-sample.stamp_ns <= self.max_age_ns:
+        if sample is not None and (self.max_age_ns == 0 or 0 <= now-sample.stamp_ns <= self.max_age_ns):
             return sample
         return None
