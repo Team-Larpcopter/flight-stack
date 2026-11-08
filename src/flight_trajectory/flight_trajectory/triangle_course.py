@@ -8,7 +8,7 @@ from flight_trajectory.trajectory import Trajectory, Waypoint
 
 class TriangleCourse:
     def __init__(self):
-        points = [(0., 0., .5), (.75, 0., .5), (.75, .75, .5), (0., 0., .5)]
+        points = [(0., 0., .75), (.75, 0., .75), (.75, .75, .75), (0., 0., .75)]
         self.legs = [Trajectory([Waypoint(*a), Waypoint(*b)], corner_radius=.1,
                                 max_speed=.2, max_acceleration=.2)
                      for a, b in zip(points, points[1:])]

@@ -10,10 +10,10 @@ def test_triangle_requests_land_only_after_return_and_settle():
     course = TriangleCourse()
     follower = TriangleFollower(course)
     follower.update_pose(Pose(0., 3., -2., 7., .8), True)
-    follower.update_pose(Pose(0., 3., -2., 6.5, .8), False)
+    follower.update_pose(Pose(0., 3., -2., 6.25, .8), False)
     follower.update_executive_state('HOLD')
     sample = follower.tick(0.)
-    machine = StateMachine(0., takeoff_height=.5, hold_timeout=2.)
+    machine = StateMachine(0., takeoff_height=.75, hold_timeout=2.)
     machine.state = State.HOLD
     machine.hold_started = 0.
     machine.hold_target = Setpoint(*sample.position, .8)

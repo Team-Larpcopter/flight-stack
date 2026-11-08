@@ -77,7 +77,7 @@ def test_triangle_launch_keeps_executive_boundary_and_uses_existing_interface(mo
     executive, trajectory = module.nodes(c)
     p = executive['parameters'][0]
     assert p['takeoff_trigger'] == 'position'
-    assert p['takeoff_height'] == .5
+    assert p['takeoff_height'] == .75
     assert p['enforce_boundary'] and p['align_px4_to_map_on_ground']
     assert p['map_boundary_lower'] == cfg['hard_boundary_lower']
     assert p['target_system'] == 15

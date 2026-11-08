@@ -97,7 +97,7 @@ recording panes as the takeoff/hold launcher, plus
 Build `flight_trajectory` and `larp_autonomy` into the deployed runtime first.
 
 Start with the vehicle disarmed. The pilot arms and selects Position to trigger
-the existing executive. It climbs 0.5 m, then follows the hardcoded route
+the existing executive. It climbs 0.75 m, then follows the hardcoded route
 `(0, 0) -> (0.75, 0) -> (0.75, 0.75) -> (0, 0)` in metres forward/left from
 the last landed position and heading. Each straight leg starts and ends at
 rest, with speed capped at 0.2 m/s. Heading stays fixed. The final stationary

@@ -12,7 +12,7 @@ from flight_trajectory.triangle_course import TriangleCourse, TriangleFollower
 def test_triangle_stops_at_each_vertex_and_returns_home():
     course = TriangleCourse()
     elapsed = 0.
-    for leg, target in zip(course.legs, [( .75, 0., .5), (.75, .75, .5), (0., 0., .5)]):
+    for leg, target in zip(course.legs, [( .75, 0., .75), (.75, .75, .75), (0., 0., .75)]):
         elapsed += leg.duration
         sample = course.sample(elapsed)
         assert sample.position == pytest.approx(target)
@@ -22,8 +22,8 @@ def test_triangle_stops_at_each_vertex_and_returns_home():
 
 
 @pytest.mark.parametrize('heading,first,second', [
-    (0., (3.75, -2., 6.5), (3.75, -2.75, 6.5)),
-    (pi / 2, (3., -1.25, 6.5), (3.75, -1.25, 6.5)),
+    (0., (3.75, -2., 6.25), (3.75, -2.75, 6.25)),
+    (pi / 2, (3., -1.25, 6.25), (3.75, -1.25, 6.25)),
 ])
 def test_forward_left_are_relative_to_initial_heading(heading, first, second):
     course = TriangleCourse()
@@ -31,7 +31,7 @@ def test_forward_left_are_relative_to_initial_heading(heading, first, second):
     follower.update_pose(Pose(0., 3., -2., 7., heading), True)
     for elapsed, target in [(course.legs[0].duration, first),
                             (sum(x.duration for x in course.legs[:2]), second),
-                            (course.duration, (3., -2., 6.5))]:
+                            (course.duration, (3., -2., 6.25))]:
         sample = follower.local(course.sample(elapsed))
         assert sample.position == pytest.approx(target)
         assert sample.yaw == heading
@@ -42,7 +42,7 @@ def test_streams_until_executive_lands_and_stops_on_stale_pose():
     ground = Pose(0., 3., -2., 7., .8)
     follower.update_pose(ground, True)
     assert follower.tick(0.) is None
-    follower.update_pose(replace(ground, z=6.5), False)
+    follower.update_pose(replace(ground, z=6.25), False)
     follower.update_executive_state('HOLD')
     sample = follower.tick(0.)
     assert sample is not None
@@ -54,7 +54,7 @@ def test_streams_until_executive_lands_and_stops_on_stale_pose():
         sample = follower.tick(t)
         assert sample is not None
     assert sample.is_final
-    assert sample.position == pytest.approx((3., -2., 6.5))
+    assert sample.position == pytest.approx((3., -2., 6.25))
     follower.update_executive_state('LAND')
     assert follower.tick(t) is None
     assert follower.phase == Phase.FINISHED
