@@ -95,7 +95,7 @@ def test_unknown_planner_is_rejected():
         module.nodes(c)
 
 
-def test_triangle_launch_keeps_executive_boundary_and_uses_existing_interface(monkeypatch):
+def test_triangle_launch_disables_only_executive_boundary_and_uses_existing_interface(monkeypatch):
     module = load_launch('triangle.launch.py')
     cfg = dict(hard_boundary_lower=[-2., -2., -1.], hard_boundary_upper=[2., 2., 2.],
                map_heading_ned=.4, map_origin_ned=[1., 2., 3.], target_system=15)
@@ -107,7 +107,8 @@ def test_triangle_launch_keeps_executive_boundary_and_uses_existing_interface(mo
     p = executive['parameters'][0]
     assert p['takeoff_trigger'] == 'position'
     assert p['takeoff_height'] == .75
-    assert p['enforce_boundary'] and p['align_px4_to_map_on_ground']
+    assert p['enforce_boundary'] is False
+    assert p['align_px4_to_map_on_ground']
     assert p['map_boundary_lower'] == cfg['hard_boundary_lower']
     assert p['target_system'] == 15
     assert trajectory['parameters'][0]['trajectory_topic'] == p['trajectory_topic']

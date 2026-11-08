@@ -88,5 +88,7 @@ class Trajectory:
     def sample(self, now):
         # A stopped terminal state remains defined; extrapolation does not.
         t=max(0.,min(now-self.start,self.duration))
+        if now >= self.start+self.duration:
+            return (chain(self.position,t),(0.,0.,0.),(0.,0.,0.),chain(self.yaw,t)[0],0.)
         return (chain(self.position,t),chain(self.position,t,1),chain(self.position,t,2),
                 chain(self.yaw,t)[0],chain(self.yaw,t,1)[0])

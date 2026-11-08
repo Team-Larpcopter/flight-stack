@@ -19,3 +19,10 @@ hard_boundary_reference: nominal course; requires surveyed hardware alignment
 trajectory_max_age_s: 0.6
 # Planner initialization/recovery gets a bounded hold, then falls back to land.
 planner_hold_timeout_s: 15.0
+
+# One-time free-space assumption for unknown cells only; occupied cells remain.
+# Set radius to 0 to disable. Cylinder is fixed at map x=y=0.
+declared_launch_radius_m: 0.52
+declared_launch_min_z_m: 0.1
+declared_launch_max_z_m: 1.5
+launch_clearance_reference: 'Operator-declared clear course launch cylinder at map origin: radius 0.52 m, z=0.1 to 1.5 m'
