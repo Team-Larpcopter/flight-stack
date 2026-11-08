@@ -1,5 +1,6 @@
 """One component per pane; ROG and SUPER share one authoritative map process."""
 import os
+import tempfile
 from pathlib import Path
 from ament_index_python.packages import get_package_share_directory as share
 from launch import LaunchDescription
@@ -27,7 +28,9 @@ def nodes(context):
     def include(pkg,file,args):
         return IncludeLaunchDescription(PythonLaunchDescriptionSource(str(Path(share(pkg))/'launch'/file)),launch_arguments=args.items())
     if part=='drivers':
-        result=[node('larp_hardware','oak_native_node',[dict(connect_device=True,publish_images=True,
+        calibration_dir=tempfile.mkdtemp(prefix='flight-stack-camera-')
+        result=[node('larp_hardware','oak_native_node',[dict(factory_calibration_out=calibration_dir+'/factory.json',
+            connect_device=True,publish_images=True,
             publish_rectified=True,align_imu=True,camera_fps=30.,accel_hz=500,gyro_hz=400,
             max_exposure_us=5000,capture_seconds=0.)])]
     elif part=='foxglove':

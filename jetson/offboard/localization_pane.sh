@@ -2,7 +2,9 @@
 set -euo pipefail
 case ${1:?Select camera, vins or foxglove} in
   camera)
+    calibration_dir=$(mktemp -d /tmp/flight-stack-camera.XXXXXXXX)
     exec ros2 run larp_hardware oak_native_node --ros-args \
+      -p "factory_calibration_out:=$calibration_dir/factory.json" \
       -p connect_device:=true -p publish_images:=true -p publish_rectified:=false \
       -p align_imu:=true -p camera_fps:=30.0 -p accel_hz:=500 -p gyro_hz:=400 \
       -p max_exposure_us:=5000 -p capture_seconds:=0.0 ;;
