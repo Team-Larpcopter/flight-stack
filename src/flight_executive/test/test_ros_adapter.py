@@ -275,7 +275,7 @@ def test_ground_alignment_waits_then_freezes_before_geofence(node,monkeypatch):
     for i in range(22):
         t[0]=i*.05
         c.position=Position(t[0],0.,0.,.403,0.,0.)
-        c.status=Status(t[0],False,False,True);c.landed=Landed(t[0],True)
+        c.status=Status(t[0],False,False,True);c.landed=Landed(float(int(t[0])),True)
         node.map_pose=((0.,0.,0.),0.,0.);node.map_pose_at=t[0]
         node.vio_ready=True;node.vio_ready_at=t[0]
         node._tick()

@@ -39,3 +39,18 @@ def test_shadow_can_profile_without_flight_executive():
     assert gate.accepts_epoch(2)
     with pytest.raises(ValueError):
         MissionGate(True, '')
+
+
+def test_extended_certificate_budget_preserves_capture_time_expiry():
+    from larp_autonomy.polynomial import Trajectory
+    M = SimpleNamespace
+    stamp = lambda t: M(sec=int(t), nanosec=round((t-int(t))*1e9))
+    message = M(VALID=1, status=1, header=M(frame_id='map', stamp=stamp(10.)),
+                start_time=stamp(10.), localization_epoch=1, goal_id=1, sequence=1,
+                position=[M(duration=1., degree=1, coefficients=[0.,1.,0.,2.,0.,3.])],
+                yaw=[M(duration=1., degree=1, coefficients=[0.,0.])])
+    with pytest.raises(ValueError):
+        Trajectory.decode(message,10.4,1)
+    assert Trajectory.decode(message,10.4,1,max_age=.6).certificate == 10.
+    with pytest.raises(ValueError):
+        Trajectory.decode(message,10.601,1,max_age=.6)

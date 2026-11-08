@@ -29,7 +29,7 @@ def test_certified_super_sample_reaches_executive_input_after_hold():
     process = subprocess.Popen([sys.executable, '-c',
         'from larp_autonomy.trajectory_bridge import main; main()', '--ros-args',
         '-p', 'simulation_only:=true', '-p', 'alignment_verified:=true',
-        '-p', 'mission_id:=synthetic-flight'])
+        '-p', 'mission_id:=synthetic-flight', '-p', 'trajectory_max_age_s:=0.6'])
     try:
         goal = NavigationGoal()
         goal.header.frame_id = 'map'
@@ -44,7 +44,12 @@ def test_certified_super_sample_reaches_executive_input_after_hold():
                 health.publish(Bool(data=True))
                 curve = CommittedTrajectory()
                 curve.header.frame_id = 'map'
-                curve.header.stamp = node.get_clock().now().to_msg()
+                # Account for capture/inference/search latency without rewriting age.
+                capture_ns = node.get_clock().now().nanoseconds - 400_000_000
+                curve.header.stamp.sec = capture_ns // 10**9
+                curve.header.stamp.nanosec = capture_ns % 10**9
+                # A restarted mapper starts a new timestamp-based sequence.
+                curve.sequence = node.get_clock().now().nanoseconds
                 curve.start_time.sec = curve.header.stamp.sec - 2
                 curve.goal_id = curve.localization_epoch = 1
                 curve.status = curve.VALID
@@ -66,6 +71,20 @@ def test_certified_super_sample_reaches_executive_input_after_hold():
         assert (sample.position.x, sample.position.y, sample.position.z) == (1., -2., -3.)
         assert sample.trajectory_id == 'synthetic-flight'
         assert sample.is_final and sample.certificate_required
+        deadline=sample.valid_until.sec+sample.valid_until.nanosec*1e-9
+        sent=sample.header.stamp.sec+sample.header.stamp.nanosec*1e-9
+        assert 0 < deadline-sent < .25, 'Capture time must bound remaining lease'
+        # A healthy stream without new map certificates must stop producing commands.
+        until=time.monotonic()+.8
+        while time.monotonic()<until:
+            health.publish(Bool(data=True))
+            rclpy.spin_once(node,timeout_sec=.02)
+        count=len(received)
+        until=time.monotonic()+.2
+        while time.monotonic()<until:
+            health.publish(Bool(data=True))
+            rclpy.spin_once(node,timeout_sec=.02)
+        assert len(received)==count
     finally:
         process.terminate()
         process.wait(timeout=5)

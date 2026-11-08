@@ -34,6 +34,9 @@ class DepthMapNode : public rclcpp::Node {
     takeoff_height_=declare_parameter<double>("takeoff_height",1.0);
     ready_=create_publisher<std_msgs::msg::Bool>("/autonomy/takeoff_ready",1);
     epoch_=declare_parameter<int64_t>("localization_epoch",1);
+    const double depth_age=declare_parameter<double>("max_depth_age_s",.3);
+    if(!std::isfinite(depth_age) || depth_age<=0 || depth_age>1.)throw std::invalid_argument("max_depth_age_s must be (0,1]");
+    max_depth_age_ns_=int64_t(depth_age*1e9);
     stride_=declare_parameter<int>("pixel_stride",4);
     min_depth_=declare_parameter<double>("min_depth_m",.3);
     max_depth_=declare_parameter<double>("max_depth_m",6.0);
@@ -128,7 +131,7 @@ class DepthMapNode : public rclcpp::Node {
     readiness.data=healthy_ && cad_prior_loaded_ && body_.rcv &&
       std::chrono::steady_clock::now()-health_received_<std::chrono::seconds(1) &&
       t*1e-9-body_.rcv_time>=-.005 && t*1e-9-body_.rcv_time<.3 &&
-      (static_cad_only_ || (t>=last_depth_ns_ && t-last_depth_ns_<300'000'000));
+      (static_cad_only_ || (t>=last_depth_ns_ && t-last_depth_ns_<max_depth_age_ns_));
     // Check the launch column above the ground-contact region. The lower
     // section still requires the surveyed, physically clear launch fixture.
     if(readiness.data && !boundary_lower_.empty()) {
@@ -146,14 +149,17 @@ class DepthMapNode : public rclcpp::Node {
     dronehacks_msgs::msg::CommittedTrajectory command;
     command.header.frame_id="map";command.header.stamp=rclcpp::Time(last_depth_ns_);
     command.localization_epoch=epoch_;command.goal_id=planner_->goalId();
-    command.map_revision=revision_;command.sequence=++trajectory_sequence_;
+    command.map_revision=revision_;// ROS-time sequence survives a mapper-only restart in the same mission.
+    // A backward clock remains fail-closed in the bridge.
+    trajectory_sequence_=std::max(trajectory_sequence_+1,static_cast<uint64_t>(std::max<int64_t>(1,t)));
+    command.sequence=trajectory_sequence_;
     auto invalidate=[&](const char* reason){
       path_->publish(out);trajectories_->publish(command);
       if(internal_grid_route_ && (!healthy_ || !planner_->active() || !map_ready_for_route_))publishGridRoute(false,reason);
       if(planner_->active())RCLCPP_WARN_THROTTLE(get_logger(),*get_clock(),500,
         "Trajectory certificate unavailable: %s (depth age %.3f s)",reason,(t-last_depth_ns_)*1e-9);
     };
-    const bool map_ready=static_cad_only_?cad_prior_loaded_:(t-last_depth_ns_<=300'000'000);
+    const bool map_ready=static_cad_only_?cad_prior_loaded_:(t-last_depth_ns_<=max_depth_age_ns_);
     map_ready_for_route_=map_ready && body_.rcv && t*1e-9-body_.rcv_time<=.3 &&
       t*1e-9-body_.rcv_time>=-.005 && std::chrono::steady_clock::now()-health_received_<=std::chrono::seconds(1);
     if(!healthy_ || !planner_->active() || !map_ready || !body_.rcv ||
@@ -190,6 +196,12 @@ class DepthMapNode : public rclcpp::Node {
         invalidate("localization expired during static-map validation");return;
       }
       command.header.stamp=now();
+    }
+    // Optimization is synchronous: never send a certificate that expired
+    // while searching, and never refresh dynamic depth capture timestamps.
+    if(!static_cad_only_ && (now().nanoseconds()-last_depth_ns_>=max_depth_age_ns_ ||
+       now().seconds()-body_.rcv_time>.3)) {
+      invalidate("sensor lease expired during planning");return;
     }
     command.status=command.VALID;
     trajectories_->publish(command);
@@ -268,10 +280,14 @@ class DepthMapNode : public rclcpp::Node {
       return;
     }
     if(!calibration_ || pending_.empty() || !body_.rcv) return;
+    // After a costly planner tick, prefer the newest image with a usable pose.
+    // Keep the oldest only while the newer frame is still awaiting odometry.
+    while(pending_.size()>1 && poses_.at(rclcpp::Time(pending_.back()->header.stamp).nanoseconds()))
+      pending_.pop_front();
     auto m=pending_.front();
     const int64_t stamp=rclcpp::Time(m->header.stamp).nanoseconds();
     const auto age=now().nanoseconds()-stamp;
-    if(stamp<=last_depth_ns_ || age>500'000'000 || age< -5'000'000) {pending_.pop_front();return;}
+    if(stamp<=last_depth_ns_ || age>max_depth_age_ns_ || age< -5'000'000) {pending_.pop_front();return;}
     const auto pose=poses_.at(stamp);
     if(!pose) {if(age>150'000'000)pending_.pop_front();return;}
     pending_.pop_front();
@@ -362,6 +378,7 @@ class DepthMapNode : public rclcpp::Node {
   std::unique_ptr<navigation::RoutePlanner> planner_;
   int64_t last_plan_ns_{0},last_certificate_ns_{0};
   uint64_t trajectory_sequence_{0};
+  int64_t max_depth_age_ns_{300'000'000};
   rclcpp::Publisher<dronehacks_msgs::msg::CommittedTrajectory>::SharedPtr trajectories_;
   rclcpp::Subscription<dronehacks_msgs::msg::NavigationGoal>::SharedPtr goals_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_;

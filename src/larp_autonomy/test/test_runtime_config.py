@@ -50,3 +50,10 @@ def test_each_runtime_component_constructs_without_starting_processes(tmp_path,m
             c=LaunchContext();c.launch_configurations.update(component=part,mode=mode,mission_file=str(p))
             actions=module.nodes(c)
             assert len(actions)>=2
+
+
+@pytest.mark.parametrize('field,value', [('trajectory_max_age_s',0),('trajectory_max_age_s',1.1),
+    ('planner_hold_timeout_s',0),('planner_hold_timeout_s',float('nan'))])
+def test_invalid_planner_timing_rejected(tmp_path,field,value):
+    cfg=fixture(tmp_path);cfg[field]=value
+    with pytest.raises(ValueError):load(tmp_path,cfg)

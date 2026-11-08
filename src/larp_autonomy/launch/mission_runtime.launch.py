@@ -62,6 +62,7 @@ def nodes(context):
         params.update(config_file=cfg.get('navigation_config',str(nav/'navigation_fine.yaml')),
             cad_prior_file=cfg.get('cad_prior_file',str(nav/'course_cad_prior_fine.txt')),
             min_depth_m=.3,max_depth_m=3.,snapshot_include_free=False,
+            max_depth_age_s=cfg['trajectory_max_age_s'],
             require_hard_boundary=True,static_cad_only=False,route_backend='super_astar',
             flight_envelope_lower=[v+.4 for v in cfg['hard_boundary_lower']],
             flight_envelope_upper=[v-.4 for v in cfg['hard_boundary_upper']])
@@ -69,14 +70,14 @@ def nodes(context):
     else:
         params=dict(simulation_only=False,hardware_enabled=active,alignment_verified=cfg['alignment_verified'],
             mission_id=cfg['mission_id'],map_heading_ned=cfg['map_heading_ned'],map_origin_ned=cfg['map_origin_ned'],
-            align_px4_to_map_on_ground=active)
+            align_px4_to_map_on_ground=active,trajectory_max_age_s=cfg['trajectory_max_age_s'])
         result=[node('larp_autonomy','trajectory_bridge',[params]),
             node('larp_autonomy','mission_goal',[dict(zip(('x','y','z','yaw'),cfg['goal']),wait_for_hold=active)])]
         if active:
             result.append(node('flight_executive','flight_executive_node',[dict(
                 simulation_only=False,hardware_enabled=True,takeoff_trigger='position',align_px4_to_map_on_ground=True,
                 target_system=cfg.get('target_system',1),target_component=cfg.get('target_component',1),
-                takeoff_height=cfg['takeoff_height'],require_autonomy_ready=True,enforce_boundary=True,
+                takeoff_height=cfg['takeoff_height'],hold_timeout=cfg['planner_hold_timeout_s'],require_autonomy_ready=True,enforce_boundary=True,
                 map_boundary_lower=cfg['hard_boundary_lower'],map_boundary_upper=cfg['hard_boundary_upper'],
                 map_heading_ned=cfg['map_heading_ned'],map_origin_ned=cfg['map_origin_ned'])]))
     return [RegisterEventHandler(OnProcessExit(on_exit=[EmitEvent(event=Shutdown(reason='Component exited'))])),*result]
