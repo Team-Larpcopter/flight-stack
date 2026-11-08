@@ -9,6 +9,7 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml", "README.md"]),
+        (f"share/{package_name}/config", ["config/fixed_course.yaml"]),
     ],
     install_requires=["setuptools"],
     zip_safe=True,

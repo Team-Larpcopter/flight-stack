@@ -16,5 +16,5 @@ scp "$out/stack-runtime.tar.gz" "$out/Dockerfile" \
   "$out/launch_ego_mission_tmux.sh" "$out/launch_ego_full_system_tmux.sh" "$out/replace_stack.sh" \
   "$out/profile_vins_load.sh" "$out/profile_vins_topics.py" \
   "$out/launch_system_tmux.sh" "$out/launch_full_system_tmux.sh" "$out/launch_mission_tmux.sh" "$out/launch_takeoff_hold_tmux.sh" \
-  "$out/larpcopter-autonomy-localization.json" "$out/larpcopter-flight.json" "$out/mission.example.yaml" "$SSH_HOST:$remote/"
+  "$out/larpcopter-autonomy-localization.json" "$out/larpcopter-flight.json" "$out/mission.example.yaml" "$out/fixed_course.example.yaml" "$SSH_HOST:$remote/"
 echo "Transferred to ~/$remote. Run bash ~/$remote/launch_mission_tmux.sh (cached-route follower) or launch_follower_mission_tmux.sh (follower) on Jetson separately."

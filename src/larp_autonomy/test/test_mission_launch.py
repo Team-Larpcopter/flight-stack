@@ -115,17 +115,18 @@ def test_triangle_launch_disables_only_executive_boundary_and_uses_existing_inte
     assert trajectory['parameters'][0]['hardware_enabled']
 
 
-def test_fixed_course_launch_omits_mapping_and_matches_takeoff_height(monkeypatch):
+def test_fixed_course_launch_omits_mapping_and_matches_takeoff_height(monkeypatch, tmp_path):
     module = load_launch('fixed_course.launch.py')
     cfg = dict(hard_boundary_lower=[-4., -5., 0.], hard_boundary_upper=[2., 1., 1.8],
                map_heading_ned=0., map_origin_ned=[0., 0., 0.], target_system=15)
     monkeypatch.setattr(module, 'load_config', lambda path, mode: cfg)
     monkeypatch.setattr(module, 'Node', lambda **kwargs: kwargs)
     c = launch.LaunchContext()
-    c.launch_configurations['mission_file'] = '/unused/mission.yaml'
+    c.launch_configurations['mission_file'] = str(tmp_path / 'mission.yaml')
+    (tmp_path / 'fixed_course.yaml').write_text('waypoints: [[0,0,1.2], [1,-2,0.9]]')
     executive, trajectory = module.nodes(c)
     p = executive['parameters'][0]
-    assert p['takeoff_height'] == 1.0
+    assert p['takeoff_height'] == 1.2
     assert p['enforce_boundary'] is False
     assert p['require_autonomy_ready'] is False
     assert p['align_px4_to_map_on_ground'] is True
