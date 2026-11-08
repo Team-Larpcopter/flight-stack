@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Jetson only. Exactly eight panes; host build/transfer never calls this script.
 set -euo pipefail
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if [[ -f $here/deployment.env ]]; then source "$here/deployment.env"; fi
 mode=${1:-shadow}
 [[ $mode == shadow || $mode == hardware ]] || { echo 'Usage: launch_system_tmux.sh shadow|hardware' >&2; exit 2; }
 : "${DEPLOYMENT_CONFIG:?Set DEPLOYMENT_CONFIG to the directory containing mission.yaml, rig.json and bridge.yaml}"
-here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 image=${RUNTIME_IMAGE:-larp-flight-stack:arm64-runtime}
 container=${CONTAINER:-flight-stack-mission-$mode}
 session=${SESSION:-flight-stack-$mode}
@@ -14,6 +15,13 @@ if tmux has-session -t "$session" 2>/dev/null; then
   tmux set-option -t "$session" mouse on
   exec tmux attach-session -t "$session"
 fi
+# Match the takeoff launcher: no competing camera, UART or flight publishers.
+for other in flight-stack-takeoff-hold flight-stack-mission-hardware flight-stack-mission-shadow flight-stack-localization-runtime flight-stack-runtime; do
+  if [[ $(docker inspect --format '{{.State.Running}}' "$other" 2>/dev/null || true) == true ]]; then
+    echo "Stop $other before starting this mission; it shares camera/PX4 resources." >&2
+    exit 2
+  fi
+done
 source "$here/runtime_mounts.sh"
 config=$(realpath "$DEPLOYMENT_CONFIG")
 [[ -f $config/mission.yaml ]] || { echo 'Missing DEPLOYMENT_CONFIG/mission.yaml' >&2; exit 2; }

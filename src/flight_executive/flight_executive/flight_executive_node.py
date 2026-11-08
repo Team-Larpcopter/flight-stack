@@ -20,7 +20,7 @@ from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry
 
 from flight_executive.model import Command, Landed, Position, Status, Trajectory, State, Phase
-from flight_executive.state_machine import StateMachine
+from flight_executive.state_machine import StateMachine, LANDED_TIMEOUT
 from flight_executive.envelope import Envelope
 from flight_executive.alignment import GroundAlignment
 from flight_executive.extensions.tracking import stationary
@@ -139,7 +139,11 @@ class FlightExecutiveNode(Node):
             return True
         if c.state == State.ERROR:
             return False
-        fresh = lambda msg: msg is not None and 0 <= now-msg.received_at < .3
+        def fresh(msg):
+            # Land detector may publish at 1 Hz; do not reset the one-second
+            # alignment window between normal landed updates.
+            limit = LANDED_TIMEOUT if isinstance(msg, Landed) else 1.0 if isinstance(msg, Status) else .3
+            return msg is not None and 0 <= now-msg.received_at < limit
         if fresh(c.status) and (c.status.armed or c.status.offboard):
             c.fail('Start disarmed outside Offboard before ground-frame alignment')
             self._report()

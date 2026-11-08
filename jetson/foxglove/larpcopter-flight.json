@@ -96,7 +96,7 @@
       "diffEnabled": false
     },
     "Plot!velocity": {
-      "title": "Body velocity, map frame (m/s)",
+      "title": "Body velocity, body FLU frame (m/s)",
       "paths": [
         {
           "value": "/viz/autonomy/body_odom.twist.twist.linear.x",

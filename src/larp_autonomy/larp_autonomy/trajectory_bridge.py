@@ -60,6 +60,9 @@ def main():
     alignment=bool(node.declare_parameter('alignment_verified',False).value)
     heading=float(node.declare_parameter('map_heading_ned',0.).value)
     origin=tuple(node.declare_parameter('map_origin_ned',[0.,0.,0.]).value)
+    max_age=float(node.declare_parameter('trajectory_max_age_s',.3).value)
+    if not math.isfinite(max_age) or not 0<max_age<=1.:
+        raise ValueError('trajectory_max_age_s must be in (0,1]')
     auto_alignment=bool(node.declare_parameter('align_px4_to_map_on_ground',False).value)
     alignment_received=not auto_alignment
     if len(origin)!=3 or not all(math.isfinite(x) for x in (*origin,heading)):
@@ -106,7 +109,7 @@ def main():
         g=state['goal']
         if g is None or not gate.ready:return
         try:
-            curve=Trajectory.decode(m,now(),g.goal_id,g.localization_epoch)
+            curve=Trajectory.decode(m,now(),g.goal_id,g.localization_epoch,max_age)
             if curve.sequence<state['sequence']:raise ValueError('Out-of-order trajectory')
             state.update(curve=curve,sequence=curve.sequence)
         except ValueError:
@@ -119,7 +122,7 @@ def main():
         curve=state['curve'];g=state['goal']
         if (curve is None or g is None or not state['health']
                 or time.monotonic()-state['health_at']>.3
-                or not -.005<=stamp-curve.certificate<.3):return
+                or not -.005<=stamp-curve.certificate<max_age):return
         p,v,a,yaw,rate=curve.sample(stamp)
         if not all(math.isfinite(x) for x in (*p,*v,*a,yaw,rate)):return
         out=TrajectorySetpoint();out.header.frame_id='local_ned'
@@ -134,7 +137,7 @@ def main():
         out.is_final=(stamp>=curve.start+curve.duration and math.dist(p,(target.x,target.y,target.z))<.05
                       and all(abs(x)<1e-6 for x in (*v,*a,rate)))
         out.certificate_required=True
-        deadline=round((curve.certificate+.3)*1e9)
+        deadline=round((curve.certificate+max_age)*1e9)
         out.valid_until.sec=deadline//10**9;out.valid_until.nanosec=deadline%10**9
         pub.publish(out)
     node.create_subscription(NavigationGoal,'/autonomy/goal',goal,

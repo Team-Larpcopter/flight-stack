@@ -136,3 +136,33 @@ bash launch_localization.sh
 
 Keep the copied deployment folder in place: containers mount its `runtime/`
 directory. The original GPU cache/engine is reused, never rebuilt.
+
+### Eight-panel mission startup and timing
+
+`launch_mission_tmux.sh` loads `deployment.env` next to the launcher, including
+UART, DDS profile/domain, GPU cache and deployment configuration. It refuses a
+known competing stack container; it never stops another mission automatically.
+Start disarmed and wait for grounded map/PX4 alignment before arming and switching
+to Position. Landed telemetry uses the executive's existing 2.5-second allowance;
+position and body odometry still need fresh samples.
+
+The full mission defaults to `planner_hold_timeout_s: 15.0` before landing when no
+usable planner command arrives (initial planning or recovery). The standalone
+takeoff/hold test keeps its own two-second hold. `trajectory_max_age_s: 0.6` is
+shared by dynamic mapping and the trajectory bridge to accommodate LAS latency
+and the bounded 250 ms A* search. Certificates always expire relative to sensor
+capture time, never publication time. Expired data or stale localization still
+withholds commands. These timing values can be set in `mission.yaml`.
+
+After a long planner callback, mapping prefers the newest depth frame with an
+available capture-time pose. SUPER trajectory sequence numbers use ROS time so a
+mapper-only restart does not permanently reject the new stream. This does not
+permit restarting localization or changing the frozen flight frame in flight.
+Actual Jetson load and end-to-end course execution still need integration testing.
+
+For a prepared small application patch, place `apply_runtime_patch.sh` and
+`mission-integration-patch.tar.gz` beside the existing deployment's launchers.
+With its stack container stopped, run `bash apply_runtime_patch.sh`. The helper
+extracts the patch before installation, preserves device configuration and GPU
+assets, and never launches the mission. Normal source builds contain the same
+fixes; this patch is only a faster way to update an existing deployment.

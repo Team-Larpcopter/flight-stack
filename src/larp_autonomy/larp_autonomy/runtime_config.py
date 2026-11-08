@@ -21,6 +21,11 @@ def load_config(path, mode):
     for key in ('takeoff_height','map_heading_ned','initial_yaw_rad'):
         cfg[key] = float(cfg[key])
         if not math.isfinite(cfg[key]): raise ValueError('Invalid '+key)
+    for key, default, maximum in (('planner_hold_timeout_s', 15., 60.),
+                                  ('trajectory_max_age_s', .6, 1.)):
+        cfg[key] = float(cfg.get(key, default))
+        if not math.isfinite(cfg[key]) or not 0 < cfg[key] <= maximum:
+            raise ValueError('Invalid '+key)
     lo,hi = cfg['hard_boundary_lower'], cfg['hard_boundary_upper']
     # Deployment always caps the entire vehicle at 1.8 m; narrower boundaries win.
     hi[2] = min(hi[2],1.8)

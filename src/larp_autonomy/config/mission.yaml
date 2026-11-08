@@ -14,3 +14,8 @@ initial_yaw_rad: 0.0
 hard_boundary_lower: [-4.1624, -5.5626, 0.0]
 hard_boundary_upper: [1.9336, 0.5334, 1.8]
 hard_boundary_reference: nominal course; requires surveyed hardware alignment
+
+# Preserve capture-time expiry; allow LAS latency plus the 250 ms A* budget.
+trajectory_max_age_s: 0.6
+# Planner initialization/recovery gets a bounded hold, then falls back to land.
+planner_hold_timeout_s: 15.0
