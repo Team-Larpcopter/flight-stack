@@ -241,17 +241,10 @@ class FlightExecutiveNode(Node):
                                       throttle_duration_sec=1.0)
             return
         received = monotonic()
-        deadline = None
-        if msg.certificate_required:
-            remaining = (msg.valid_until.sec + msg.valid_until.nanosec * 1e-9
-                         - self.get_clock().now().nanoseconds * 1e-9)
-            if not 0.0 < remaining <= 0.305:
-                self.get_logger().warning('Ignoring expired or excessive certificate lifetime',
-                                          throttle_duration_sec=1.0)
-                return
-            deadline = received + remaining
+        # Certificate freshness is handled by the planner bridge. The executive
+        # uses its receipt timeout rather than rejecting the upstream lifetime.
         trajectory = Trajectory(received, *vectors, *yaw,
-                                msg.trajectory_id, msg.is_final, deadline)
+                                msg.trajectory_id, msg.is_final, None)
         if trajectory.is_final and not stationary(trajectory):
             self.get_logger().warning('Ignoring nonstationary final trajectory sample',
                                       throttle_duration_sec=1.0)
