@@ -166,3 +166,17 @@ With its stack container stopped, run `bash apply_runtime_patch.sh`. The helper
 extracts the patch before installation, preserves device configuration and GPU
 assets, and never launches the mission. Normal source builds contain the same
 fixes; this patch is only a faster way to update an existing deployment.
+
+
+### Manual rosbag pane
+
+Both mission and takeoff/hold tmux launchers add a recorder pane with its command
+already typed. Press Enter in that pane to start; Ctrl+C finalizes the bag and
+returns to its shell. Nothing records automatically. Bags persist under `bags/`
+beside the launchers, or the host directory specified by `ROSBAG_DIR`.
+
+The recorder includes all topics (including compressed images), excluding raw
+`sensor_msgs/Image` and `stereo_msgs/DisparityImage` topics discovered at startup.
+A name filter also excludes the stack's raw-image topics when publishers start
+later. It records the existing compressed preview streams without creating more
+image encoders. Bags split at 1 GiB; no additional bag compression is applied.

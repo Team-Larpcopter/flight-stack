@@ -11,7 +11,7 @@ case ${1:-} in
   --check) check_only=true ;;
   --help|-h)
     echo 'Usage: bash launch_takeoff_hold_tmux.sh [--check]'
-    echo 'Five panes: pilot arms then selects Position; 0.5 m takeoff, 2 s hold, land.'
+    echo 'Six panes including manual recorder: pilot arms then selects Position; 0.5 m takeoff, 2 s hold, land.'
     echo '--check validates setup without launching sensors or flight publishers.'
     exit 0 ;;
   '') ;;
@@ -73,7 +73,10 @@ for other in flight-stack-mission-hardware flight-stack-mission-shadow flight-st
     exit 2
   fi
 done
-docker create --init --name "$container" "${runtime_mounts[@]}" --runtime nvidia --network host --ipc host \
+bag_dir=${ROSBAG_DIR:-$here/bags}
+mkdir -p "$bag_dir"
+bag_dir=$(realpath "$bag_dir")
+docker create --init --name "$container" -v "$bag_dir:/bags" "${runtime_mounts[@]}" --runtime nvidia --network host --ipc host \
   --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb "${devices[@]}" "${dds[@]}" \
   -v "$config:/config:ro" -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}" \
   -e PX4_TRANSPORT="$transport" -e PX4_PORT="${PX4_PORT:-8888}" -e PX4_BAUD="${PX4_BAUD:-921600}" \
@@ -100,6 +103,11 @@ os.execvp(command[0], command)
 PYTHON
 )
 pane() {
+  if [[ $1 == rosbag ]]; then
+    printf '%q ' docker exec -it "$container" /flight-stack/jetson/offboard/entrypoint.sh \
+      python3 /flight-stack/jetson/offboard/record_bag.py
+    return
+  fi
   if [[ $1 == executive ]]; then
     printf '%q ' docker exec -it "$container" /flight-stack/jetson/offboard/entrypoint.sh \
       python3 -c "$executive_code"
@@ -109,8 +117,8 @@ pane() {
       "mode:=$mode" mission_file:=/config/mission.yaml
   fi
 }
-parts=(drivers foxglove vins dds executive)
-titles=(Drivers Foxglove sqrtVINS DDS 'Takeoff hold land')
+parts=(drivers foxglove vins dds executive rosbag)
+titles=(Drivers Foxglove sqrtVINS DDS 'Takeoff hold land' 'Record bag — press Enter')
 first=$(tmux new-session -d -P -F '#{pane_id}' -s "$session" -n system "bash --noprofile --norc -i")
 tmux set-option -t "$session" mouse on
 tmux set-option -t "$session" remain-on-exit off
@@ -122,7 +130,7 @@ for ((i=1; i<${#parts[@]}; ++i)); do
   created=$(tmux split-window -d -P -F '#{pane_id}' -t "$session:system" "bash --noprofile --norc -i")
   tmux select-pane -t "$created" -T "${titles[i]}"
   tmux send-keys -t "$created" -l "$(pane "${parts[i]}")"
-  tmux send-keys -t "$created" Enter
+  if [[ ${parts[i]} != rosbag ]]; then tmux send-keys -t "$created" Enter; fi
   tmux select-layout -t "$session:system" tiled >/dev/null
 done
 tmux select-pane -t "$first"
