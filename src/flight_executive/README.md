@@ -1,3 +1,11 @@
+> **Hardware runtime:** the default trigger is now pilot-selected **Offboard**
+> after arming, with no software arm or Offboard-entry command. Existing Offboard or
+> airborne sessions are not adopted. Preflight waiting has no startup deadline.
+> The eight-pane launcher also requires fresh map/VIO readiness and enforces the
+> body geofence. See [full mission runtime](../../docs/full-mission-tmux.md).
+> The Position-triggered sequence below describes the retained SITL default;
+> `takeoff_trigger` explicitly selects `offboard` or `position`.
+
 > Planner integration now provides an explicit `hardware_enabled` opt-in.
 > See [planner integration](../../docs/planner-executive-integration.md) for current
 > launch modes. This adds a command path, not hardware flight qualification.
