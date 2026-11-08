@@ -95,7 +95,7 @@ class DepthMapNode : public rclcpp::Node {
         const double yaw=std::atan2(2*(q.w*q.z+q.x*q.y),1-2*(q.y*q.y+q.z*q.z));
         planner_->setGoal(m.goal_id,{p.x,p.y,p.z},yaw);
       });
-    if(max_depth_>map_->getMapConfig().raycast_range_max) throw std::invalid_argument("depth range exceeds map ray range");
+    if(std::isfinite(max_depth_) && max_depth_>map_->getMapConfig().raycast_range_max) throw std::invalid_argument("depth range exceeds map ray range");
     snapshots_=create_publisher<dronehacks_msgs::msg::MapSnapshot>("/navigation/map_snapshot",rclcpp::QoS(1).transient_local());
     map_states_=create_publisher<dronehacks_msgs::msg::MapState>("/navigation/map_state",rclcpp::SensorDataQoS().keep_last(1));
     rejected_maps_=create_publisher<dronehacks_msgs::msg::MapSnapshot>("/navigation/rejected_map",1);

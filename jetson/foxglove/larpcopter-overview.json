@@ -18,7 +18,7 @@
           "showLabel": false,
           "axisScale": 0.5
         },
-        "backgroundColor": "#101418"
+        "backgroundColor": "#080e18"
       },
       "transforms": {},
       "topics": {
@@ -92,18 +92,18 @@
       "followTf": "map",
       "followMode": "follow-none",
       "scene": {
-        "backgroundColor": "#101418"
+        "backgroundColor": "#080e18"
       },
       "topics": {
         "/viz/autonomy/route": {
           "visible": true,
-          "lineWidth": 0.04,
-          "color": "#44aaffff"
+          "lineWidth": 0.045,
+          "color": "#ff6ac1ff"
         },
         "/viz/autonomy/committed_path": {
           "visible": true,
-          "lineWidth": 0.06,
-          "color": "#44ff88ff"
+          "lineWidth": 0.085,
+          "color": "#fff044ff"
         },
         "/viz/autonomy/body_path": {
           "visible": true,

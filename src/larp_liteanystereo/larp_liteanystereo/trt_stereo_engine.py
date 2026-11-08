@@ -153,8 +153,9 @@ def disparity_to_depth_mm(
     min_depth_m: float = 0.15,
     max_depth_m: float = 10.0,
     remove_invisible: bool = True,
+    float_depth: bool = False,
 ) -> tuple[np.ndarray, float]:
-    """Convert disparity at (H_net, W_net) to 16UC1 depth in millimeters.
+    """Convert disparity to uint16 millimeters or float32 meters.
 
     Returns (depth_mm_uint16, scale_x_out_over_orig).
     """
@@ -177,10 +178,13 @@ def disparity_to_depth_mm(
 
     min_mm = float(min_depth_m) * 1000.0
     max_mm = float(max_depth_m) * 1000.0
-    depth_mm = np.where((depth_mm >= min_mm) & (depth_mm <= max_mm), depth_mm, 0.0)
+    depth_mm = np.where(np.isfinite(depth_mm) & (depth_mm >= min_mm) & (depth_mm <= max_mm), depth_mm, 0.0)
 
     if (out_h, out_w) != (h_net, w_net):
         depth_mm = cv2.resize(depth_mm, (out_w, out_h), interpolation=cv2.INTER_NEAREST)
+
+    if float_depth:
+        return (depth_mm / 1000.0).astype(np.float32), float(out_w) / float(orig_w)
 
     depth_u16 = np.clip(np.round(depth_mm), 0, 65535).astype(np.uint16)
     return depth_u16, float(out_w) / float(orig_w)

@@ -52,8 +52,10 @@ class VoxelDelta:
         return changed
 
 
-def hide_boundary_cells(xyz, lower, upper, resolution):
+def hide_boundary_cells(xyz, lower, upper, resolution, ceiling_z=float("inf")):
     """Visualization-only removal of the immutable occupied boundary shell."""
+    if np.isfinite(ceiling_z):
+        xyz = xyz[xyz[:, 2] < ceiling_z]
     if len(lower) == 0 and len(upper) == 0:
         return xyz
     lower, upper = np.asarray(lower), np.asarray(upper)

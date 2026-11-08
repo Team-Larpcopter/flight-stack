@@ -294,12 +294,13 @@ class StereoDepthNode(Node):
             min_depth_m=self.min_depth_m,
             max_depth_m=self.max_depth_m,
             remove_invisible=self.remove_invisible,
+            float_depth=not np.isfinite(self.max_depth_m),
         )
 
         dt_ms = (time.perf_counter() - t0) * 1000.0
         self.infer_times_ms.append(dt_ms)
 
-        # Publish 16UC1 metric depth (aligned to depth_info frame so depth_map_node accepts it directly)
+        # Unbounded mode uses float32 meters to avoid uint16 saturation at 65.535 m.
         out_frame = (
             self.depth_info.header.frame_id
             if (self.depth_info is not None and self.depth_info.header.frame_id)
@@ -309,9 +310,9 @@ class StereoDepthNode(Node):
         d_msg.header.stamp = lmsg.header.stamp
         d_msg.header.frame_id = out_frame
         d_msg.height, d_msg.width = depth_u16.shape
-        d_msg.encoding = "16UC1"
+        d_msg.encoding = "32FC1" if depth_u16.dtype == np.float32 else "16UC1"
         d_msg.is_bigendian = 0
-        d_msg.step = d_msg.width * 2
+        d_msg.step = d_msg.width * depth_u16.dtype.itemsize
         d_msg.data = array.array("B", depth_u16.tobytes())
         self.pub_depth.publish(d_msg)
 
@@ -340,7 +341,7 @@ class StereoDepthNode(Node):
         now = time.monotonic()
         if self.viz_enable and (now - self.last_viz_time) >= (1.0 / max(0.5, self.viz_rate_hz)):
             self.last_viz_time = now
-            color_depth = colorize_depth_jet(depth_u16, self.viz_min_m, self.viz_max_m)
+            color_depth = colorize_depth_jet(depth_u16 * 1000. if depth_u16.dtype == np.float32 else depth_u16, self.viz_min_m, self.viz_max_m)
             ok, jpg = cv2.imencode(".jpg", color_depth, [cv2.IMWRITE_JPEG_QUALITY, self.viz_quality])
             if ok:
                 cmsg = CompressedImage()

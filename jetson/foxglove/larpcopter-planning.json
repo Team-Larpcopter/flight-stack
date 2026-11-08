@@ -99,24 +99,24 @@
           "showLabel": false,
           "axisScale": 0.5
         },
-        "backgroundColor": "#101418"
+        "backgroundColor": "#080e18"
       },
       "transforms": {},
       "topics": {
         "/viz/autonomy/route": {
           "visible": true,
-          "lineWidth": 0.035,
-          "color": "#fbbf24ff"
+          "lineWidth": 0.045,
+          "color": "#ff6ac1ff"
         },
         "/viz/autonomy/committed_path": {
           "visible": true,
-          "lineWidth": 0.055,
-          "color": "#22d3eeff"
+          "lineWidth": 0.085,
+          "color": "#fff044ff"
         },
         "/viz/autonomy/body_path": {
           "visible": true,
           "lineWidth": 0.025,
-          "color": "#fb7185ff"
+          "color": "#ffffffff"
         },
         "/viz/autonomy/body_pose": {
           "visible": true,

@@ -176,7 +176,7 @@ rog_map:
     - 12
     - 5
     ray_range:
-    - 0.3
+    - 0.2
     - 6
     p_min: 0.12
     p_miss: 0.45

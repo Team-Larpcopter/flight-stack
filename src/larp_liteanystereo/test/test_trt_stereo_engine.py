@@ -31,3 +31,12 @@ def test_flight_depth_gate_discards_out_of_range_without_clamping():
     depth,_=disparity_to_depth_mm(disparity,fx_orig=80.,baseline_m=.075,
         orig_w=6,orig_h=1,min_depth_m=.3,max_depth_m=3.,remove_invisible=False)
     np.testing.assert_array_equal(depth,[[0,300,1000,3000,0,0]])
+
+
+def test_unbounded_float_depth_keeps_far_values_without_u16_saturation():
+    depth, _ = disparity_to_depth_mm(np.array([[1., .5, 0.]], dtype=np.float32),
+        fx_orig=1000., baseline_m=.075, orig_w=3, orig_h=1,
+        min_depth_m=.2, max_depth_m=float('inf'), float_depth=True,
+        remove_invisible=False)
+    assert depth.dtype == np.float32
+    np.testing.assert_allclose(depth, [[75., 150., 0.]])

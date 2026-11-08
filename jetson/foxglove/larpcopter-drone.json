@@ -107,7 +107,8 @@
       "scene": {
         "transforms": {
           "showLabel": false
-        }
+        },
+        "backgroundColor": "#080e18"
       },
       "topics": {
         "/visual_slam/tracking/odometry": {

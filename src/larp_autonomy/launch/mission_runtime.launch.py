@@ -37,7 +37,8 @@ def nodes(context):
         result=[include('larp_perception','perception.launch.py',{'port':'8766','send_buffer_limit':'8388608','flight_monitor_only':'true'}),
                 node('larp_autonomy','planner_visualization',[dict(
                     hide_boundary_lower=cfg['hard_boundary_lower'],
-                    hide_boundary_upper=cfg['hard_boundary_upper'])])]
+                    hide_boundary_upper=cfg['hard_boundary_upper'],
+                    ceiling_cut_z=cfg['hard_boundary_upper'][2]-.1)])]
     elif part=='vins':
         config=cfg.get('estimator_config',str(Path(share('larp_localization'))/'config/oak_d_s2/estimator_config.yaml'))
         result=[node('ov_srvins','run_subscribe_msckf',[{'config_path':config,'verbosity':'INFO'}],namespace='autonomy',
@@ -61,14 +62,14 @@ def nodes(context):
         if os.environ.get('XRCE_REFS'): command += ['-r',os.environ['XRCE_REFS']]
         result=[ExecuteProcess(cmd=command,output='screen')]
     elif part=='depth':
-        result=[include('larp_liteanystereo','las_depth.launch.py',{'publish_as_primary':'true','min_depth_m':'0.2','max_depth_m':'3.0','viz_enable':'false'})]
+        result=[include('larp_liteanystereo','las_depth.launch.py',{'publish_as_primary':'true','min_depth_m':'0.2','max_depth_m':'inf','viz_enable':'false'})]
     elif part=='map':
         result=[node('larp_autonomy','map_status')]
     elif part=='super':
         params={k:cfg[k] for k in ('rig_file','hard_boundary_lower','hard_boundary_upper','hard_boundary_reference','takeoff_height')}
         params.update(config_file=cfg.get('navigation_config',str(nav/'navigation_fine.yaml')),
             cad_prior_file=cfg.get('cad_prior_file',str(nav/'course_cad_prior_fine.txt')),
-            min_depth_m=.2,max_depth_m=3.,snapshot_include_free=False,
+            min_depth_m=.2,max_depth_m=float("inf"),snapshot_include_free=False,
             max_depth_age_s=cfg['trajectory_max_age_s'],
             require_hard_boundary=True,static_cad_only=False,route_backend='super_astar',
             flight_envelope_lower=[v+.4 for v in cfg['hard_boundary_lower']],
