@@ -4,6 +4,7 @@ FROM ${BASE}
 SHELL ["/bin/bash", "-c"]
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential cmake ninja-build git curl ca-certificates pkg-config unzip zip \
+    autoconf autoconf-archive automake libtool patchelf \
     python3-colcon-common-extensions python3-pytest python3-numpy python3-scipy \
     python3-opencv python3-yaml libeigen3-dev libyaml-cpp-dev libopencv-dev \
     libboost-all-dev libusb-1.0-0-dev libudev-dev libpcl-dev \
