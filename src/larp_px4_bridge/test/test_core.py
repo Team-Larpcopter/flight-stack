@@ -92,3 +92,15 @@ def test_map_body_odometry_converts_flu_to_frd_without_second_mount():
     np.testing.assert_allclose(rotation(out['q']),np.eye(3),atol=1e-14)
     s.position=[1,2,.5]
     assert Converter([0,1,0,0]).convert(s)['position']==[1,-2,-.5]
+
+
+def test_disabled_age_gate_forwards_delayed_sample_once():
+    from dataclasses import replace
+    gate = LatestSample(0)
+    sample = Sample(100, [0.,0.,0.], [1.,0.,0.,0.], [0.,0.,0.], [0.,0.,0.], [0.]*36, [0.]*36)
+    assert gate.offer(sample, 10_000_000_000)
+    assert gate.take(20_000_000_000) is sample
+    assert gate.take(20_000_000_001) is None
+    assert not gate.offer(sample, 20_000_000_002)
+    newer = replace(sample, stamp_ns=101)
+    assert gate.offer(newer, 20_000_000_003)

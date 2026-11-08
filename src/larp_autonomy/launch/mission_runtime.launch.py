@@ -55,7 +55,7 @@ def nodes(context):
                      target_system=cfg.get('target_system',1),target_component=cfg.get('target_component',1))])]
         if active: result.append(node('larp_px4_bridge','vins_px4_bridge',[cfg['bridge_params'],
             {'input_topic':'/autonomy/odometry','world_frame':'map','imu_frame':'base_link',
-             'imu_to_body_frd_quaternion_wxyz':[0.,1.,0.,0.], 'require_vio_health':True,
+             'imu_to_body_frd_quaternion_wxyz':[0.,1.,0.,0.], 'require_vio_health':False, 'max_sample_age_s':0.,
              'output_topic':'/fmu/in/vehicle_visual_odometry'}]))
     elif part=='dds':
         transport=os.environ.get('PX4_TRANSPORT','udp4')
