@@ -42,3 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libasio-dev lib
  && (status=0; MicroXRCEAgent --help > /tmp/xrce-help.txt 2>&1 || status=$?; \
       test "$status" -eq 1 && grep -qi usage /tmp/xrce-help.txt) \
  && rm -rf /tmp/xrce-agent
+
+# Visualization is appended so existing compiler/SDK dependency layers stay cached.
+RUN apt-get update && apt-get install -y --no-install-recommends ros-humble-foxglove-bridge \
+ && rm -rf /var/lib/apt/lists/*

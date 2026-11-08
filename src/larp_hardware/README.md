@@ -1,7 +1,13 @@
 # Native hardware integration
 
 `oak_native_node` uses DepthAI 3.10 for on-device stereo undistortion and C++
-ROS publication. Depth is disabled. Device access defaults off. Factory exports
+ROS publication. With `publish_rectified` (default on) the on-camera stereo engine
+also outputs its rectified, hardware-synced 800x500 pair on
+`/native_oak/rectified/{left,right}/image` + `camera_info` (one stamp per pair;
+geometry exported to `<factory_calibration_out>.rectified.json`) for stereo
+networks on the Jetson (`../larp_liteanystereo`). The camera publishes no depth
+of its own. Dynamic stereo auto-calibration is off unless `auto_calibration`
+selects it. Device access defaults off. Factory exports
 and explicit raw-axis accelerometer correction are required for localization.
 Stereo pairs use their average mid-exposure timestamp, with a 0.5 ms skew gate.
 

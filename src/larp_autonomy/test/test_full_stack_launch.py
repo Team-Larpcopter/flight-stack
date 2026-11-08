@@ -25,9 +25,9 @@ def context(tmp_path, monkeypatch):
     file.write_text('{}')
     c = launch.LaunchContext()
     c.launch_configurations.update({
-        'mode': 'shadow', 'alignment_verified': 'false', 'mission_id': '',
-        **{k: str(file) for k in ('rig_file', 'navigation_config',
-           'cad_prior_file', 'boundary_config', 'estimator_config', 'bridge_params')},
+        'static_cad_only': 'true', 'start_depth': 'false', 'start_visualization': 'false',
+        'foxglove_port': '8766', 'engine_path': '/models/saved.engine', 'mode': 'shadow', 'alignment_verified': 'false', 'mission_id': '',
+        **{k: str(file) for k in ('rig_file', 'navigation_config', 'cad_prior_file', 'boundary_config', 'estimator_config', 'bridge_params')},
         **{k: '0.0' for k in ('goal_x', 'goal_y', 'goal_z', 'goal_yaw', 'initial_map_x',
            'initial_map_y', 'initial_map_z', 'initial_map_yaw', 'map_heading_ned',
            'map_origin_ned_x', 'map_origin_ned_y', 'map_origin_ned_z')},
@@ -72,3 +72,18 @@ def test_serial_command(tmp_path, monkeypatch):
     c.launch_configurations['agent_device'] = 'not-a-device'
     with pytest.raises(ValueError):
         module.nodes(c)
+
+
+def test_dynamic_mapping_requires_rectified_rig(tmp_path, monkeypatch):
+    module, c = context(tmp_path, monkeypatch)
+    c.launch_configurations['static_cad_only'] = 'false'
+    with pytest.raises(ValueError, match='--depth'):
+        module.nodes(c)
+    Path(c.launch_configurations['rig_file']).write_text(
+        'depth_frame: native_oak_depth_optical\nT_body_depth: [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]\n')
+    c.launch_configurations.update(start_depth='true', start_visualization='true')
+    actions = module.nodes(c)
+    includes = [a for a in actions if isinstance(a, IncludeLaunchDescription)]
+    assert len(includes) == 3
+    assert any(dict(a.launch_arguments).get('publish_as_primary') == 'true' for a in includes)
+    assert any(dict(a.launch_arguments).get('static_cad_only') == 'false' for a in includes)

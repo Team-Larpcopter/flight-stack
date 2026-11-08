@@ -19,7 +19,7 @@ def load_launch(name):
 def context(mode):
     c = launch.LaunchContext()
     c.launch_configurations.update({
-        'mode': mode, 'route_backend': 'super_astar', 'alignment_verified': 'false', 'mission_id': '',
+        'static_cad_only': 'true', 'mode': mode, 'route_backend': 'super_astar', 'alignment_verified': 'false', 'mission_id': '',
         'rig_file': '/unused/rig', 'navigation_config': '/unused/nav',
         'cad_prior_file': '/unused/cad',
         'boundary_config': '/unused/bounds', 'map_heading_ned': '0.0',

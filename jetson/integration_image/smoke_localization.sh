@@ -13,13 +13,15 @@ import signal
 import subprocess
 import tempfile
 import time
+from ament_index_python.packages import get_package_share_directory
 root = Path.cwd()
+estimator_config = Path(get_package_share_directory('larp_localization')) / 'config/oak_d_s2/estimator_config.yaml'
 commands = {
     'camera': [str(root / 'install/larp_hardware/lib/larp_hardware/oak_native_node'),
                '--ros-args', '-p', 'connect_device:=false'],
     'sqrtvins': [str(root / 'install/ov_srvins/lib/ov_srvins/run_subscribe_msckf'),
                  '--ros-args', '-r', '__ns:=/fresh_clone_smoke', '-p',
-                 'config_path:=' + str(root / 'src/larp_localization/config/oak_d_s2/estimator_config.yaml')],
+                 'config_path:=' + str(estimator_config)],
 }
 for name, command in commands.items():
     with tempfile.TemporaryFile(mode='w+') as log:

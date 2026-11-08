@@ -35,3 +35,6 @@ src/vendor/ov_srvins/demo/
 
 # Operator-owned rig, enclosure and mission configuration
 deployment/
+
+# Target-specific TensorRT engines are deployment artifacts.
+src/larp_liteanystereo/models/*.engine

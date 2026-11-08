@@ -39,3 +39,13 @@ practice are in [CONTRIBUTING.md](CONTRIBUTING.md). PRs use
 - [Workspace setup](docs/workspace.md)
 - [AI assistant setup](docs/ai-assistants.md)
 - [Agent / project contract](AGENTS.md)
+
+## Build offboard and deploy to Jetson
+
+Use the [ARM64 emulator build and deployment workflow](docs/offboard-arm64.md) to build
+the complete Release stack on a PC, reuse the saved Jetson TensorRT engine, and
+transfer the compiled runtime bundle. Jetson assembles a self-contained image
+using its cached dependency layers, without compiling code or rebuilding the engine.
+It includes localization, live LAS/ROG mapping, planning, DDS/PX4 integration, and
+the combined Foxglove layout. The separate tmux launcher starts camera, VINS and
+Foxglove in three panes with mouse mode enabled.

@@ -37,7 +37,7 @@ def nodes(context):
         Node(package='larp_navigation', executable='depth_map_node', output='screen',
              parameters=[value('boundary_config'), {'rig_file': value('rig_file'),
                          'config_file': value('navigation_config'), 'cad_prior_file': value('cad_prior_file'),
-                         'require_hard_boundary': True, 'static_cad_only': True, 'route_backend': backend, 'use_sim_time': clock}],
+                         'require_hard_boundary': True, 'static_cad_only': value('static_cad_only').lower() == 'true', 'route_backend': backend, 'use_sim_time': clock}],
              remappings=remaps),
         Node(package='larp_autonomy', executable='trajectory_bridge', output='screen',
              parameters=[{'simulation_only': mode == 'simulation', 'hardware_enabled': mode == 'hardware',
@@ -55,7 +55,7 @@ def nodes(context):
 
 def generate_launch_description():
     required = ('rig_file', 'navigation_config', 'cad_prior_file', 'boundary_config')
-    defaults = {'mode': 'shadow', 'route_backend': 'super_astar', 'alignment_verified': 'false', 'mission_id': '',
+    defaults = {'static_cad_only': 'true', 'mode': 'shadow', 'route_backend': 'super_astar', 'alignment_verified': 'false', 'mission_id': '',
                 'map_heading_ned': '0.0', 'map_origin_ned_x': '0.0', 'map_origin_ned_y': '0.0',
                 'map_origin_ned_z': '0.0', 'initial_map_x': '0.0', 'initial_map_y': '0.0',
                 'initial_map_z': '0.0', 'initial_map_yaw': '0.0',
