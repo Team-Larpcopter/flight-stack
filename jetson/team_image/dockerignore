@@ -1,9 +1,0 @@
-# Copied to ~/team_ws/.dockerignore by `larp image build`.
-# Send only the team-image files and camera/viz ROS packages to the Docker build,
-# not build/ install/ log/ or benchmark outputs.
-*
-!src/flight-stack/jetson/team_image/
-!src/flight-stack/src/larp_oak/
-!src/flight-stack/src/larp_viz/
-**/__pycache__/
-**/*.pyc
