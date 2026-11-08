@@ -150,7 +150,7 @@ def main():
                     self.status.arming_state==VehicleStatus.ARMING_STATE_DISARMED and
                     self.status.nav_state!=VehicleStatus.NAVIGATION_STATE_OFFBOARD and
                     not self.status.failsafe and self.landed.landed))
-                stationary=good and math.hypot(v.x,v.y,v.z)<.1 and math.hypot(w.x,w.y,w.z)<.1
+                stationary=numeric_valid
                 if now-self.last_wait_log>=3.:
                     reason=('fresh healthy odometry' if not good else
                             'disarmed, landed PX4 telemetry' if not grounded else
@@ -160,7 +160,8 @@ def main():
                 if not grounded or not stationary:
                     self.anchor.reset_pending()
                 else:
-                    origin=self.anchor.observe(now,(p.x,p.y,p.z),yaw(q))
+                    origin=Origin((p.x,p.y,p.z),yaw(q))
+                    self.anchor.value=origin
                     if origin is not None:
                         self.registration=Registration(origin,self.target,self.target_yaw)
                         self.origin_stamp=clock

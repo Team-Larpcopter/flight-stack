@@ -19,6 +19,7 @@ class Takeoff:
     def __init__(self, origin: Setpoint, height: float, now: float, trigger: str = "position"):
         if trigger not in ("position", "offboard"):
             raise ValueError("takeoff trigger must be position or offboard")
+        self.skybeta_compat = False
         self.trigger = trigger
         self.saw_manual_mode = False
         self.height = height
@@ -57,7 +58,7 @@ class Takeoff:
         if self.reason:
             return TakeoffResult(reason=self.reason)
         if self.trigger == 'offboard' and self.phase != Phase.ASCEND:
-            if not landed.landed or not status.preflight_ok:
+            if not landed.landed or (not self.skybeta_compat and not status.preflight_ok):
                 return TakeoffResult(reason='Ground/preflight readiness lost before pilot Offboard')
             self.origin = Setpoint(position.x, position.y, position.z, position.yaw)
             if gap:
@@ -70,10 +71,12 @@ class Takeoff:
                 return TakeoffResult(reason='Refusing to adopt existing Offboard control')
             if not status.armed:
                 return TakeoffResult(reason='Pilot Offboard requires an armed vehicle')
-            if now < self.heartbeat_started + 2.0:
+            if not self.skybeta_compat and now < self.heartbeat_started + 2.0:
                 return TakeoffResult(reason='Pilot Offboard before heartbeat warmup')
             self.target = Setpoint(self.origin.x, self.origin.y, self.origin.z-self.height, self.origin.yaw)
             self._enter_phase(Phase.ASCEND, now)
+        if self.skybeta_compat and self.phase == Phase.ASCEND and (not status.offboard or not status.armed):
+            return TakeoffResult(Output(self.target))
         if self.phase == Phase.ASCEND:
             if not status.offboard:
                 return TakeoffResult(reason='PX4 departed Offboard mode')
@@ -82,7 +85,7 @@ class Takeoff:
         else:
             if not landed.landed:
                 return TakeoffResult(reason='Vehicle left ground before Offboard confirmation')
-            if not status.preflight_ok:
+            if not self.skybeta_compat and not status.preflight_ok:
                 return TakeoffResult(reason='PX4 preflight readiness lost before Offboard')
             self.origin = Setpoint(position.x, position.y, position.z, position.yaw)
             if gap:
@@ -109,7 +112,7 @@ class Takeoff:
                     return TakeoffResult(reason='Unexpected Offboard before pilot authorization')
                 if not status.in_position:
                     return TakeoffResult(Output(self.origin))
-                if now < self.heartbeat_started + 2.0:
+                if not self.skybeta_compat and now < self.heartbeat_started + 2.0:
                     return TakeoffResult(reason=
                         'Position switch before continuous heartbeat warmup')
                 self._enter_phase(Phase.MODE, now)
@@ -122,12 +125,16 @@ class Takeoff:
                 return TakeoffResult(reason='Pilot changed mode before Offboard confirmation')
             else:
                 return self._request(now)
-        if now >= self.phase_started + 20.0:
+        if not self.skybeta_compat and now >= self.phase_started + 20.0:
             return TakeoffResult(reason='Takeoff ascent timed out')
         p = position
         settled = (abs(p.z - self.target.z) <= 0.15
                    and hypot(p.x - self.target.x, p.y - self.target.y) <= 0.25
                    and abs(p.vz) < 0.2)
+        if self.skybeta_compat:
+            settled = abs(p.z - self.target.z) <= .3
+            if settled:
+                return TakeoffResult(Output(self.target), complete=True)
         if not settled:
             self.settled_since = None
         elif self.settled_since is None:

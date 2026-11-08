@@ -279,3 +279,23 @@ streaming its captured position until a fresh trajectory arrives; `hold_timeout`
 does not request landing. Mission completion still lands, and all telemetry,
 estimator-reset, pilot-mode and geofence checks remain active. Standalone
 takeoff/hold launches default to `wait_for_planner: false` and retain timed landing.
+
+### Skybeta-compatible mission runtime
+
+The ROS executive defaults `skybeta_compat` to true for SUPER, EGO, Hari's route
+follower, fixed-course and triangle launches. It keeps publishing through PX4
+validity/failsafe diagnostics, telemetry age and timer gaps instead of latching
+ERROR. It does not enforce preflight loss, heartbeat warmup or ascent timeout;
+ascent completes within 0.3 m of target altitude. Position references persist
+without a receipt deadline. Pilot authorization, explicit mode acknowledgements,
+finite trajectory values and landing handoff remain. No automatic Offboard
+reacquisition occurs after pilot mode exit.
+
+Ground registration still needs a finite map/PX4 pose and a disarmed, landed
+vehicle, but no health/stationary dwell. The planner-to-executive bridge does not
+gate on VIO health or certificate age. Mapping and collision validation remain
+planner responsibilities. The triangle/fixed-course follower no longer aborts on
+pose age, tracking distance or start heading/position tolerances.
+
+These settings allow delayed pose streams through; they do not repair upstream
+camera/VINS delay or override PX4 firmware's own validity/failsafe decisions.
