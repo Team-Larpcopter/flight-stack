@@ -40,8 +40,8 @@ The launch includes:
 6. In `hardware` mode only: external vision to PX4 and the flight executive.
 
 The executive is the sole owner of offboard heartbeat, setpoints and landing
-commands. Existing behavior is retained: pilot arming followed by Position-mode
-selection authorizes automatic takeoff; the executive hands control to planner
+commands. In hardware mode, pilot arming followed by an Offboard-mode
+transition authorizes automatic takeoff; the executive hands control to planner
 samples in HOLD/TRACKING and lands after certified arrival or its hold timeout.
 The launch itself does not send an arm command.
 
@@ -125,3 +125,6 @@ and offboard-loss failsafe must already be configured. This launch supplies the
 companion-side communication and execution path; it does not flash firmware or
 silently change flight-controller parameters. The new full launch has not been
 qualified by an actual flight.
+
+For the dynamic 5 cm map and eight-pane hardware/shadow launchers, use the
+[full mission runtime](full-mission-tmux.md).
