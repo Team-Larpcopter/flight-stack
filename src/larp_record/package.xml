@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>larp_record</name>
+  <version>0.1.0</version>
+  <description>Record all ROS 2 topics to a rosbag, with raw images replaced by compressed copies.</description>
+  <maintainer email="team@larpcopter.local">Team Larpcopter</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>ros2run</exec_depend>
+  <exec_depend>ros2bag</exec_depend>
+  <exec_depend>rosbag2_storage_default_plugins</exec_depend>
+  <exec_depend>rosbag2_compression_zstd</exec_depend>
+  <exec_depend>image_transport</exec_depend>
+  <exec_depend>compressed_depth_image_transport</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
