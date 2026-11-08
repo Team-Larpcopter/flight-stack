@@ -27,7 +27,15 @@ int main(int argc,char** argv) {
   }
   auto edge=[&](const auto& a,const auto& b){return map->isLineFree(a,b,true,true);};
   navigation::GlobalGridRoute route(argv[1],map,clock,edge);route.setBounds(lo,hi);
-  auto nearby=route.nearby(start,goal,1,1,1.);
+  auto finish=[&](navigation::GlobalGridRoute& r,uint64_t revision) {
+    navigation::Polyline out;
+    for(int slice=0;slice<2000;++slice) {
+      out=r.nearby(start,goal,1,revision,1.);
+      if(!out.empty() || r.reason()!="SUPER A* searching (progress retained)")break;
+    }
+    return out;
+  };
+  auto nearby=finish(route,1);
   std::cout<<"search_ms="<<route.lastSearchMs()<<" reason="<<route.reason()<<" points="<<route.route().points.size()<<std::endl;
   for(const auto& p:route.route().points)std::cout<<"ROUTE "<<p.x()<<" "<<p.y()<<" "<<p.z()<<std::endl;
   require(nearby.size()>=2,"full-goal A* search failed");
@@ -43,6 +51,18 @@ int main(int argc,char** argv) {
   path_search::Astar bounded(argv[1],clock,map);bounded.setSearchBounds(lo,hi);bounded.setEdgeValidator(edge);
   navigation::Polyline timed;
   require(bounded.pointToPointPathSearch(start,goal,path_search::ON_INF_MAP|path_search::UNKNOWN_AS_OCCUPIED|path_search::FULL_GOAL,-1.,timed,1e-12)==super_utils::TIME_OUT,"timeout used frozen simulation clock");
+  // Tiny slices force many yields; open/closed state must survive each call.
+  const int resume_flags=path_search::ON_INF_MAP|path_search::UNKNOWN_AS_OCCUPIED|
+    path_search::FULL_GOAL|path_search::RESUMABLE;
+  auto pending=bounded.pointToPointPathSearch(start,goal,resume_flags,-1.,timed,1e-12);
+  require(pending==super_utils::NO_NEED && bounded.searchPending() && timed.empty(),"partial search escaped as an executable path");
+  int slices=0;
+  while(pending==super_utils::NO_NEED && ++slices<10000)
+    pending=bounded.pointToPointPathSearch(start,goal,resume_flags,-1.,timed,.0005);
+  require(pending==super_utils::REACH_GOAL && !bounded.searchPending() && slices>1,"search progress did not survive yielding");
+  for(size_t i=1;i<timed.size();++i)require(edge(timed[i-1],timed[i]),"resumed route crossed blocked geometry");
+  bounded.pointToPointPathSearch(start,goal,resume_flags,-1.,timed,1e-12);
+  bounded.cancelSearch();require(!bounded.searchPending(),"cancel retained old frontier");
   if(argc==2) {
     // Closing both ends of the wall invalidates the cached route; no fallback.
     wall.clear();for(auto p:free)if(std::abs(p.x-.05)<.001)wall.push_back(p);
@@ -52,7 +72,9 @@ int main(int argc,char** argv) {
     require(route.nearby(start,goal,1,3,1.).empty() && route.searches()==attempts,"failed search retried without backoff");
     wall.clear();map->replaceClassifications(wall,free);now+=.1;
     std::this_thread::sleep_for(std::chrono::milliseconds(510));
-    require(route.nearby(start,goal,1,4,1.).size()>=2,"map reopening did not recover");
+    auto reopened=finish(route,4);
+    if(reopened.empty()) {std::this_thread::sleep_for(std::chrono::milliseconds(510));reopened=finish(route,4);}
+    require(reopened.size()>=2,"map reopening did not recover");
     require(route.nearby(start,{5,0,1},2,4,1.).empty(),"accepted out-of-map goal");
   }
   // Exercise the real trajectory frontend using this exact shared map.
@@ -63,11 +85,11 @@ int main(int argc,char** argv) {
   auto result=planner.plan();
   // Match the runtime coordinator: rejected curves remain uncommitted while
   // its existing bounded nearby-guide reduction retries at the next plan tick.
-  for(int attempt=1;result!=super_utils::SUCCESS && attempt<5;++attempt) {
+  for(int attempt=1;result!=super_utils::SUCCESS && attempt<2000;++attempt) {
     require(planner.position().empty(),"failed optimization committed a curve");
     // Global search failures use a 500 ms steady-clock cooldown. Advancing the
     // simulated clock alone does not allow a real retry after a search timeout.
-    if(planner.gridRoute()->route().points.empty())
+    if(planner.gridRoute()->route().points.empty() && planner.gridRoute()->reason()!="SUPER A* searching (progress retained)")
       std::this_thread::sleep_for(std::chrono::milliseconds(510));
     now+=.11;body.rcv_time=now;map->setBody(body);
     result=planner.plan();

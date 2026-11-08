@@ -174,7 +174,11 @@ class DepthMapNode : public rclcpp::Node {
     const auto recovery=planner_->recoveryCount();
     const bool safe=planner_->ensureSafeCommand();
     const auto traj=planner_->position();
-    if(traj.empty()) {invalidate("no committed stopping curve");return;}
+    if(traj.empty()) {
+      const auto* route=planner_->gridRoute();
+      invalidate(route && route->reason()=="SUPER A* searching (progress retained)" ?
+        "global route search pending; waiting for completion" : "no committed stopping curve");return;
+    }
     command.start_time=rclcpp::Time(int64_t(traj.start_WT*1e9));
     for(const auto& piece:traj)command.position.push_back(serialize(piece,3));
     for(const auto& piece:planner_->yaw())command.yaw.push_back(serialize(piece,1));

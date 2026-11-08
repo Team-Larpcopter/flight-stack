@@ -46,7 +46,8 @@ class FlightExecutiveNode(Node):
         hold_timeout = self.declare_parameter('hold_timeout', 5.0).value
         landing_timeout = self.declare_parameter('landing_timeout', 45.0).value
         trigger = self.declare_parameter('takeoff_trigger', 'position').value
-        self.state_machine = StateMachine(monotonic(), height, hold_timeout, landing_timeout, trigger, readiness_timeout=0.0 if hardware else 30.0)
+        self.state_machine = StateMachine(monotonic(), height, hold_timeout, landing_timeout, trigger, readiness_timeout=0.0 if hardware else 30.0,
+                                          wait_for_planner=self.declare_parameter('wait_for_planner', False).value)
         self.prefix = self.declare_parameter('px4_topic_prefix', '/fmu').value.rstrip('/')
         if not self.prefix.startswith('/') or self.prefix == '':
             raise ValueError('px4_topic_prefix must be an absolute nonempty topic prefix')

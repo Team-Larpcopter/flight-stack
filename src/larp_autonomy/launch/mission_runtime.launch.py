@@ -90,7 +90,7 @@ def nodes(context):
             result.append(node('flight_executive','flight_executive_node',[dict(
                 simulation_only=False,hardware_enabled=True,takeoff_trigger='position',align_px4_to_map_on_ground=True,
                 target_system=cfg.get('target_system',1),target_component=cfg.get('target_component',1),
-                takeoff_height=cfg['takeoff_height'],hold_timeout=cfg['planner_hold_timeout_s'],require_autonomy_ready=True,enforce_boundary=True,
+                takeoff_height=cfg['takeoff_height'],hold_timeout=cfg['planner_hold_timeout_s'],wait_for_planner=True,require_autonomy_ready=True,enforce_boundary=True,
                 map_boundary_lower=cfg['hard_boundary_lower'],map_boundary_upper=cfg['hard_boundary_upper'],
                 map_heading_ned=cfg['map_heading_ned'],map_origin_ned=cfg['map_origin_ned'])]))
     return [RegisterEventHandler(OnProcessExit(on_exit=[EmitEvent(event=Shutdown(reason='Component exited'))])),*result]

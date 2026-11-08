@@ -273,3 +273,9 @@ or persistent mission-frame offsets.
 
 After this interface change, rebuild `flight_executive_msgs`, `flight_executive`,
 and `flight_trajectory`, then source the new overlay in every ROS terminal.
+
+The full mission launch sets `wait_for_planner: true`. In this mode HOLD keeps
+streaming its captured position until a fresh trajectory arrives; `hold_timeout`
+does not request landing. Mission completion still lands, and all telemetry,
+estimator-reset, pilot-mode and geofence checks remain active. Standalone
+takeoff/hold launches default to `wait_for_planner: false` and retain timed landing.
