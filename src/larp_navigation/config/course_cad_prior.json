@@ -1,8 +1,14 @@
 {
-  "source": "third_party/flyx_sim/environments/dronehacks_course_v3/source/dronehacks-course-v3.obj",
-  "source_sha256": "e610bcf9666422e2a0a78cb46f542fc8c4d5a7ef9b15f6123f1abe40f5b8e9e1",
-  "map_sha256": "a7b7dd9fbd2c6f6a9c61cce525735c85b5f3f7ab477a9fb50dbc38c02130f055",
+  "source": "config/course_layout_2026_11.json",
+  "source_sha256": "95a731b7c569ab9118b75f04e30bf09c9afe889a6c41f3d7bdf2e408ae113376",
+  "map_sha256": "16ff1ee07f53970bf49d4fbab3e8d1cec8840a7c511976ca2ef62e256521bfa4",
   "resolution": 0.1,
+  "layout_id": "dronehacks-2026-11-w1-w2",
+  "base_prior": {
+    "source": "third_party/flyx_sim/environments/dronehacks_course_v3/source/dronehacks-course-v3.obj",
+    "source_sha256": "e610bcf9666422e2a0a78cb46f542fc8c4d5a7ef9b15f6123f1abe40f5b8e9e1",
+    "map_sha256": "a7b7dd9fbd2c6f6a9c61cce525735c85b5f3f7ab477a9fb50dbc38c02130f055"
+  },
   "group_cells": {
     "Tube cradle 1": 50,
     "C2b chicane wall": 486,
@@ -11,7 +17,7 @@
     "Boulder 1": 124,
     "C1 chicane wall": 684,
     "Tube oval 58 x 72 x 60": 1173,
-    "M1 maze divider": 648,
+    "M1 maze divider": 666,
     "Tube cradle 3": 50,
     "Boulder 3": 125,
     "C2a chicane wall (window)": 532,
@@ -26,5 +32,35 @@
     "M3 maze divider": 648
   },
   "alignment": "training launch ENU (-2.5146,1.1144,0.0672), heading +90 degrees; nominal setup, not live truth",
-  "semantics": "CAD-derived free and occupied prior, sensor-revisable; immutable net/geofence separate"
+  "semantics": "CAD-derived free and occupied prior with schematic W1/W2 placement; sensor-revisable; immutable net/geofence separate",
+  "unchanged_cells_sha256": "6f4d16e6f39f8c6ac936d48312f567d5f8f084ef4c6cc0b4bbf0a79f3a72cdf9",
+  "edit_volume_cells": 2358,
+  "preserved_cells": 120650,
+  "occupied_cells": 10632,
+  "registration": {
+    "rotation": [
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        -1,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        1
+      ]
+    ],
+    "translation_m": [
+      -4.1624,
+      0.5334,
+      -0.0672
+    ],
+    "reference": "Existing training-launch registration; map +X north, +Y west. This is not a new surveyed hardware alignment."
+  },
+  "placement_source": "Team top-down schematic and edited Scaniverse point cloud; normalized to the existing CAD panel dimensions. Approximate placement, not surveyed registration."
 }

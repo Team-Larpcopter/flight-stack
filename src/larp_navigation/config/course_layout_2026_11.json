@@ -1,0 +1,32 @@
+{
+  "layout_id": "dronehacks-2026-11-w1-w2",
+  "description": "W1 rotates 45 degrees clockwise about its south attachment to W4; W2 runs east along the north net from the northwest corner.",
+  "placement_source": "Team top-down schematic and edited Scaniverse point cloud; normalized to the existing CAD panel dimensions. Approximate placement, not surveyed registration.",
+  "reference_scan": {
+    "file": "dronehacks-course-scan-2026-11-06-updated.ply",
+    "sha256": "859c4ecc48a30f186dd264078c06bf3d3be6aa846c44097ae21bf7e3b95a2872",
+    "use": "Layout reference only; raw Scaniverse coordinates are not the planner map frame. Only W1/W2 placement is transferred. Other CAD geometry and free-space assumptions remain unchanged."
+  },
+  "course_frame": "metres, southwest floor corner, +X east, +Y north, +Z up",
+  "map_from_course": {
+    "rotation": [[0, 1, 0], [-1, 0, 0], [0, 0, 1]],
+    "translation_m": [-4.1624, 0.5334, -0.0672],
+    "reference": "Existing training-launch registration; map +X north, +Y west. This is not a new surveyed hardware alignment."
+  },
+  "base_map_sha256": {
+    "0.1": "a7b7dd9fbd2c6f6a9c61cce525735c85b5f3f7ab477a9fb50dbc38c02130f055",
+    "0.05": "d5db847f1a70ce6ce1389a93a8104b1a2ae42dbeca8a8fcdff1fdec39cd38fd4"
+  },
+  "old_walls": {
+    "M1 maze divider": {"a": [1.1176, 3.556], "b": [1.1176, 5.1689], "thickness_m": 0.1016, "z_m": [0, 1.7272]},
+    "M2 maze divider": {"a": [2.2352, 4.4831], "b": [2.2352, 6.096], "thickness_m": 0.1016, "z_m": [0, 1.7272]}
+  },
+  "new_walls": {
+    "M1 maze divider": {"a": [1.1175, 3.556], "heading_from_east_degrees": 45.0, "length_m": 1.613, "thickness_m": 0.1016, "z_m": [0, 1.7272]},
+    "M2 maze divider": {"a": [0.12, 5.70], "b": [1.733, 5.70], "thickness_m": 0.1016, "z_m": [0, 1.7272]}
+  },
+  "shared_fixed_solids": {
+    "W4 barrier": {"a": [0, 3.5052], "b": [4.6228, 3.5052], "thickness_m": 0.1016, "z_m": [0, 1.7272]},
+    "Floor 20 x 20 ft": {"a": [0, 3.048], "b": [6.096, 3.048], "thickness_m": 6.096, "z_m": [-0.00635, 0]}
+  }
+}

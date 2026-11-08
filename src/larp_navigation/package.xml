@@ -18,6 +18,7 @@
 <depend>flight_executive_msgs</depend>
 <test_depend>rclpy</test_depend>
 <test_depend>python3-yaml</test_depend>
+<test_depend>python3-numpy</test_depend>
 <depend>eigen</depend>
 <depend>yaml-cpp</depend>
 <depend>libpcl-all-dev</depend>

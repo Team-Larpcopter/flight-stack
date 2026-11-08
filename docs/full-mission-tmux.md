@@ -57,6 +57,9 @@ camera and VINS publishers.
 
 The runtime uses `navigation_fine.yaml` and `course_cad_prior_fine.txt`: 5 cm
 voxels, a revisable CAD prior, and one shared map for SUPER A* and trajectories.
+The packaged priors include the updated W1/W2 wall layout; see
+[planning-map provenance and regeneration](course-map-prior.md) for geometry,
+coordinate registration, and rebuild requirements.
 LAS and the mapper both reject metric depth outside 0.3–3.0 m. Invalid/no-return
 pixels are unknown; they never count as free-space rays.
 

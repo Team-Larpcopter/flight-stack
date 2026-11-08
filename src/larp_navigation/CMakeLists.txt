@@ -119,7 +119,7 @@ target_link_libraries(probe_route_frontend super_core)
 if(BUILD_TESTING)
   add_test(NAME cad_corner_frontend COMMAND probe_route_frontend
     ${CMAKE_CURRENT_SOURCE_DIR}/config/local_course_cad.json
-    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/cad_corner_route.xyz)
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/updated_course_route.xyz)
   set_tests_properties(cad_corner_frontend PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
 
@@ -132,6 +132,12 @@ ament_target_dependencies(planner_latency_native rclcpp sensor_msgs nav_msgs geo
 install(TARGETS planner_latency_native DESTINATION lib/${PROJECT_NAME})
 if(BUILD_TESTING)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME course_layout_prior COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/course_layout_prior_test.py)
+  add_test(NAME updated_course_route COMMAND global_grid_route_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/config/navigation_fine.yaml
+    ${CMAKE_CURRENT_SOURCE_DIR}/config/course_cad_prior_fine.txt 1.8)
+  set_tests_properties(updated_course_route PROPERTIES TIMEOUT 90)
   add_test(NAME super_grid_pipeline COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/static_pipeline_smoke.py
     --mapper $<TARGET_FILE:depth_map_node>

@@ -65,6 +65,10 @@ int main(int argc,char** argv) {
   // its existing bounded nearby-guide reduction retries at the next plan tick.
   for(int attempt=1;result!=super_utils::SUCCESS && attempt<5;++attempt) {
     require(planner.position().empty(),"failed optimization committed a curve");
+    // Global search failures use a 500 ms steady-clock cooldown. Advancing the
+    // simulated clock alone does not allow a real retry after a search timeout.
+    if(planner.gridRoute()->route().points.empty())
+      std::this_thread::sleep_for(std::chrono::milliseconds(510));
     now+=.11;body.rcv_time=now;map->setBody(body);
     result=planner.plan();
     std::cout<<"SUPER retry="<<attempt<<" result="<<int(result)<<std::endl;
