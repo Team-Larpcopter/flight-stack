@@ -37,7 +37,7 @@ VINS_THROTTLE = ["/autonomy/poseimu@10", "/autonomy/imu/data@20",
                  *[f"/autonomy/points_{kind}@2" for kind in ("slam", "msckf", "aruco", "sim")]]
 THROTTLE = VINS_THROTTLE + ["/autonomy/goal@2", "/autonomy/map_state@5",
             "/autonomy/committed_trajectory@5", "/autonomy/rejected_map@1", PX4_POSITION]
-SERVE = "['^/viz/.*$']"  # only the throttled /viz copies; no client writes at all
+SERVE = "['^/viz/.*$', '^/tf_static$']"  # monitoring plus fixed frame registration; no client writes
 NOTHING = "['^$']"
 
 
