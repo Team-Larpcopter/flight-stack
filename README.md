@@ -81,3 +81,14 @@ Dynamic ROG updates skip classification/inflation outside the immutable hard
 boundary. Depth rays still clear their observed in-bound portions; exterior cells
 remain blocked by the boundary. This avoids unknown-inflation work outside the
 operating volume without changing voxel size, clearance or confirmation counts.
+
+Full-mission A* runs in at most 20 ms work slices, retaining its frontier between
+planner ticks with no total search deadline. New map revisions do not discard
+unfinished work; a completed route is checked against the current map before use.
+Goal changes, substantial start movement, or an invalid search restart the search.
+An exhausted search can still report no path and retry as the map changes.
+The full mission sets `wait_for_planner=true`: initial or replacement-plan delays
+hold the aircraft instead of triggering the planner hold timeout. Fresh certified
+trajectories resume tracking; goal completion still lands. PX4 failsafes, pilot
+mode takeover, estimator-reset detection and body geofence enforcement remain.
+The dedicated takeoff/hold test retains its timed landing behavior.

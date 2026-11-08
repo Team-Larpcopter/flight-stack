@@ -33,8 +33,6 @@ namespace path_search {
     }
     // Scores in the heap must be immutable: changing a GridNode's score in
     // place does not reheapify std::priority_queue. Push decreases and skip stale entries.
-    struct OpenEntry {double score;GridNodePtr node;};
-    struct OpenCompare {bool operator()(const OpenEntry& a,const OpenEntry& b)const{return a.score>b.score;}};
 
 
     Astar::Astar(const std::string &cfg_path,
@@ -232,13 +230,18 @@ namespace path_search {
     RET_CODE Astar::pointToPointPathSearch(const rog_map::Vec3f &start_pt, const rog_map::Vec3f &end_pt,
                                            const int &flag, const double &searching_horizon,
                                            rog_map::vec_Vec3f &out_path, const double &time_out) {
-        RET_CODE setup_ret = setup(start_pt, end_pt, flag, searching_horizon);
-        if (setup_ret != SUCCESS) {
-            return setup_ret;
+        const bool resumable = flag & RESUMABLE;
+        if(resumable && (!(flag & FULL_GOAL) || searching_horizon>=0))return INIT_ERROR;
+        const bool resume = resumable && search_pending_ && pending_flag_==flag &&
+            (start_pt-pending_start_).squaredNorm()<1e-16 && (end_pt-pending_goal_).squaredNorm()<1e-16;
+        if(!resume) {
+            cancelSearch();
+            RET_CODE setup_ret = setup(start_pt, end_pt, flag, searching_horizon);
+            if(setup_ret!=SUCCESS)return setup_ret;
+            ++rounds_;
         }
         out_path.clear();
         double time_1 = wallSeconds();
-        ++rounds_;
         /// 2) Switch both start and end point to local map
 
         rog_map::Vec3f hit_pt;
@@ -340,6 +343,8 @@ namespace path_search {
         GridNodePtr neighborPtr = NULL;
         GridNodePtr current = NULL;
 
+        if(resume)open_set.swap(pending_open_);
+        else {
         startPtr->id_g = start_idx;
         startPtr->rounds = rounds_;
         startPtr->distance_score = 0;
@@ -347,6 +352,14 @@ namespace path_search {
         startPtr->state = GridNode::OPENSET; //put start node in open set
         startPtr->father_ptr = NULL;
         open_set.push({startPtr->total_score,startPtr}); //put start in open set
+        }
+        search_pending_=false;
+        auto yield_search=[&]() {
+            if(!resumable)return TIME_OUT;
+            pending_open_.swap(open_set);search_pending_=true;
+            pending_start_=start_pt;pending_goal_=end_pt;pending_flag_=flag;
+            return NO_NEED; // pending, not failure; callers must not execute a partial route
+        };
         int num_iter = 0;
         vector<GridNodePtr> node_path;
 
@@ -364,11 +377,15 @@ namespace path_search {
         }
 
         while (!open_set.empty()) {
-            if(wallSeconds()-time_1>time_out)return TIME_OUT;
+            if(wallSeconds()-time_1>time_out)return yield_search();
             num_iter++;
             const auto entry=open_set.top();open_set.pop();
             current=entry.node;
             if(current->state==GridNode::CLOSEDSET || entry.score!=current->total_score)continue;
+            if(resumable) {
+                Vec3f current_pos;globalIndexToPos(current->id_g,current_pos);
+                if(!map_ptr_->isKnownFreeInflate(current_pos))continue;
+            }
             if (cfg_.visual_process) {
                 rog_map::Vec3f local_pt;
                 globalIndexToPos(current->id_g, local_pt);
@@ -487,13 +504,13 @@ namespace path_search {
                             continue;
                         }
 
+                        double distance_score = current->distance_score + sqrt(dx * dx + dy * dy + dz * dz);
+                        if(flag_explored && distance_score>=neighborPtr->distance_score)continue;
                         if(edge_validator_) {
                             Vec3f currentPos;globalIndexToPos(current->id_g,currentPos);
                             if(!edge_validator_(currentPos,neighborPos))continue;
                         }
                         neighborPtr->rounds = rounds_;
-                        double distance_score = sqrt(dx * dx + dy * dy + dz * dz);
-                        distance_score = current->distance_score + distance_score;
                         rog_map::Vec3f pos;
                         globalIndexToPos(neighborIdx, pos);
                         double heu_score = getHeu(neighborPtr, endPtr, cfg_.heu_type);
@@ -516,9 +533,7 @@ namespace path_search {
                     }
             double time_2 = wallSeconds();
             if (!cfg_.visual_process && (time_2 - time_1) > time_out) {
-                fmt::print(fg(fmt::color::indian_red),
-                           "Failed in A star path searching !!! {} seconds time limit exceeded.\n", time_out);
-                return TIME_OUT;
+                return yield_search();
             }
         }
         double time_2 = wallSeconds();

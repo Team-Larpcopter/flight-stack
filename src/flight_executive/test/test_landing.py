@@ -75,8 +75,9 @@ def test_stale_tracking_has_one_second_repeat_then_five_second_hold():
     assert r.tick().command == Command.LAND
 
 
-def test_stationary_final_sample_requires_continuous_measured_settling():
-    r = Rig()
+@pytest.mark.parametrize("wait_for_planner", [False, True])
+def test_stationary_final_sample_requires_continuous_measured_settling(wait_for_planner):
+    r = Rig(wait_for_planner=wait_for_planner)
     r.position = replace(r.position, vx=.3)
     for _ in range(25):
         r.sample(final=True)

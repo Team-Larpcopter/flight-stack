@@ -485,3 +485,26 @@ def test_hardware_position_trigger_rejects_already_armed_startup():
     f.status = replace(f.status, armed=True)
     assert f.tick().command is None
     assert f.c.state == State.ERROR
+
+
+def test_planner_wait_holds_without_deadline_then_resumes_and_preserves_faults():
+    f = Flight()
+    f.c = StateMachine(0., wait_for_planner=True)
+    f.hold()
+    held = f.tick().setpoint
+    for _ in range(240):
+        out = f.tick()
+        assert f.c.state == State.HOLD and out.setpoint == held
+        assert out.command is None
+    f.c.accept_trajectory(trajectory(f.now))
+    f.tick()
+    assert f.c.state == State.TRACKING
+    for _ in range(260):
+        out = f.tick()
+    assert f.c.state == State.HOLD and out.command is None
+    f.c.accept_trajectory(trajectory(f.now))
+    f.tick()
+    assert f.c.state == State.TRACKING
+    f.status = replace(f.status, offboard=False)
+    assert f.tick().setpoint is None
+    assert f.c.state == State.ERROR

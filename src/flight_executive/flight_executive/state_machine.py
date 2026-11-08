@@ -15,7 +15,7 @@ class StateMachine:
 
     def __init__(self, started_at: float, takeoff_height: float = 1.0,
                  hold_timeout: float = 5.0, landing_timeout: float = 45.0,
-                 takeoff_trigger: str = "position", readiness_timeout: float = 30.0):
+                 takeoff_trigger: str = "position", readiness_timeout: float = 30.0, wait_for_planner: bool = False):
         if takeoff_trigger not in ("position", "offboard"):
             raise ValueError("takeoff_trigger must be position or offboard")
         self.takeoff_trigger = takeoff_trigger
@@ -28,6 +28,7 @@ class StateMachine:
                             ('landing_timeout', landing_timeout)):
             if not isfinite(value) or value <= 0:
                 raise ValueError(f'{name} must be finite and positive')
+        self.wait_for_planner = wait_for_planner
         self.hold_timeout = hold_timeout
         self.landing_timeout = landing_timeout
         self.hold_started = None
@@ -196,6 +197,6 @@ class StateMachine:
             return self._hold(Setpoint(p.x, p.y, p.z, p.yaw), now)
         if self.hold_started is None:
             self.hold_started = now
-        if now > self.hold_started + self.hold_timeout:
+        if not self.wait_for_planner and now > self.hold_started + self.hold_timeout:
             return self._start_land(now)
         return Output(self.hold_target)

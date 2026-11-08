@@ -49,7 +49,7 @@ def nodes(context):
                            parameters=[{'simulation_only': mode == 'simulation',
                                         'hardware_enabled': mode == 'hardware', 'use_sim_time': clock,
                                         'takeoff_height': float(value('takeoff_height')),
-                                        'hold_timeout': float(value('hold_timeout'))}]))
+                                        'hold_timeout': float(value('hold_timeout')), 'wait_for_planner': True}]))
     return result
 
 

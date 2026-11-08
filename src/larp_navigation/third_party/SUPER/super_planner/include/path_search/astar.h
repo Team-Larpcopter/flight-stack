@@ -72,6 +72,7 @@ namespace path_search {
         }
     };
 
+    const int RESUMABLE = (1 << 8); // FULL_GOAL search yields without losing progress.
     const int FULL_GOAL = (1 << 7); // No endpoint relocation or partial route.
     const int ON_INF_MAP = (1 << 0);
     const int ON_PROB_MAP = (1 << 1);
@@ -79,6 +80,9 @@ namespace path_search {
     const int UNKNOWN_AS_FREE = (1 << 4);
     const int USE_INF_NEIGHBOR = (1 << 5);
     const int DONT_USE_INF_NEIGHBOR = (1 << 6);
+
+    struct OpenEntry {double score;GridNodePtr node;};
+    struct OpenCompare {bool operator()(const OpenEntry& a,const OpenEntry& b)const{return a.score>b.score;}};
 
     class Astar {
 
@@ -93,6 +97,10 @@ namespace path_search {
         vector<GridNodePtr> grid_node_buffer_;
 
         int rounds_{0};
+        bool search_pending_{false};
+        int pending_flag_{0};
+        Vec3f pending_start_, pending_goal_;
+        std::priority_queue<OpenEntry, std::vector<OpenEntry>, OpenCompare> pending_open_;
         std::optional<std::pair<Vec3f,Vec3f>> search_bounds_;
         std::function<bool(const Vec3f&,const Vec3f&)> edge_validator_;
         GridNodePtr nodeAt(int index) {
@@ -166,11 +174,14 @@ namespace path_search {
         void setSearchBounds(const Vec3f& lower,const Vec3f& upper) {
             if(!lower.allFinite() || !upper.allFinite() || !(lower.array()<upper.array()).all())
                 throw std::invalid_argument("invalid A* search bounds");
+            cancelSearch();
             search_bounds_=std::make_pair(lower,upper);
         }
         void setEdgeValidator(std::function<bool(const Vec3f&,const Vec3f&)> validate) {
             edge_validator_=std::move(validate);
         }
+        void cancelSearch() {search_pending_=false;pending_open_={};}
+        bool searchPending() const {return search_pending_;}
         void setVisualProcessEn(const bool &en);
 
         void setFineInfNeighbors(const int & neighbor_step);
