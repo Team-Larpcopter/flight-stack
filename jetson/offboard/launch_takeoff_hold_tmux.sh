@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# Jetson: pilot Position trigger, 0.5 m ascent, two-second hold, then PX4 Land.
+# Uses the deployed runtime helpers next to this script. Stop other stack owners.
+# No map/obstacle readiness gate. No trajectory publisher is started.
+set -euo pipefail
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# The existing Jetson-specific file carries UART, DDS domain and config paths.
+if [[ -f $here/deployment.env ]]; then source "$here/deployment.env"; fi
+check_only=false
+case ${1:-} in
+  --check) check_only=true ;;
+  --help|-h)
+    echo 'Usage: bash launch_takeoff_hold_tmux.sh [--check]'
+    echo 'Five panes: pilot arms then selects Position; 0.5 m takeoff, 2 s hold, land.'
+    echo '--check validates setup without launching sensors or flight publishers.'
+    exit 0 ;;
+  '') ;;
+  *) echo 'Unknown argument; use --help' >&2; exit 2 ;;
+esac
+mode=hardware
+: "${DEPLOYMENT_CONFIG:?Set DEPLOYMENT_CONFIG or provide deployment.env next to this script}"
+image=${RUNTIME_IMAGE:-larp-flight-stack:arm64-runtime}
+container=${CONTAINER:-flight-stack-takeoff-hold}
+session=${SESSION:-flight-stack-takeoff-hold}
+command -v tmux >/dev/null
+# Reattach without launching another set of sensor/command publishers.
+if ! $check_only && tmux has-session -t "$session" 2>/dev/null; then
+  tmux set-option -t "$session" mouse on
+  exec tmux attach-session -t "$session"
+fi
+source "$here/runtime_mounts.sh"
+config=$(realpath "$DEPLOYMENT_CONFIG")
+[[ -f $config/mission.yaml ]] || { echo 'Missing DEPLOYMENT_CONFIG/mission.yaml' >&2; exit 2; }
+transport=${PX4_TRANSPORT:-udp4}; devices=()
+case $transport in
+  udp4) ;;
+  serial)
+    : "${PX4_DEVICE:?Set PX4_DEVICE for serial DDS}"
+    [[ -c $PX4_DEVICE ]] || { echo 'PX4_DEVICE must be a serial character device' >&2; exit 2; }
+    devices=(--device "$PX4_DEVICE:/dev/px4") ;;
+  *) echo 'PX4_TRANSPORT must be udp4 or serial' >&2; exit 2 ;;
+esac
+dds=()
+if [[ -n ${XRCE_REFS:-} ]]; then
+  dds+=(-v "$(realpath "$XRCE_REFS"):/etc/flight-stack/agent_refs.xml:ro"
+        -e XRCE_REFS=/etc/flight-stack/agent_refs.xml)
+fi
+if [[ -n ${DDS_PROFILE:-} ]]; then
+  dds+=(-v "$(realpath "$DDS_PROFILE"):/etc/flight-stack/dds.xml:ro"
+       -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/flight-stack/dds.xml
+       -e FASTDDS_DEFAULT_PROFILES_FILE=/etc/flight-stack/dds.xml)
+fi
+# A stopped container is not silently reused after configuration/image changes.
+# No automatic restart of an executive that might have already flown.
+if ! $check_only && docker container inspect "$container" >/dev/null 2>&1; then
+  echo "Container $container already exists. Stop its processes and remove it before a new mission." >&2
+  exit 2
+fi
+docker run --rm --network none "${runtime_mounts[@]}" -v "$config:/config:ro" "$image" \
+  python3 -c 'import sys; from larp_autonomy.runtime_config import load_config; load_config("/config/mission.yaml",sys.argv[1])' "$mode"
+if $check_only; then
+  docker run --rm --network none "${runtime_mounts[@]}" "$image" bash -ec '
+    test -x /flight-stack/install/flight_executive/lib/flight_executive/flight_executive_node
+    command -v MicroXRCEAgent >/dev/null
+    python3 -c "import flight_executive.flight_executive_node"
+  '
+  echo 'Configuration and executable checks passed. No sensors or flight publishers launched.'
+  exit 0
+fi
+for other in flight-stack-mission-hardware flight-stack-mission-shadow flight-stack-localization-runtime; do
+  if [[ $(docker inspect --format '{{.State.Running}}' "$other" 2>/dev/null || true) == true ]]; then
+    echo "Stop $other before starting this test; it shares the camera/PX4 connection." >&2
+    exit 2
+  fi
+done
+docker create --init --name "$container" "${runtime_mounts[@]}" --runtime nvidia --network host --ipc host \
+  --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb "${devices[@]}" "${dds[@]}" \
+  -v "$config:/config:ro" -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}" \
+  -e PX4_TRANSPORT="$transport" -e PX4_PORT="${PX4_PORT:-8888}" -e PX4_BAUD="${PX4_BAUD:-921600}" \
+  -e OPENBLAS_NUM_THREADS=1 -e OMP_NUM_THREADS=1 "$image" sleep infinity >/dev/null
+docker start "$container" >/dev/null
+# Pass the existing surveyed boundary to the unchanged executive adapter.
+executive_code=$(cat <<'PYTHON'
+import json
+import os
+from larp_autonomy.runtime_config import load_config
+cfg = load_config('/config/mission.yaml', 'hardware')
+params = dict(simulation_only=False, hardware_enabled=True,
+    takeoff_trigger='position', takeoff_height=0.5, hold_timeout=2.0,
+    target_system=cfg.get('target_system',1), target_component=cfg.get('target_component',1),
+    trajectory_topic='/takeoff_hold/unused_trajectory_in',
+    require_autonomy_ready=False, enforce_boundary=True,
+    map_boundary_lower=cfg['hard_boundary_lower'],
+    map_boundary_upper=cfg['hard_boundary_upper'],
+    map_heading_ned=cfg['map_heading_ned'], map_origin_ned=cfg['map_origin_ned'])
+command = ['ros2', 'run', 'flight_executive', 'flight_executive_node', '--ros-args']
+for key, value in params.items():
+    command.extend(['-p', key + ':=' + json.dumps(value)])
+os.execvp(command[0], command)
+PYTHON
+)
+pane() {
+  if [[ $1 == executive ]]; then
+    printf '%q ' docker exec -it "$container" /flight-stack/jetson/offboard/entrypoint.sh \
+      python3 -c "$executive_code"
+  else
+    printf '%q ' docker exec -it "$container" /flight-stack/jetson/offboard/entrypoint.sh \
+      ros2 launch larp_autonomy mission_runtime.launch.py "component:=$1" \
+      "mode:=$mode" mission_file:=/config/mission.yaml
+  fi
+}
+parts=(drivers foxglove vins dds executive)
+titles=(Drivers Foxglove sqrtVINS DDS 'Takeoff hold land')
+first=$(tmux new-session -d -P -F '#{pane_id}' -s "$session" -n system "bash --noprofile --norc -i")
+tmux set-option -t "$session" mouse on
+tmux set-option -t "$session" remain-on-exit off
+tmux set-option -t "$session" pane-border-status top
+tmux select-pane -t "$first" -T "${titles[0]}"
+tmux send-keys -t "$first" -l "$(pane drivers)"
+tmux send-keys -t "$first" Enter
+for ((i=1; i<${#parts[@]}; ++i)); do
+  created=$(tmux split-window -d -P -F '#{pane_id}' -t "$session:system" "bash --noprofile --norc -i")
+  tmux select-pane -t "$created" -T "${titles[i]}"
+  tmux send-keys -t "$created" -l "$(pane "${parts[i]}")"
+  tmux send-keys -t "$created" Enter
+  tmux select-layout -t "$session:system" tiled >/dev/null
+done
+tmux select-pane -t "$first"
+exec tmux attach-session -t "$session"
