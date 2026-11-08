@@ -178,6 +178,17 @@ class StateMachine:
                 self.fail('PX4 unexpectedly disarmed')
         if self.state == State.ERROR:
             return Output()
+        if (self.state == State.TAKEOFF
+                and self.phase in (Phase.PREPARE, Phase.WAIT_ARM)
+                and not self.status.armed and not self.status.offboard
+                and self.landed.landed and not self.status.preflight_ok):
+            # A disarmed preflight fluctuation revokes readiness, not the mission.
+            # Discard warmup/authorization; recovery needs a new arm/Position sequence.
+            self.state = State.WAITING
+            self.takeoff = None
+            self.resets = None
+            self.started_at = now
+            return Output()
         if self.state == State.TAKEOFF:
             result = self.takeoff.tick(now, self.status, self.position, self.landed, gap)
             if result.reason:
