@@ -3,7 +3,7 @@
 <description>Calibrated hardware inputs and certified planner-to-executive integration.</description>
 <maintainer email="team@larpcopter.local">Team Larpcopter</maintainer><license>Apache-2.0</license>
 <buildtool_depend>ament_python</buildtool_depend>
-<exec_depend>rclpy</exec_depend><exec_depend>sensor_msgs</exec_depend><exec_depend>nav_msgs</exec_depend>
+<exec_depend>rclpy</exec_depend><exec_depend>px4_msgs</exec_depend><exec_depend>sensor_msgs</exec_depend><exec_depend>nav_msgs</exec_depend>
 <exec_depend>geometry_msgs</exec_depend><exec_depend>std_msgs</exec_depend><exec_depend>tf2_ros</exec_depend>
 <exec_depend>dronehacks_msgs</exec_depend><exec_depend>flight_executive_msgs</exec_depend>
 <exec_depend>python3-numpy</exec_depend><exec_depend>python3-scipy</exec_depend><exec_depend>python3-opencv</exec_depend><exec_depend>python3-yaml</exec_depend>

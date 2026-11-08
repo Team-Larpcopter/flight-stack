@@ -192,3 +192,28 @@ TAKEOFF/LAND the lower Z is -0.5 m, or -1.0 m with fresh confirmed ground contac
 previous executive ceiling; planner/CAD obstacle bounds remain conservative.
 Simulation defaults retain zero padding. Set `geofence_padding_m:=0.0` on the
 executive to restore its previous envelope.
+
+### Freeze the common origin before mapping
+
+Both production tmux launchers now run `map_origin` in the VINS pane. The body
+adapter publishes provisional `vio_odom/base_link` data privately on
+`/autonomy/unregistered_odometry`. Before exposing mission odometry, the origin
+stage requires fresh healthy odometry and, on hardware, fresh disarmed/landed
+PX4 telemetry outside Offboard. It freezes after one second of position/yaw
+stability (5 cm / 0.05 rad), with linear and angular speeds below 0.1 m/s and
+0.1 rad/s. This stage does not require preflight readiness, avoiding a circular
+dependency on PX4 receiving vision. Existing executive readiness checks remain.
+
+At that instant it maps the sampled body position/yaw to the configured start
+pose (currently [0,0,0], yaw 0). It applies the same fixed translation and yaw
+rotation to subsequent positions, orientations, and world-frame covariance;
+body-frame velocities stay unchanged. `/autonomy/odometry` is then the single
+registered input to PX4 vision, the executive, planning and Foxglove. Output is
+bounded at 50 Hz. `/autonomy/map_origin` retains the chosen source pose for logs.
+
+Hardware dynamic mapping uses `/autonomy/map_update_ready`, which stays false
+until the executive publishes a map/PX4 alignment newer than this origin. No
+startup depth frames can revise the CAD prior before then. Shadow mode requires
+only the stable common origin. The offset never changes during the run; health
+loss pauses output/map updates without recentering. Restart the whole stack on
+the ground to choose a new origin, not an individual localization component.
