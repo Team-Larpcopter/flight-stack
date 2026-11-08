@@ -32,3 +32,6 @@ core.*
 
 # Upstream demo media is not needed by the vendored estimator
 src/vendor/ov_srvins/demo/
+
+# Operator-owned rig, enclosure and mission configuration
+deployment/

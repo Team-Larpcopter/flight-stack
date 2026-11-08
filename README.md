@@ -22,6 +22,10 @@ See [fresh-clone build and launch](docs/jetson-fresh-clone.md) for prerequisites
 container creation and the two-pane camera/sqrtVINS launcher, and
 [workspace setup](docs/workspace.md) for package development.
 
+For the complete camera → planner → PX4 runtime, see
+[standalone flight runtime](docs/full-stack-runtime.md). The build includes the
+XRCE-DDS Agent; `jetson/run_flight_stack.sh` selects shadow or hardware execution.
+
 ## Contributing
 
 Branch naming, review, labels for LLM-authored changes, and rebase-and-merge

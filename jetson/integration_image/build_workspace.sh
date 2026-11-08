@@ -4,6 +4,7 @@ set -eo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 workspace=$PWD
 source /opt/ros/humble/setup.bash
+command -v MicroXRCEAgent >/dev/null
 export PYTHONNOUSERSITE=1
 export CMAKE_BUILD_PARALLEL_LEVEL=${BUILD_JOBS:-1}
 export MAKEFLAGS="-j$CMAKE_BUILD_PARALLEL_LEVEL"

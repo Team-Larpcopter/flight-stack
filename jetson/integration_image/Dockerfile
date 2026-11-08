@@ -19,3 +19,26 @@ RUN if ! grep -q '^#define BOOST_VERSION 107400$' /usr/include/boost/version.hpp
  && grep -q '^#define BOOST_VERSION 107400$' /usr/include/boost/version.hpp \
  && pkg-config --modversion opencv4 \
  && python3 -c 'import cv2; print(cv2.__version__)'
+
+# Appended layer: keep all existing build layers/cache intact.
+# PX4 v1.16 recommends Agent v2.4.3. Keep its Fast DDS libraries isolated
+# from the ROS Humble middleware; only the agent wrapper loads them.
+RUN apt-get update && apt-get install -y --no-install-recommends libasio-dev libtinyxml2-dev libssl-dev \
+ && rm -rf /var/lib/apt/lists/* \
+ && git init /tmp/xrce-agent \
+ && git -C /tmp/xrce-agent remote add origin https://github.com/eProsima/Micro-XRCE-DDS-Agent.git \
+ && git -C /tmp/xrce-agent fetch --depth 1 origin 73622810d984349b80bbac0ef55fc0b694d62222 \
+ && git -C /tmp/xrce-agent checkout --detach FETCH_HEAD \
+ && cmake -S /tmp/xrce-agent -B /tmp/xrce-agent/build \
+      -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/xrce-agent \
+      -DUAGENT_BUILD_TESTS=OFF -DUAGENT_BUILD_EXECUTABLE=ON \
+      -DUAGENT_P2P_PROFILE=OFF \
+ && cmake --build /tmp/xrce-agent/build --parallel 1 \
+ && cmake --install /tmp/xrce-agent/build \
+ && printf '%s\n' '#!/bin/sh' \
+      'export LD_LIBRARY_PATH="/opt/xrce-agent/lib:/opt/xrce-agent/lib64:${LD_LIBRARY_PATH:-}"' \
+      'exec /opt/xrce-agent/bin/MicroXRCEAgent "$@"' > /usr/local/bin/MicroXRCEAgent \
+ && chmod +x /usr/local/bin/MicroXRCEAgent \
+ && (status=0; MicroXRCEAgent --help > /tmp/xrce-help.txt 2>&1 || status=$?; \
+      test "$status" -eq 1 && grep -qi usage /tmp/xrce-help.txt) \
+ && rm -rf /tmp/xrce-agent
