@@ -33,7 +33,9 @@ from launch_ros.substitutions import FindPackageShare
 
 # PX4's own position estimate (EKF2, NED, px4_msgs MESSAGE_VERSION 0 -> no _v suffix).
 PX4_POSITION = "/fmu/out/vehicle_local_position@10"
-THROTTLE = ["/autonomy/poseimu@10", "/autonomy/imu/data@20", "/autonomy/points_slam@2", "/autonomy/points_msckf@2", "/autonomy/goal@2", "/autonomy/map_state@5",
+VINS_THROTTLE = ["/autonomy/poseimu@10", "/autonomy/imu/data@20",
+                 *[f"/autonomy/points_{kind}@2" for kind in ("slam", "msckf", "aruco", "sim")]]
+THROTTLE = VINS_THROTTLE + ["/autonomy/goal@2", "/autonomy/map_state@5",
             "/autonomy/committed_trajectory@5", "/autonomy/rejected_map@1", PX4_POSITION]
 SERVE = "['^/viz/.*$']"  # only the throttled /viz copies; no client writes at all
 NOTHING = "['^$']"
@@ -46,7 +48,7 @@ def relay(context):
     raw += ["/native_oak/rectified/left/image", "/native_oak/rectified/right/image"] if on("viz_rectified") else []
     raw += ["/autonomy/trackhist"] if on("viz_tracks") else []
     flight = on("flight_monitor_only")
-    throttle = ["/flight_executive/state@2", "/autonomy/map_state@2", "/autonomy/takeoff_ready@2", PX4_POSITION] if flight else THROTTLE
+    throttle = VINS_THROTTLE + ["/flight_executive/state@2", "/autonomy/map_state@2", "/autonomy/takeoff_ready@2", PX4_POSITION] if flight else THROTTLE
     arg = LaunchConfiguration
     return [
         Node(
@@ -60,13 +62,13 @@ def relay(context):
                     "raw_topics": raw,
                     "depth_topics": ["/stereo/depth/image"],
                     "throttle_topics": throttle,
-                    "path_pose_topic": "" if flight else "/autonomy/poseimu",
+                    "path_pose_topic": "/autonomy/poseimu",
                     "path_hz": 5.0,
                     "path_max_points": 1500,
                     "rate_hz": ParameterValue(arg("viz_rate_hz"), value_type=float),
                     "scale": ParameterValue(arg("viz_scale"), value_type=float),
                     "jpeg_quality": ParameterValue(arg("viz_quality"), value_type=int),
-                    "min_depth_m": 0.3,
+                    "min_depth_m": 0.2,
                     "max_depth_m": 3.0 if flight else 6.0,
                 }
             ],
