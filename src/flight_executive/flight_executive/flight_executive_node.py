@@ -170,7 +170,7 @@ class FlightExecutiveNode(Node):
             return False
         if self.envelope is not None:
             self.envelope.origin, self.envelope.heading = alignment.origin, alignment.heading
-            if not self.envelope.contains((p.x,p.y,p.z), ground_contact=True):
+            if not self.envelope.contains((p.x,p.y,p.z), ground_contact=True, ground_tolerance=.5):
                 c.fail('Aligned start position violates body geofence')
                 self._report()
                 return False
@@ -297,12 +297,14 @@ class FlightExecutiveNode(Node):
         output = c.tick(now)
         if self.envelope is not None and c.state not in (State.WAITING, State.ERROR):
             ground = c.state in (State.WAITING, State.TAKEOFF, State.LAND, State.DONE)
+            # Operator-requested floor tolerance only while PX4 reports ground contact.
+            tolerance = .5 if c._fresh(c.landed, now) and c.landed.landed else 0.
             p = c.position
             points = [] if p is None else [(p.x, p.y, p.z)]
             if output.setpoint is not None:
                 p = output.setpoint
                 points.append((p.x, p.y, p.z))
-            if any(not self.envelope.contains(p, ground) for p in points):
+            if any(not self.envelope.contains(p, ground, ground_tolerance=tolerance) for p in points):
                 c.fail('Measured position or command violates body geofence')
                 self._report()
                 return
