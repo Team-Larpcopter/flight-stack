@@ -65,6 +65,7 @@ target_link_libraries(route_follower_node follower_route_core)
 ament_target_dependencies(route_follower_node rclcpp sensor_msgs nav_msgs std_msgs geometry_msgs dronehacks_msgs)
 
 install(TARGETS route_follower_node DESTINATION lib/${PROJECT_NAME})
+install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 # Host-side tmux launchers (run from the deployment folder or with DEPLOY_DIR set).
 set(FOLLOWER_SCRIPTS scripts/launch_follower_system_tmux.sh scripts/launch_follower_full_system_tmux.sh
@@ -73,6 +74,9 @@ install(PROGRAMS ${FOLLOWER_SCRIPTS} DESTINATION share/${PROJECT_NAME}/scripts)
 install(PROGRAMS ${FOLLOWER_SCRIPTS} DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
+  add_executable(master_route_test test/master_route_test.cpp)
+  target_link_libraries(master_route_test follower_route_core)
+  add_test(NAME master_route COMMAND master_route_test ${CMAKE_CURRENT_SOURCE_DIR}/config/course_master_route.xyz)
   add_executable(hermite_test test/hermite_test.cpp)
   target_link_libraries(hermite_test follower_route_core)
   add_test(NAME hermite COMMAND hermite_test)

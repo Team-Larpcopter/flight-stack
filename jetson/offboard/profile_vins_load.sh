@@ -51,10 +51,7 @@ docker run --rm --init --name "$container" --runtime nvidia --network none \
     done
     if [[ -x /profile/closed_loop_test ]]; then
       (sleep 20
-       for run in 1 2 3; do
-         /profile/closed_loop_test /flight-stack/install/larp_navigation/share/larp_navigation/config/navigation_fine.yaml /flight-stack/install/larp_navigation/share/larp_navigation/config/course_cad_prior_fine.txt
-         sleep 2
-       done) > /profile/course_benchmark.log 2>&1 &
+       timeout 20 /profile/closed_loop_test /flight-stack/install/larp_navigation/share/larp_navigation/config/navigation_fine.yaml /flight-stack/install/larp_navigation/share/larp_navigation/config/course_cad_prior_fine.txt /flight-stack/install/larp_route_follower/share/larp_route_follower/config/course_master_route.xyz) > /profile/course_benchmark.log 2>&1 &
     fi
     python3 /profile/profile_vins_topics.py "$1" &
     probe=$!

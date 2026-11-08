@@ -27,10 +27,11 @@ int main() {
   for (const bool corners : {false, true}) {
     larp_route_follower::FollowOptions o{.06, .04, 1., corners};
     const auto t = larp_route_follower::followWaypoints(w, Vec3::Zero(), Vec3::Zero(), 5., o);
-    require(t.getPieceNum() == 3 && t.start_WT == 5., "one piece per segment");
+    const auto knots=corners?w:larp_route_follower::roundedWaypoints(w);
+    require(t.getPieceNum() == int(knots.size()-1) && t.start_WT == 5., "one piece per rounded segment");
     double at = 0;
     for (int i = 0; i < t.getPieceNum(); ++i) {
-      require((t.getPos(at) - w[i]).norm() < 1e-9, "trajectory misses a waypoint");
+      require((t.getPos(at) - knots[i]).norm() < 1e-9, "trajectory misses a waypoint");
       at += t[i].getDuration();
       if (i + 1 < t.getPieceNum()) {
         const double d = t[i].getDuration();

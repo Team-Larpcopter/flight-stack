@@ -67,7 +67,9 @@ int main(int argc, char** argv) {
   sense(body.p);
   map->declareLaunchCylinder(.8, .1, 1.6);
   auto clock = std::make_shared<navigation::PlannerClock>([&] { return now; }, [](const std::string&) {});
-  larp_route_follower::FollowerRoutePlanner planner(argv[1], map, clock, {}, course);
+  larp_route_follower::FollowerSettings settings;
+  if(argc>3)settings.route_file=argv[3];
+  larp_route_follower::FollowerRoutePlanner planner(argv[1], map, clock, settings, course);
   const Eigen::Vector3d goal=course ? Eigen::Vector3d(-2.82128,-.77724,1.) : Eigen::Vector3d(1.6,1.6,1.);
   require(planner.setGoal(1, goal, 0), "goal rejected");
   if(!course)require(planner.accept({"map", 1, 0, 1, now, {{0, 0, 1}, {1.6, 0, 1}, goal}}, 0), "route rejected");
@@ -80,7 +82,7 @@ int main(int argc, char** argv) {
     while(!planner.prepareRoute(body.p))
       require(std::chrono::steady_clock::now()-warmup<std::chrono::seconds(30), "course preplanning timed out");
     std::cout << "course cached in " << std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-warmup).count()
-              << " ms, vertices " << planner.gridRoute()->route().points.size() << std::endl;
+              << " ms, vertices " << planner.displayRoute().points.size() << std::endl;
   }
   int plans = 0, successes = 0, failures = 0, blank = 0, unsafe = 0;
   double max_jump = 0, max_speed = 0, max_plan_ms = 0;

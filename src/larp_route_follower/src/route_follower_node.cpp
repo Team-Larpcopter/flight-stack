@@ -263,11 +263,12 @@ class DepthMapNode : public rclcpp::Node {
     msg.header.frame_id="map";msg.header.stamp=now();msg.localization_epoch=epoch_;
     msg.goal_id=planner_->goalId();msg.map_revision=revision_;msg.route_id=++route_sequence_;
     const auto* grid=planner_->gridRoute();
-    msg.reason=failure.empty()?grid->reason():failure;
-    if(ready && map_->isKnownFreeInflate(warm_start_.value_or(body_.p)) && planner_->active() && grid->route().goal_id==planner_->goalId() &&
-       grid->route().map_revision==revision_ && grid->route().points.size()>=2) {
+    const auto cached_route=planner_->displayRoute();
+    msg.reason=failure.empty()?planner_->routeReason():failure;
+    if(ready && map_->isKnownFreeInflate(warm_start_.value_or(body_.p)) && planner_->active() && cached_route.goal_id==planner_->goalId() &&
+       cached_route.map_revision==revision_ && cached_route.points.size()>=2) {
       msg.status=msg.VALID;
-      for(const auto& p:grid->route().points)msg.points.push_back(point(p));
+      for(const auto& p:cached_route.points)msg.points.push_back(point(p));
     }
     route_output_->publish(msg);
     RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(),5000,"SUPER grid route: %s; searches=%lu last_search_ms=%.2f",

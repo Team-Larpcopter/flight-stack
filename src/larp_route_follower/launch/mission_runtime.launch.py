@@ -68,7 +68,7 @@ def nodes(context):
         params = planner_parameters(cfg, Path(share('larp_navigation')) / 'config')
         params.update(execution_gated=mode=='hardware' or LaunchConfiguration('preplan_only', default='false').perform(context)=='true', follower_horizon_m=float(value('follower_horizon_m')),
                       follower_replan_period_s=float(value('follower_replan_period_s')),
-                      follower_route_file=value('follower_route_file') or cfg.get('follower_route_file', ''))
+                      follower_route_file=value('follower_route_file') or cfg.get('follower_route_file', str(Path(share('larp_route_follower')) / 'config' / 'course_master_route.xyz')))
         result = [Node(package='larp_route_follower', executable='route_follower_node', output='screen',
                        parameters=[params], remappings=planner_remaps())]
     return [RegisterEventHandler(OnProcessExit(on_exit=[EmitEvent(event=Shutdown(reason='Component exited'))])),
