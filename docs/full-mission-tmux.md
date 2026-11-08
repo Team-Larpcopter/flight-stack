@@ -49,7 +49,7 @@ still applies when commands cease.
 
 `PX4_TRANSPORT=udp4` uses port 8888 by default. For UART/USB use
 `PX4_TRANSPORT=serial PX4_DEVICE=/dev/... PX4_BAUD=921600`. `DDS_PROFILE`,
-`ROS_DOMAIN_ID`, `RUNTIME_IMAGE`, `CONTAINER`, and `SESSION` are configurable.
+`ROS_DOMAIN_ID`, `XRCE_REFS` (agent participant-reference XML), `RUNTIME_IMAGE`, `CONTAINER`, and `SESSION` are configurable.
 Do not run the old localization launcher concurrently: the full system owns the
 camera and VINS publishers.
 

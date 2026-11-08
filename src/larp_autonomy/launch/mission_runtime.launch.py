@@ -49,6 +49,7 @@ def nodes(context):
         if transport=='udp4': command=['MicroXRCEAgent','udp4','-p',os.environ.get('PX4_PORT','8888')]
         elif transport=='serial': command=['MicroXRCEAgent','serial','--dev','/dev/px4','-b',os.environ.get('PX4_BAUD','921600')]
         else: raise ValueError('PX4_TRANSPORT must be udp4 or serial')
+        if os.environ.get('XRCE_REFS'): command += ['-r',os.environ['XRCE_REFS']]
         result=[ExecuteProcess(cmd=command,output='screen')]
     elif part=='depth':
         result=[include('larp_liteanystereo','las_depth.launch.py',{'publish_as_primary':'true','min_depth_m':'0.3','max_depth_m':'3.0','viz_enable':'false'})]
