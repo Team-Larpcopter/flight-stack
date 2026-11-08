@@ -1,0 +1,22 @@
+/**:
+  ros__parameters:
+    # Shadow evaluation settings, not vehicle-qualified limits.
+    robot_radius: 0.4
+    max_input_age: 0.3
+    replan_period: 0.2
+    manager/max_vel: 1.0
+    manager/max_acc: 2.0
+    manager/max_jerk: 4.0
+    manager/control_points_distance: 0.4
+    manager/feasibility_tolerance: 0.05
+    manager/planning_horizon: 4.0
+    manager/use_distinctive_trajs: false
+    manager/drone_id: 0
+    optimization/lambda_smooth: 1.0
+    optimization/lambda_collision: 0.5
+    optimization/lambda_feasibility: 0.1
+    optimization/lambda_fitness: 1.0
+    optimization/dist0: 0.5
+    optimization/swarm_clearance: 0.5
+    optimization/max_vel: 1.0
+    optimization/max_acc: 2.0
