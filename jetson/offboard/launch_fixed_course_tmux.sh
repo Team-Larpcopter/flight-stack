@@ -2,6 +2,7 @@
 set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 if [[ -f $here/deployment.env ]]; then source "$here/deployment.env"; fi
+if [[ -n ${MISSION_CONFIG_OVERRIDE:-} ]]; then export DEPLOYMENT_CONFIG="$MISSION_CONFIG_OVERRIDE"; fi
 check_only=false
 case ${1:-} in
   --check) check_only=true ;;
