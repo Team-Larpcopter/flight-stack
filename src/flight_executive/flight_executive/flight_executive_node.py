@@ -16,6 +16,7 @@ from rclpy.qos import (
     DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy,
 )
 from std_msgs.msg import String, Bool
+from std_srvs.srv import Trigger
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry
 
@@ -115,6 +116,7 @@ class FlightExecutiveNode(Node):
                 Odometry, '/autonomy/odometry', self._map_pose, telemetry_qos))
             self.input_subscriptions.append(self.create_subscription(
                 Bool, '/autonomy/vio_healthy', self._vio_ready, telemetry_qos))
+        self.abort_service = self.create_service(Trigger, '~/hold_and_land', self._hold_and_land)
         self.last_report = None
         self.timer = self.create_timer(
             0.05, self._tick, clock=Clock(clock_type=ClockType.STEADY_TIME))
@@ -123,6 +125,12 @@ class FlightExecutiveNode(Node):
             f'Pilot arming then {trigger} switch authorizes automatic takeoff. '
             'simulation_only is operator acknowledgement, not vehicle identification.')
         self._report()
+
+    def _hold_and_land(self, request, response):
+        response.success, response.message = self.state_machine.request_hold_land(monotonic())
+        self.get_logger().warning(response.message)
+        self._report()
+        return response
 
     def _map_pose(self, msg):
         if msg.header.frame_id != 'map' or msg.child_frame_id != 'base_link':
