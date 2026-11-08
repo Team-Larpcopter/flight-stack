@@ -76,3 +76,8 @@ body odometry, including `T_body_imu`; TF consumers can query either direction.
 No transform is guessed before aligned map odometry exists. Restart this publisher
 with VINS when establishing a new mission origin. This is visualization/frame
 registration and does not authorize map updates or flight execution.
+
+Dynamic ROG updates skip classification/inflation outside the immutable hard
+boundary. Depth rays still clear their observed in-bound portions; exterior cells
+remain blocked by the boundary. This avoids unknown-inflation work outside the
+operating volume without changing voxel size, clearance or confirmation counts.
