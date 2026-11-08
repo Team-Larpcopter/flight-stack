@@ -6,10 +6,10 @@ imu0:
     - [0.000000000, 1.000000000, 0.000000000, 0.000000000]
     - [0.000000000, 0.000000000, 1.000000000, 0.000000000]
     - [0.000000000, 0.000000000, 0.000000000, 1.000000000]
-  accelerometer_noise_density: 0.003724000
-  accelerometer_random_walk: 0.030000000
-  gyroscope_noise_density: 0.000488000
-  gyroscope_random_walk: 0.000193930
+  accelerometer_noise_density: 0.037240000
+  accelerometer_random_walk: 0.300000000
+  gyroscope_noise_density: 0.004880000
+  gyroscope_random_walk: 0.001939300
   rostopic: /autonomy/imu/data
   time_offset: 0.0
   update_rate: 400.0
