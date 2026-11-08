@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
 # Run one foreground process per tmux pane; no automatic timeout or PX4 output.
 set -eo pipefail
-workspace=${WORKSPACE:-/integration}
+workspace=${WORKSPACE:-/flight-stack}
 source /opt/ros/humble/setup.bash
-if [[ -f /root/skybeta_ws/install/local_setup.bash ]]; then
-  source /root/skybeta_ws/install/local_setup.bash
-fi
-source "${INSTALL_PREFIX:-$workspace/install_clean}/setup.bash"
+source "${INSTALL_PREFIX:-$workspace/install}/setup.bash"
 export LD_LIBRARY_PATH="${SDK_PREFIX:-$workspace/sdk_install}/lib:${LD_LIBRARY_PATH:-}"
 case ${1:-} in
 camera)

@@ -14,12 +14,16 @@ void DPMaster::Init() {
   nh = std::make_shared<rclcpp::Node>("airfar_planner");
   airfar_ros::node = nh;
   snapshot_mode_ = nh->declare_parameter<bool>("snapshot_mode", true);
+  static_cad_only_ = nh->declare_parameter<bool>("static_cad_only", false);
   nh->declare_parameter<std::string>("navigation_config_file","");
   nh->declare_parameter<std::vector<double>>("hard_boundary_lower",std::vector<double>{});
   nh->declare_parameter<std::vector<double>>("hard_boundary_upper",std::vector<double>{});
   route_pub_ = nh->create_publisher<dronehacks_msgs::msg::RoutePolyline>("/navigation/route", 1);
-  snapshot_sub_ = nh->create_subscription<dronehacks_msgs::msg::MapSnapshot>("/navigation/map_snapshot", 1,
+  snapshot_sub_ = nh->create_subscription<dronehacks_msgs::msg::MapSnapshot>("/navigation/map_snapshot", static_cad_only_?rclcpp::QoS(1).transient_local():rclcpp::QoS(1),
     std::bind(&DPMaster::SnapshotCallback, this, std::placeholders::_1));
+  if(static_cad_only_) map_state_sub_ = nh->create_subscription<dronehacks_msgs::msg::MapState>(
+    "/navigation/map_state", rclcpp::SensorDataQoS().keep_last(1),
+    std::bind(&DPMaster::MapStateCallback, this, std::placeholders::_1));
   mission_goal_sub_ = nh->create_subscription<dronehacks_msgs::msg::NavigationGoal>("/navigation/goal", rclcpp::QoS(1).transient_local(),
     std::bind(&DPMaster::GoalCallback, this, std::placeholders::_1));
   /* initialize subscriber and publisher */
@@ -143,8 +147,23 @@ void DPMaster::Loop() {
     }
     /* add main process after this line */
     map_handler_.UpdateRobotPosition(robot_pos_, cur_layer_idxs_);
-    if (graph_manager_.UpdateOdom(robot_pos_, cur_layer_idxs_, is_robot_stop_) || is_goal_update_ || is_dyobs_update_ || !is_graph_init_ || snapshot_dirty_) {
+    const bool odom_updated = graph_manager_.UpdateOdom(robot_pos_, cur_layer_idxs_, is_robot_stop_);
+    const bool geometry_update = snapshot_dirty_ || !is_graph_init_ ||
+      cur_layer_idxs_ != graph_update_layers_ ||
+      (robot_pos_ - graph_update_position_).norm() > graph_params_.move_thred;
+    // Native contour nodes use bounded position/direction voting. Complete
+    // those votes after geometry/layer changes, then retain the static graph.
+    if (snapshot_dirty_ || cur_layer_idxs_ != graph_update_layers_)
+      graph_settle_updates_ = graph_params_.pool_size + 2;
+    const bool rebuild = static_cad_only_ ?
+      (geometry_update || graph_settle_updates_ > 0 || is_dyobs_update_) :
+      (odom_updated || is_goal_update_ || is_dyobs_update_ || !is_graph_init_ || snapshot_dirty_);
+    if (rebuild || static_cad_only_) {
+      if(rebuild) {
       snapshot_dirty_ = false;
+      graph_update_position_ = robot_pos_;graph_update_layers_ = cur_layer_idxs_;
+      if(graph_settle_updates_>0)--graph_settle_updates_;
+      if(static_cad_only_) RefreshSurroundClouds();
       odom_node_ptr_ = graph_manager_.GetOdomNode();
       if (odom_node_ptr_ == NULL) {
         ROS_WARN("DPMaster: wait for odom node to init...");
@@ -206,8 +225,12 @@ void DPMaster::Loop() {
 
       /* Graph Messager Update */
       graph_msger_.UpdateGlobalGraph(nav_graph_);
-      // Graph Planner Update 
+      // Graph Planner Update
       graph_planner_.UpdateGlobalGraph(nav_graph_);
+      } // geometry/graph maintenance
+      odom_node_ptr_ = graph_manager_.GetOdomNode();
+      if(!odom_node_ptr_ || !is_graph_init_) {loop_rate.sleep();continue;}
+      ApplyPendingGoal();
       /* Update connection of goal node if exist */
       goal_node_ptr_ = graph_planner_.GetGoalNodePtr();
 
@@ -274,13 +297,13 @@ void DPMaster::Loop() {
       // Viz Navigation Graph
       // planner_viz_.VizPoint3D(DPUtil::free_odom_p, "free_odom_position", VizColor::ORANGE, 1.0);
       nav_graph_ = graph_planner_.GetNavGraph();
-      planner_viz_.VizGraph(nav_graph_);
+      if(rebuild) planner_viz_.VizGraph(nav_graph_);
 
       // if (goal_node_ptr_ != NULL && DPUtil::IsTypeInStack(graph_planner_.insert_nav_nodes[0], graph_planner_.insert_nav_nodes[1]->connect_nodes)) {
       //   ROS_ERROR("DPMaster: Insert node is connected!");
       // }
 
-      planner_viz_.VizContourGraph(ContourGraph::multi_contour_graph_, ContourGraph::multi_global_contour_, cur_layer_idxs_);
+      if(rebuild) planner_viz_.VizContourGraph(ContourGraph::multi_contour_graph_, ContourGraph::multi_global_contour_, cur_layer_idxs_);
       graph_planner_.ClearInsertNodes(graph_planner_.insert_nav_nodes);
       graph_planner_.insert_nav_nodes.clear();
 

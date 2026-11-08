@@ -1,4 +1,7 @@
-# Jetson tools (skybeta drone)
+# Jetson tools
+
+Start with [fresh-clone native build and launch](../docs/jetson-fresh-clone.md).
+The legacy organizer-stack helpers below are retained for existing deployments.
 
 Host-side helpers for our DroneHacks drone (`skybeta-15`). On the drone, ROS 2
 runs only inside the organisers' container `skybeta-stack` (tmux session
@@ -82,8 +85,8 @@ Never commit credentials, auth keys, or Wi-Fi passwords.
 
 ## Native sqrtVINS: two-pane tmux launcher
 
-On the Jetson host, with the configured `larp-localization-ready` container
-already created and no other camera/VIO owner running:
+On the Jetson host, with the configured `flight-stack-localization` container
+built from this checkout and no other camera/VIO owner running:
 
 ```bash
 bash jetson/launch_localization_tmux.sh
@@ -92,7 +95,7 @@ bash jetson/launch_localization_tmux.sh
 The target OAK-D S2 factory geometry and native IMU topics are bundled in the
 repository; no external calibration or IMU correction file is needed. An optional
 argument can override the calibration directory **inside the container**. The launcher
-starts the existing container if stopped, then creates one tmux window with two
+creates its own container when absent, starts it if stopped, then creates one tmux window with two
 side-by-side panes: camera on the left and sqrtVINS on the right. Both processes
 run in the foreground indefinitely; sqrtVINS uses `INFO` verbosity. No monitor,
 Foxglove preview, planner, or PX4 process is launched. Ctrl+C stops the process in
@@ -102,7 +105,6 @@ starting a new run with a different calibration.
 
 `CONTAINER`, `SESSION`, `CALIBRATION_DIR`, and `VIO_VERBOSITY` can be set in the
 host environment. `WORKSPACE`, `INSTALL_PREFIX`, and `SDK_PREFIX`
-are also forwarded when provided. Defaults match the native
-bench container described in [autonomy integration](../docs/autonomy-integration.md).
+are also forwarded when provided. Defaults use this checkout mounted at `/flight-stack` with `install/` and `sdk_install/`.
 The helper copied into the container comes from this checkout, so it does not rely
 on an older manually installed `localization_pane.sh`.

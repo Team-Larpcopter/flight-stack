@@ -1,0 +1,6 @@
+# Dependency-only image: no source or generated workspace data is copied.
+**
+!jetson/
+!jetson/integration_image/
+!jetson/integration_image/Dockerfile
+!jetson/integration_image/Dockerfile.dockerignore

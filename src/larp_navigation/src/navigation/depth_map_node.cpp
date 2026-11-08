@@ -9,6 +9,7 @@
 #include <nav_msgs/msg/path.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <dronehacks_msgs/msg/map_snapshot.hpp>
+#include <dronehacks_msgs/msg/map_state.hpp>
 #include <dronehacks_msgs/msg/navigation_goal.hpp>
 #include <dronehacks_msgs/msg/route_polyline.hpp>
 #include <dronehacks_msgs/msg/committed_trajectory.hpp>
@@ -91,12 +92,13 @@ class DepthMapNode : public rclcpp::Node {
         planner_->accept(std::move(route),revision_);
       });
     if(max_depth_>map_->getMapConfig().raycast_range_max) throw std::invalid_argument("depth range exceeds map ray range");
-    snapshots_=create_publisher<dronehacks_msgs::msg::MapSnapshot>("/navigation/map_snapshot",1);
+    snapshots_=create_publisher<dronehacks_msgs::msg::MapSnapshot>("/navigation/map_snapshot",rclcpp::QoS(1).transient_local());
+    map_states_=create_publisher<dronehacks_msgs::msg::MapState>("/navigation/map_state",rclcpp::SensorDataQoS().keep_last(1));
     rejected_maps_=create_publisher<dronehacks_msgs::msg::MapSnapshot>("/navigation/rejected_map",1);
     health_=create_subscription<std_msgs::msg::Bool>("/navigation/vio_healthy",10,[this](const std_msgs::msg::Bool& m) {
       healthy_=m.data;health_received_=std::chrono::steady_clock::now();
     });
-    odom_=create_subscription<nav_msgs::msg::Odometry>("/navigation/odometry",rclcpp::SensorDataQoS().keep_last(100),
+    odom_=create_subscription<nav_msgs::msg::Odometry>("/navigation/odometry",rclcpp::SensorDataQoS().keep_last(static_cad_only_?1:100),
       [this](nav_msgs::msg::Odometry::ConstSharedPtr m) {
         if(m->header.frame_id!="map" || m->child_frame_id!="base_link") return;
         const auto& p=m->pose.pose.position;const auto& q=m->pose.pose.orientation;
@@ -140,7 +142,7 @@ class DepthMapNode : public rclcpp::Node {
        t*1e-9-body_.rcv_time>.3 ||
        std::chrono::steady_clock::now()-health_received_>std::chrono::seconds(1)) {invalidate("health, goal, localization or map freshness");return;}
     int result=-1;
-    if(t-last_plan_ns_>=200'000'000) {
+    if(t-last_plan_ns_>=100'000'000) {
       last_plan_ns_=t;result=int(planner_->plan());
     }
     const auto recovery=planner_->recoveryCount();
@@ -191,13 +193,45 @@ class DepthMapNode : public rclcpp::Node {
   }
   sensor_msgs::msg::PointCloud2 cloud(const super_utils::vec_Vec3f& points, const std_msgs::msg::Header& header) {
     sensor_msgs::msg::PointCloud2 msg;msg.header=header;
-    sensor_msgs::PointCloud2Modifier mod(msg);mod.setPointCloud2FieldsByString(1,"xyz");mod.resize(points.size());
+    sensor_msgs::PointCloud2Modifier mod(msg);mod.setPointCloud2Fields(3,"x",1,sensor_msgs::msg::PointField::FLOAT32,"y",1,sensor_msgs::msg::PointField::FLOAT32,"z",1,sensor_msgs::msg::PointField::FLOAT32);mod.resize(points.size());
     sensor_msgs::PointCloud2Iterator<float> x(msg,"x"),y(msg,"y"),z(msg,"z");
     for(const auto& p:points) {*x=p.x();*y=p.y();*z=p.z();++x;++y;++z;}
     return msg;
   }
   void process() {
     if(!healthy_ || std::chrono::steady_clock::now()-health_received_>std::chrono::seconds(1)) {pending_.clear();return;}
+    if(static_cad_only_) {
+      // Geometry is latched once. Subsequent messages carry only a fresh body
+      // pose and the geometry identity; they never renew dynamic observations.
+      const int64_t stamp=now().nanoseconds();
+      if(!body_.rcv || stamp*1e-9-body_.rcv_time>.3 ||
+         stamp*1e-9-body_.rcv_time<-.005) return;
+      if(!cad_prior_loaded_) {
+        const auto count=map_->loadCadPrior(cad_prior_,true);
+        cad_prior_loaded_=true;
+        RCLCPP_INFO(get_logger(),"Loaded static CAD prior into %zu cells without depth",count);
+        // Loading may be expensive. Consume fresh odometry/health before
+        // publishing geometry or issuing a localization lease.
+        return;
+      }
+      last_depth_pose_={int64_t(body_.rcv_time*1e9),body_.p,body_.q};
+      last_depth_ns_=last_depth_pose_.stamp_ns;
+      if(revision_==0) {
+        // A mapper restart must not reuse an identity for different CAD.
+        // ROS-clock rollback requires a new localization epoch as elsewhere.
+        revision_=static_cast<uint64_t>(std::max<int64_t>(1,stamp));
+        snapshots_->publish(snapshot(last_depth_ns_,last_depth_pose_));
+        return;
+      }
+      dronehacks_msgs::msg::MapState state;
+      state.header.frame_id="map";state.header.stamp=rclcpp::Time(last_depth_ns_);
+      state.localization_epoch=epoch_;state.revision=revision_;
+      state.body_pose.position=point(body_.p);
+      auto& q=state.body_pose.orientation;
+      q.w=body_.q.w();q.x=body_.q.x();q.y=body_.q.y();q.z=body_.q.z();
+      map_states_->publish(state);
+      return;
+    }
     if(!calibration_ || pending_.empty() || !body_.rcv) return;
     auto m=pending_.front();
     const int64_t stamp=rclcpp::Time(m->header.stamp).nanoseconds();
@@ -300,6 +334,7 @@ class DepthMapNode : public rclcpp::Node {
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr info_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr health_;
   rclcpp::Publisher<dronehacks_msgs::msg::MapSnapshot>::SharedPtr snapshots_;
+  rclcpp::Publisher<dronehacks_msgs::msg::MapState>::SharedPtr map_states_;
   rclcpp::Publisher<dronehacks_msgs::msg::MapSnapshot>::SharedPtr rejected_maps_;
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::TimerBase::SharedPtr planner_timer_;

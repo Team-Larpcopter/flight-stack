@@ -34,8 +34,10 @@ class FlightExecutiveNode(Node):
 
     def __init__(self):
         super().__init__('flight_executive')
-        if not self.declare_parameter('simulation_only', False).value:
-            raise ValueError('Use the simulation launch file; hardware is not supported')
+        simulation = self.declare_parameter('simulation_only', False).value
+        hardware = self.declare_parameter('hardware_enabled', False).value
+        if bool(simulation) == bool(hardware):
+            raise ValueError('Explicitly select exactly one of simulation_only or hardware_enabled')
         height = self.declare_parameter('takeoff_height', 1.0).value
         hold_timeout = self.declare_parameter('hold_timeout', 5.0).value
         landing_timeout = self.declare_parameter('landing_timeout', 45.0).value
@@ -80,7 +82,8 @@ class FlightExecutiveNode(Node):
         self.timer = self.create_timer(
             0.05, self._tick, clock=Clock(clock_type=ClockType.STEADY_TIME))
         self.get_logger().warning(
-            'SITL ONLY: pilot arming then Position authorizes automatic takeoff. '
+            ('SITL: ' if simulation else 'HARDWARE ENABLED: ') +
+            'Pilot arming then Position authorizes automatic takeoff. '
             'simulation_only is operator acknowledgement, not vehicle identification.')
         self._report()
 

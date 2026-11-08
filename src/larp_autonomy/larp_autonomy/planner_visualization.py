@@ -1,0 +1,82 @@
+"""Bounded, throttled planner views under stack fox's /viz whitelist."""
+from collections import deque
+import time
+
+
+def main():
+    import rclpy
+    from rclpy.node import Node
+    from rclpy.qos import QoSProfile, DurabilityPolicy, qos_profile_sensor_data
+    from dronehacks_msgs.msg import MapSnapshot, RoutePolyline
+    from sensor_msgs.msg import PointCloud2
+    from nav_msgs.msg import Path, Odometry
+    from geometry_msgs.msg import PoseStamped
+    from std_msgs.msg import Bool
+    rclpy.init()
+    node = Node('planner_visualization')
+    latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+    cloud_pub = node.create_publisher(PointCloud2, '/viz/autonomy/occupied', latched)
+    route_pub = node.create_publisher(Path, '/viz/autonomy/route', latched)
+    plan_pub = node.create_publisher(Path, '/viz/autonomy/committed_path', 1)
+    pose_pub = node.create_publisher(PoseStamped, '/viz/autonomy/body_pose', 1)
+    odom_pub = node.create_publisher(Odometry, '/viz/autonomy/body_odom', 1)
+    history_pub = node.create_publisher(Path, '/viz/autonomy/body_path', 1)
+    health_pub = node.create_publisher(Bool, '/viz/autonomy/vio_healthy', 1)
+    latest = {'map': None, 'route': None, 'plan': None, 'odom': None}
+    history = deque(maxlen=1500)
+    previous_stamp = None
+    last_map = -float('inf')
+    def store(name):
+        def receive(msg):
+            latest[name] = msg
+        return receive
+    node.create_subscription(MapSnapshot, '/autonomy/map_snapshot', store('map'), latched)
+    node.create_subscription(RoutePolyline, '/autonomy/route', store('route'), qos_profile_sensor_data)
+    node.create_subscription(Path, '/autonomy/committed_path', store('plan'), qos_profile_sensor_data)
+    node.create_subscription(Odometry, '/autonomy/odometry', store('odom'), qos_profile_sensor_data)
+    node.create_subscription(Bool, '/autonomy/vio_healthy', health_pub.publish, qos_profile_sensor_data)
+    def tick():
+        nonlocal last_map, previous_stamp
+        stamp = time.monotonic()
+        if latest['map'] is not None and stamp-last_map >= 1.0:
+            cloud_pub.publish(latest['map'].occupied)
+            latest['map'] = None
+            last_map = stamp
+        route = latest['route']
+        if route is not None:
+            path = Path()
+            path.header = route.header
+            if route.status == route.VALID:
+                for point in route.points:
+                    p = PoseStamped()
+                    p.header = route.header
+                    p.pose.position = point
+                    p.pose.orientation.w = 1.0
+                    path.poses.append(p)
+            route_pub.publish(path)
+            latest['route'] = None
+        if latest['plan'] is not None:
+            plan_pub.publish(latest['plan'])
+            latest['plan'] = None
+        odom = latest['odom']
+        if odom is not None:
+            p = PoseStamped()
+            p.header, p.pose = odom.header, odom.pose.pose
+            pose_pub.publish(p)
+            odom_pub.publish(odom)
+            key = (p.header.stamp.sec, p.header.stamp.nanosec)
+            if key != previous_stamp:
+                history.append(p)
+                previous_stamp = key
+            path = Path()
+            path.header, path.poses = p.header, list(history)
+            history_pub.publish(path)
+            latest['odom'] = None
+    node.create_timer(.2, tick)
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.try_shutdown()

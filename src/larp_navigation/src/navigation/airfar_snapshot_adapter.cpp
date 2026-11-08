@@ -43,7 +43,7 @@ bool decode(const sensor_msgs::msg::PointCloud2& msg, const std_msgs::msg::Heade
 
 bool DPMaster::SnapshotFresh() const {
   const auto age=nh->now().nanoseconds()-rclcpp::Time(snapshot_header_.stamp).nanoseconds();
-  return map_revision_>0 && age>=-5'000'000 && age<1'000'000'000 &&
+  return map_revision_>0 && age>=-5'000'000 && age<(static_cad_only_?300'000'000:1'000'000'000) &&
     std::chrono::steady_clock::now()-snapshot_received_<std::chrono::seconds(2);
 }
 
@@ -97,7 +97,7 @@ void DPMaster::SnapshotCallback(dronehacks_msgs::msg::MapSnapshot::ConstSharedPt
   auto reject=[&](const char* why){snapshot_header_=std_msgs::msg::Header();PublishRoute({},why);};
   const auto age=nh->now().nanoseconds()-rclcpp::Time(msg->header.stamp).nanoseconds();
   if(msg->header.frame_id!=master_params_.world_frame || !msg->localization_epoch || !msg->revision ||
-     age < -5'000'000 || age>1'000'000'000 || msg->localization_epoch<epoch_ ||
+     age < -5'000'000 || (!static_cad_only_ && age>1'000'000'000) || msg->localization_epoch<epoch_ ||
      (msg->localization_epoch==epoch_ && msg->revision<=map_revision_) ||
      !std::isfinite(msg->resolution) || msg->resolution<.02 || msg->resolution>1 ||
      !finite(msg->lower) || !finite(msg->upper) || msg->lower.x>=msg->upper.x ||
@@ -148,7 +148,7 @@ void DPMaster::SnapshotCallback(dronehacks_msgs::msg::MapSnapshot::ConstSharedPt
     }
     // Reuse visibility only for byte-identical classified geometry. Any change
     // (including free-to-unknown) invalidates all edges before updating the map.
-    if(cached_occupied!=msg->occupied.data || cached_free!=msg->free.data) {
+    if(epoch_!=msg->localization_epoch || cached_occupied!=msg->occupied.data || cached_free!=msg->free.data) {
       visibility_cache.clear();cached_occupied=msg->occupied.data;cached_free=msg->free.data;
     }
     const auto mirror_start=std::chrono::steady_clock::now();
@@ -160,7 +160,8 @@ void DPMaster::SnapshotCallback(dronehacks_msgs::msg::MapSnapshot::ConstSharedPt
     ResetEnvironmentAndGraph();map_revision_=0;goal_id_=0;
     const auto& p=odom.pose.pose.position;map_handler_.SetMapOrigin(Point3D(p.x,p.y,p.z));
   }
-  epoch_=msg->localization_epoch;map_revision_=msg->revision;snapshot_header_=msg->header;
+  epoch_=msg->localization_epoch;map_revision_=msg->revision;
+  snapshot_header_=static_cad_only_?std_msgs::msg::Header():msg->header;
   if(goal_active_ && mission_goal_.localization_epoch!=epoch_) {goal_active_=false;goal_pending_=false;}
   snapshot_received_=std::chrono::steady_clock::now();
   OdomCallBack(std::make_shared<nav_msgs::msg::Odometry>(odom));
@@ -175,11 +176,36 @@ void DPMaster::SnapshotCallback(dronehacks_msgs::msg::MapSnapshot::ConstSharedPt
   // previously unmatched contours without any newly occupied voxel. Restricting
   // vertex creation to an occupancy delta loses those graph vertices forever.
   *DPUtil::new_obs_cloud_ = *temp_obs_ptr_;
+  RefreshSurroundClouds();
+  snapshot_dirty_=true;
+  ApplyPendingGoal();
+}
+
+void DPMaster::RefreshSurroundClouds() {
   map_handler_.GetSurroundObsCloud(DPUtil::surround_obs_cloud_);
   map_handler_.GetSurroundFreeCloud(DPUtil::surround_free_cloud_);
   DPUtil::cur_dyobs_cloud_->clear();
   DPUtil::UpdateKdTrees(DPUtil::new_obs_cloud_,DPUtil::surround_free_cloud_,DPUtil::surround_obs_cloud_);
   is_cloud_init_=!DPUtil::surround_free_cloud_->empty() || !DPUtil::surround_obs_cloud_->empty();
-  snapshot_dirty_=true;
+}
+
+void DPMaster::MapStateCallback(dronehacks_msgs::msg::MapState::ConstSharedPtr msg) {
+  if(!static_cad_only_ || !snapshot_mode_)return;
+  const auto stamp=rclcpp::Time(msg->header.stamp).nanoseconds();
+  const auto age=nh->now().nanoseconds()-stamp;
+  const auto& q=msg->body_pose.orientation;
+  const double qn=q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w;
+  if(!map_revision_ || msg->localization_epoch!=epoch_ || msg->revision!=map_revision_ ||
+     msg->header.frame_id!=master_params_.world_frame || age< -5'000'000 || age>300'000'000 ||
+     !finite(msg->body_pose.position) || !std::isfinite(qn) || std::abs(qn-1)>.001) {
+    snapshot_header_=std_msgs::msg::Header();
+    return;
+  }
+  // Repeated/old samples must not keep a dead localization source alive.
+  if(stamp<=rclcpp::Time(snapshot_header_.stamp).nanoseconds())return;
+  nav_msgs::msg::Odometry odom;odom.header=msg->header;
+  odom.child_frame_id="base_link";odom.pose.pose=msg->body_pose;
+  OdomCallBack(std::make_shared<nav_msgs::msg::Odometry>(odom));
+  snapshot_header_=msg->header;snapshot_received_=std::chrono::steady_clock::now();
   ApplyPendingGoal();
 }
