@@ -138,10 +138,12 @@ def main():
             stamp=-1 if m is None else m.header.stamp.sec*10**9+m.header.stamp.nanosec
             good=(m is not None and self.healthy and 0<=now-self.health_at<.3 and
                   0<=now-self.pose_at<.3 and -5_000_000<=clock-stamp<300_000_000)
-            if good:
+            numeric_valid=False
+            if m is not None:
                 p,q,v,w=m.pose.pose.position,m.pose.pose.orientation,m.twist.twist.linear,m.twist.twist.angular
-                good=all(math.isfinite(x) for x in (p.x,p.y,p.z,q.w,q.x,q.y,q.z,v.x,v.y,v.z,w.x,w.y,w.z))
-                good=good and abs(q.w*q.w+q.x*q.x+q.y*q.y+q.z*q.z-1)<.002
+                numeric_valid=all(math.isfinite(x) for x in (p.x,p.y,p.z,q.w,q.x,q.y,q.z,v.x,v.y,v.z,w.x,w.y,w.z))
+                numeric_valid=numeric_valid and abs(q.w*q.w+q.x*q.x+q.y*q.y+q.z*q.z-1)<.002
+            good=good and numeric_valid
             if self.registration is None:
                 grounded=(not self.hardware or (self.status is not None and self.landed is not None and
                     0<=now-self.status_at<1. and 0<=now-self.landed_at<2.5 and
@@ -169,7 +171,9 @@ def main():
                         self.origin_pub.publish(view)
                         self.get_logger().info(f'Shared map origin frozen: source={origin.position}, yaw={origin.yaw:.4f}; start={self.target}, yaw={self.target_yaw:.4f}')
             ready=good and self.registration is not None
-            if ready and stamp>self.last_stamp:
+            # After origin initialization, forward each new valid pose even when
+            # health/age diagnostics are false; preserve its original timestamp.
+            if self.registration is not None and numeric_valid and stamp>self.last_stamp:
                 # This callback owns m; replace only pose/world covariance. Twist stays body FLU.
                 self.last_stamp=stamp
                 out=Odometry()

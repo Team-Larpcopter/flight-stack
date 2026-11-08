@@ -167,7 +167,7 @@ def test_unsolicited_ack_does_not_fail_waiting_or_hold():
 
 
 @pytest.mark.parametrize('failure', [
-    'failsafe', 'disarm', 'mode_exit', 'invalid', 'reset_xy', 'reset_z', 'reset_yaw',
+    'failsafe', 'disarm', 'mode_exit', 'invalid',
 ])
 @pytest.mark.parametrize('holding', [False, True])
 def test_active_failures_stop_all_publications_and_never_recover(failure, holding):
@@ -184,10 +184,6 @@ def test_active_failures_stop_all_publications_and_never_recover(failure, holdin
         f.status = replace(f.status, offboard=False)
     elif failure == 'invalid':
         f.position = replace(f.position, valid=False)
-    else:
-        counters = {'reset_xy': (1, 0, 0), 'reset_z': (0, 1, 0),
-                    'reset_yaw': (0, 0, 1)}
-        f.position = replace(f.position, reset_counters=counters[failure])
     output = f.tick()
     assert output.setpoint is None
     assert output.command is None
@@ -275,7 +271,7 @@ def test_ascent_timeout_stops_heartbeat():
 
 @pytest.mark.parametrize('phase', ['prepare', 'mode'])
 @pytest.mark.parametrize('failure', ['preflight', 'landed'])
-def test_lost_readiness_before_arm_is_terminal(phase, failure):
+def test_readiness_loss_recovers_only_disarmed_preflight(phase, failure):
     f = Flight()
     if phase == 'mode':
         f.mode_request()
@@ -286,19 +282,28 @@ def test_lost_readiness_before_arm_is_terminal(phase, failure):
     else:
         f.landed = replace(f.landed, landed=False)
     assert f.tick().setpoint is None
-    assert f.c.state == State.ERROR
+    expected = State.WAITING if (phase, failure) == ("prepare", "preflight") else State.ERROR
+    assert f.c.state == expected
 
 
-@pytest.mark.parametrize('counter', [3, 4])
-def test_velocity_estimator_resets_are_terminal(counter):
+@pytest.mark.parametrize('counter', range(5))
+@pytest.mark.parametrize('phase', ['prepare', 'ascend', 'hold', 'tracking'])
+def test_estimator_resets_do_not_stop_publications(counter, phase):
     f = Flight()
     f.position = replace(f.position, reset_counters=(0, 0, 0, 0, 0))
-    f.ascend()
+    if phase == "prepare":
+        f.tick()
+    elif phase == "ascend":
+        f.ascend()
+    else:
+        f.hold()
+        if phase == "tracking":
+            f.c.accept_trajectory(trajectory(f.now))
     counters = [0, 0, 0, 0, 0]
     counters[counter] = 1
     f.position = replace(f.position, reset_counters=tuple(counters))
-    assert f.tick().setpoint is None
-    assert f.c.state == State.ERROR
+    assert f.tick().setpoint is not None
+    assert f.c.state != State.ERROR
 
 
 def trajectory(now):
@@ -341,7 +346,7 @@ def test_pre_takeoff_trajectory_is_not_cached():
     assert f.c.state == State.HOLD
 
 
-@pytest.mark.parametrize('fault', ['mode', 'disarm', 'failsafe', 'reset', 'gap', 'stale'])
+@pytest.mark.parametrize('fault', ['mode', 'disarm', 'failsafe', 'gap', 'stale'])
 def test_tracking_preserves_shared_health_checks(fault):
     f = Flight()
     f.hold()
@@ -353,8 +358,6 @@ def test_tracking_preserves_shared_health_checks(fault):
         f.status = replace(f.status, armed=False)
     elif fault == 'failsafe':
         f.status = replace(f.status, failsafe=True)
-    elif fault == 'reset':
-        f.position = replace(f.position, reset_counters=(1, 0, 0))
     if fault == 'stale':
         f.c.position = replace(f.c.position, received_at=f.now - 1.1)
         output = f.c.tick(f.now)
@@ -508,3 +511,40 @@ def test_planner_wait_holds_without_deadline_then_resumes_and_preserves_faults()
     f.status = replace(f.status, offboard=False)
     assert f.tick().setpoint is None
     assert f.c.state == State.ERROR
+
+
+@pytest.mark.parametrize('warmup_ticks', [0, 45])
+def test_disarmed_preflight_loss_restarts_readiness_and_warmup(warmup_ticks):
+    f = Flight()
+    f.tick()
+    for _ in range(warmup_ticks):
+        f.tick()
+    f.status = replace(f.status, preflight_ok=False)
+    out = f.tick()
+    assert f.c.state == State.WAITING
+    assert out.command is None and out.setpoint is None
+    assert f.c.takeoff is None
+    for _ in range(45):
+        f.tick()
+    assert f.c.state == State.WAITING
+    f.status = replace(f.status, preflight_ok=True)
+    f.tick()
+    assert f.c.takeoff.heartbeat_started == f.now
+    for _ in range(41):
+        assert f.tick().command is None
+    f.status = replace(f.status, armed=True)
+    assert f.tick().command is None
+    f.status = replace(f.status, in_position=True)
+    assert f.tick().command == Command.OFFBOARD
+
+
+def test_armed_preflight_loss_still_aborts():
+    f = Flight()
+    f.tick()
+    f.status = replace(f.status, armed=True)
+    f.tick()
+    f.status = replace(f.status, preflight_ok=False)
+    out = f.tick()
+    assert f.c.state == State.ERROR
+    assert 'preflight readiness lost' in f.c.reason
+    assert out.command is None and out.setpoint is None

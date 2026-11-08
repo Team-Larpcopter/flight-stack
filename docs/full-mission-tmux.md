@@ -154,3 +154,20 @@ This does not resolve or qualify unstable VIO.
 Run `bash launch_takeoff_hold_tmux.sh --check` for configuration/import checks
 without launching sensors or flight publishers. Stop the other stack before
 starting this test. Mouse mode and Ctrl+C-to-shell behavior match the full stack.
+
+## Deterministic route follower
+
+The same runtime bundle also includes Hari's route follower. It replaces only
+trajectory optimization; depth, ROG map, A* routing, visualization, DDS, VINS,
+and the executive remain shared. All mission variants use the same mission goal.
+
+```bash
+cd ~/flight-stack-arm64
+bash launch_follower_mission_tmux.sh --check  # validates without launching
+bash launch_follower_mission_tmux.sh          # real mission, pilot arm then Position
+# Or inspect planning without execution:
+bash launch_follower_full_system_tmux.sh
+```
+
+Run one variant at a time. Each explicit launch replaces the previous mission
+container/session. The nine-pane layout includes the manual rosbag pane.

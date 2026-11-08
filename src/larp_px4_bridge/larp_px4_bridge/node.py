@@ -27,8 +27,8 @@ class Bridge(Node):
         self.converter = Converter(mount)
         rate = param('publish_rate_hz', 50.0)
         age = param('max_sample_age_s', 0.2)
-        if not math.isfinite(rate) or rate <= 0 or not math.isfinite(age) or age <= 0:
-            raise ValueError('Rate and maximum age must be positive and finite')
+        if not math.isfinite(rate) or rate <= 0 or not math.isfinite(age) or age < 0:
+            raise ValueError('Rate must be positive; maximum age must be nonnegative and finite (0 disables age rejection)')
         self.queue = LatestSample(int(age * 1e9))
         self.frame = param('world_frame', 'global')
         self.child = param('imu_frame', 'imu')

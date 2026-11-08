@@ -44,7 +44,6 @@ class StateMachine:
         self.takeoff = None
         self.tracking = Tracking()
         self.hold_target = None
-        self.resets = None
         self.last_tick = None
 
     @property
@@ -118,9 +117,8 @@ class StateMachine:
             self.fail('Control timer gap before Land confirmation')
             return Output()
         if requesting and (not self._fresh(self.position, now)
-                           or not self.position.usable()
-                           or self.position.reset_counters != self.resets):
-            self.fail('Local position invalid or reset before Land confirmation')
+                           or not self.position.usable()):
+            self.fail('Local position invalid before Land confirmation')
             return Output()
         result = self.landing.tick(now, self.status, self.landed)
         if result.reason:
@@ -156,7 +154,6 @@ class StateMachine:
                   and self.status.preflight_ok and self.position.usable()):
                 p = self.position
                 origin = Setpoint(p.x, p.y, p.z, p.yaw)
-                self.resets = p.reset_counters
                 self.takeoff = Takeoff(origin, self.height, now, self.takeoff_trigger)
                 self.state = State.TAKEOFF
                 return Output(origin)
@@ -166,8 +163,6 @@ class StateMachine:
             self.fail('PX4 status, local position, or landed telemetry is stale')
         elif not self.position.usable():
             self.fail('Local position, vertical velocity, or heading is invalid')
-        elif self.position.reset_counters != self.resets:
-            self.fail('Local position or heading estimator reset')
         elif gap and self.phase not in (Phase.PREPARE, Phase.WAIT_ARM,
                                         Phase.ARMED_IN_POSITION, Phase.WAIT_POSITION, Phase.WAIT_OFFBOARD):
             self.fail('Control timer gap exceeded 0.5 seconds')
@@ -177,6 +172,16 @@ class StateMachine:
             elif not self.status.armed:
                 self.fail('PX4 unexpectedly disarmed')
         if self.state == State.ERROR:
+            return Output()
+        if (self.state == State.TAKEOFF
+                and self.phase in (Phase.PREPARE, Phase.WAIT_ARM)
+                and not self.status.armed and not self.status.offboard
+                and self.landed.landed and not self.status.preflight_ok):
+            # A disarmed preflight fluctuation revokes readiness, not the mission.
+            # Discard warmup/authorization; recovery needs a new arm/Position sequence.
+            self.state = State.WAITING
+            self.takeoff = None
+            self.started_at = now
             return Output()
         if self.state == State.TAKEOFF:
             result = self.takeoff.tick(now, self.status, self.position, self.landed, gap)

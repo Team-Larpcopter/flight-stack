@@ -27,8 +27,9 @@ if [[ ${RUN_TESTS:-1} == 1 ]]; then testing=ON; fi
 # Native production path, including planners/executive; legacy Python DepthAI
 # and CUDA depth experiments are not dependencies of this stack.
 colcon build --base-paths src --executor sequential \
-  --packages-up-to larp_hardware larp_autonomy flight_executive larp_px4_bridge larp_liteanystereo larp_perception \
+  --packages-up-to larp_hardware larp_autonomy flight_executive larp_px4_bridge larp_liteanystereo larp_perception larp_route_follower \
   --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING="$testing" -DBUILD_LOCALIZATION_REGRESSION=ON \
+    "-DCMAKE_LIBRARY_PATH=/usr/lib/$(gcc -dumpmachine)" \
     -DENABLE_ARUCO_TAGS=OFF -DBoost_NO_BOOST_CMAKE=ON \
     -DBoost_NO_SYSTEM_PATHS=ON -DBOOST_ROOT=/usr \
     -DBOOST_INCLUDEDIR=/usr/include \
