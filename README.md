@@ -38,6 +38,7 @@ practice are in [CONTRIBUTING.md](CONTRIBUTING.md). PRs use
 - [Fly the hard-coded DroneHacks course](src/flight_trajectory/README.md)
 - [Workspace setup](docs/workspace.md)
 - [EGO alternative planner and full mission launcher](docs/ego-planner.md)
+- [Deterministic route follower and mission launchers](src/larp_route_follower/README.md)
 - [AI assistant setup](docs/ai-assistants.md)
 - [Agent / project contract](AGENTS.md)
 
