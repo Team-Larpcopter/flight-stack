@@ -115,3 +115,24 @@ This explicitly starts LAS/ROG dynamic mapping, planners, visualization and the
 DDS Agent. The hard boundary remains enforced while depth revises occupancy.
 Hardware mode additionally requires measured alignment, mission ID, bridge
 parameters and PX4 transport configuration; see [full stack](full-stack-runtime.md).
+
+### Fast application updates
+
+The Jetson launchers now extract `stack-runtime.tar.gz` into `runtime/` next to
+these scripts and bind-mount the application, ROS and DDS agent files. Normal
+bundle updates do not build or export a Docker image. Existing assembled runtime
+images can be reused. Only a missing dependency image (or explicit
+`REBUILD_DEPENDENCIES=1`) builds the GPU/engine image once.
+
+Stop the old container and tmux session before replacing a deployed bundle.
+For the default localization session, after stopping its components:
+
+```bash
+tmux kill-session -t flight-stack-runtime
+docker stop flight-stack-localization-runtime
+docker rm flight-stack-localization-runtime
+bash launch_localization.sh
+```
+
+Keep the copied deployment folder in place: containers mount its `runtime/`
+directory. The original GPU cache/engine is reused, never rebuilt.
