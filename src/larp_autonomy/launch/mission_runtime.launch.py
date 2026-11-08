@@ -64,7 +64,7 @@ def nodes(context):
         params=dict(simulation_only=False,hardware_enabled=active,alignment_verified=cfg['alignment_verified'],
             mission_id=cfg['mission_id'],map_heading_ned=cfg['map_heading_ned'],map_origin_ned=cfg['map_origin_ned'])
         result=[node('larp_autonomy','trajectory_bridge',[params]),
-            node('larp_autonomy','mission_goal',[dict(zip(('x','y','z','yaw'),cfg['goal']))])]
+            node('larp_autonomy','mission_goal',[dict(zip(('x','y','z','yaw'),cfg['goal']),wait_for_hold=active)])]
         if active:
             result.append(node('flight_executive','flight_executive_node',[dict(
                 simulation_only=False,hardware_enabled=True,takeoff_trigger='offboard',

@@ -30,7 +30,9 @@ allowed during takeoff and landing, but never relaxes the ceiling or XY limits.
 
 The mission matches the successful `sqrtvins-course-053` simulation configuration:
 take off 1.0 m, navigate to map `[-1.90688, -0.47244, 1.0]`, yaw 0, then land.
-There are no intermediate mission waypoints. The older short-goal and scripted
+There are no intermediate mission waypoints. In hardware mode the final goal is
+published after takeoff reaches HOLD, avoiding global searches and trajectory
+optimization while waiting on the ground or ascending. The older short-goal and scripted
 course examples remain available but are not used by these launchers.
 
 Start the stack while landed in a manual flight mode. Once localization, depth,

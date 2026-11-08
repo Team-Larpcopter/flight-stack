@@ -16,6 +16,7 @@ def main():
     import rclpy
     from rclpy.qos import QoSProfile, DurabilityPolicy, qos_profile_sensor_data
     from dronehacks_msgs.msg import NavigationGoal, MapSnapshot, MapState
+    from std_msgs.msg import String
     rclpy.init()
     node = rclpy.create_node('mission_goal')
     values = goal_values(*(node.declare_parameter(k, 0.0).value
@@ -23,12 +24,15 @@ def main():
     latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
     publisher = node.create_publisher(NavigationGoal, '/autonomy/goal', latched)
     epoch = None
+    published = False
+    wait_for_hold = node.declare_parameter('wait_for_hold', False).value
+    ready = not wait_for_hold
 
-    def receive(message):
-        nonlocal epoch
-        if epoch is not None or message.localization_epoch == 0:
+    def publish():
+        nonlocal published
+        if published or epoch is None or not ready:
             return
-        epoch = message.localization_epoch
+        published = True
         goal = NavigationGoal()
         goal.header.frame_id = 'map'
         goal.header.stamp = node.get_clock().now().to_msg()
@@ -39,6 +43,20 @@ def main():
         publisher.publish(goal)
         node.get_logger().info(f'Published mission goal in localization epoch {epoch}')
 
+    def receive(message):
+        nonlocal epoch
+        if epoch is None and message.localization_epoch != 0:
+            epoch = message.localization_epoch
+        publish()
+
+    def executive(message):
+        nonlocal ready
+        if wait_for_hold:
+            ready = message.data == 'HOLD'
+            publish()
+
+    if wait_for_hold:
+        node.create_subscription(String, '/flight_executive/state', executive, latched)
     node.create_subscription(MapSnapshot, '/autonomy/map_snapshot', receive, latched)
     node.create_subscription(MapState, '/autonomy/map_state', receive, qos_profile_sensor_data)
     try:
