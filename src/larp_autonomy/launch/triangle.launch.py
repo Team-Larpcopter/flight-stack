@@ -18,7 +18,8 @@ def nodes(context):
                  target_system=cfg.get('target_system', 1),
                  target_component=cfg.get('target_component', 1),
                  trajectory_topic='/triangle/trajectory_in',
-                 require_autonomy_ready=False, enforce_boundary=True,
+                 # Triangle flight intentionally bypasses the executive fence; map limits stay unchanged.
+                 require_autonomy_ready=False, enforce_boundary=False,
                  align_px4_to_map_on_ground=True,
                  map_boundary_lower=cfg['hard_boundary_lower'],
                  map_boundary_upper=cfg['hard_boundary_upper'],
