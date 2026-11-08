@@ -52,3 +52,13 @@ Foxglove in three panes with mouse mode enabled.
 
 For the eight-pane full-system and pilot-triggered PX4 mission launchers, see
 [full mission runtime](docs/full-mission-tmux.md).
+
+Foxglove map visualization uses `/viz/autonomy/occupied_chunks` (`MarkerArray`).
+At most once per second, only changed spatial chunks are replaced; emptied chunks
+send deletions. The 4×4×2 chunk grid retains one message per chunk on separate DDS
+writers, allowing Foxglove bridge 3.6 to replay the current map to new clients.
+Unchanged maps send no voxel messages. Internal planner map snapshots remain full;
+this reduces visualization traffic, not mapper computation. Load the updated flight
+layout after upgrading, and restart the Foxglove pane (bridge and visualization
+publisher together). The bridge queue cap is 32 for retained chunks; ordinary
+single-writer depth-one monitoring streams keep depth one.

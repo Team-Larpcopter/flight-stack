@@ -103,12 +103,6 @@
       },
       "transforms": {},
       "topics": {
-        "/viz/autonomy/occupied": {
-          "visible": true,
-          "pointSize": 3,
-          "colorMode": "flat",
-          "flatColor": "#7f91a899"
-        },
         "/viz/autonomy/route": {
           "visible": true,
           "lineWidth": 0.035,
@@ -133,6 +127,9 @@
             0.08
           ],
           "color": "#fb7185ff"
+        },
+        "/viz/autonomy/occupied_chunks": {
+          "visible": true
         }
       },
       "layers": {

@@ -98,7 +98,8 @@ def generate_launch_description():
                     "capabilities": "[connectionGraph,assets]",
                     "send_buffer_limit": arg("send_buffer_limit"),
                     "min_qos_depth": "1",
-                    "max_qos_depth": "1",
+                    # 32 depth-one retained map writers; single-writer streams stay depth one.
+                    "max_qos_depth": "32",
                     "topic_whitelist": SERVE,
                     "client_topic_whitelist": NOTHING,
                     "service_whitelist": NOTHING,

@@ -8,14 +8,36 @@ def main():
     from rclpy.node import Node
     from rclpy.qos import QoSProfile, DurabilityPolicy, qos_profile_sensor_data
     from dronehacks_msgs.msg import MapSnapshot, RoutePolyline, NavigationGoal
-    from sensor_msgs.msg import PointCloud2
+    from visualization_msgs.msg import Marker, MarkerArray
+    from .voxel_delta import CHUNK_COUNT, VoxelDelta, cloud_xyz
     from nav_msgs.msg import Path, Odometry
-    from geometry_msgs.msg import PoseStamped
+    from geometry_msgs.msg import PoseStamped, Point
     from std_msgs.msg import Bool
     rclpy.init()
     node = Node('planner_visualization')
     latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
-    cloud_pub = node.create_publisher(PointCloud2, '/viz/autonomy/occupied', latched)
+    # One retained writer per chunk: bridge 3.6 caches each writer separately,
+    # replaying the current map to late clients without periodic full broadcasts.
+    chunk_pubs = [node.create_publisher(
+        MarkerArray, '/viz/autonomy/occupied_chunks', latched)
+        for _ in range(CHUNK_COUNT)]
+    delta = VoxelDelta()
+    def publish_chunk(slot, points, header=None, resolution=.05):
+        marker = Marker()
+        if header is not None:
+            marker.header = header
+        else:
+            marker.header.frame_id = 'map'
+        marker.ns, marker.id = 'occupied_voxel_chunks', slot
+        marker.type = Marker.CUBE_LIST
+        marker.action = Marker.ADD if len(points) else Marker.DELETE
+        marker.pose.orientation.w = 1.0
+        marker.scale.x = marker.scale.y = marker.scale.z = resolution
+        marker.color.r, marker.color.g, marker.color.b, marker.color.a = 1., .8, .4, 1.
+        marker.points = [Point(x=float(x), y=float(y), z=float(z)) for x, y, z in points]
+        chunk_pubs[slot].publish(MarkerArray(markers=[marker]))
+    for slot in range(CHUNK_COUNT):
+        publish_chunk(slot, [])
     route_pub = node.create_publisher(Path, '/viz/autonomy/route', latched)
     plan_pub = node.create_publisher(Path, '/viz/autonomy/committed_path', 1)
     pose_pub = node.create_publisher(PoseStamped, '/viz/autonomy/body_pose', 1)
@@ -45,7 +67,18 @@ def main():
         nonlocal last_map, previous_stamp
         stamp = time.monotonic()
         if latest['map'] is not None and stamp-last_map >= 1.0:
-            cloud_pub.publish(latest['map'].occupied)
+            snapshot = latest['map']
+            try:
+                changed = delta.update(
+                    cloud_xyz(snapshot.occupied),
+                    [snapshot.lower.x, snapshot.lower.y, snapshot.lower.z],
+                    [snapshot.upper.x, snapshot.upper.y, snapshot.upper.z],
+                    snapshot.resolution, snapshot.header.frame_id,
+                    snapshot.localization_epoch)
+                for slot, points in changed:
+                    publish_chunk(slot, points, snapshot.header, snapshot.resolution)
+            except (ValueError, TypeError) as error:
+                node.get_logger().warning(f'Skipping invalid visualization map: {error}')
             latest['map'] = None
             last_map = stamp
         route = latest['route']
