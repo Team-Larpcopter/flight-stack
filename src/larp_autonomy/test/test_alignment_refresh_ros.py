@@ -56,6 +56,30 @@ def test_refreshed_ground_transform_reaches_planner_output():
         assert received, 'Replacement ground alignment permanently blocked planner output'
         p=received[-1].position
         assert (p.x,p.y,p.z)==pytest.approx((1.,-2.,-3.))
+        # An active registration/epoch change and restarted sequence must recover.
+        phase.publish(String(data='TRACKING'))
+        spin(.2)
+        msg.pose.position.x=2.
+        align.publish(msg)
+        goal.localization_epoch=2
+        goals.publish(goal)
+        spin(.3)
+        received.clear()
+        curve.localization_epoch=2
+        curve.sequence=1
+        end=time.monotonic()+3.
+        while time.monotonic()<end and not received:
+            curves.publish(curve);spin(.1)
+        assert received, 'Active alignment or epoch change latched command output off'
+        assert received[-1].position.x==pytest.approx(3.)
+        # A sequence restart within the same epoch must not block subsequent curves.
+        curve.sequence=0
+        curve.position[0].coefficients=[0.,4.,0.,2.,0.,3.]
+        received.clear()
+        end=time.monotonic()+3.
+        while time.monotonic()<end and not any(abs(m.position.x-6.)<1e-6 for m in received):
+            curves.publish(curve);spin(.1)
+        assert any(abs(m.position.x-6.)<1e-6 for m in received)
     finally:
         proc.terminate();proc.wait(timeout=5)
         node.destroy_node();rclpy.shutdown()

@@ -48,7 +48,7 @@ class BodyOdometryNode : public rclcpp::Node {
  private:
   void consume(const nav_msgs::msg::Odometry& m) {
     const int64_t stamp=rclcpp::Time(m.header.stamp).nanoseconds();
-    if(m.header.frame_id!="global" || m.child_frame_id!="imu" || stamp<=last_output_ns_) {
+    if(m.header.frame_id!="global" || m.child_frame_id!="imu") {
       valid_=false; return;
     }
     const auto& p=m.pose.pose.position; const auto& q=m.pose.pose.orientation;
@@ -59,9 +59,6 @@ class BodyOdometryNode : public rclcpp::Node {
     }
     try {
       auto b=adapter_->convert({p.x,p.y,p.z},{q.w,q.x,q.y,q.z},{v.x,v.y,v.z},{w.x,w.y,w.z},cp,ct);
-      if(last_output_ns_ && (b.position-last_position_).norm()>0.3+5.0*(stamp-last_output_ns_)*1e-9)
-        throw std::runtime_error("estimator discontinuity; restart requires a new mission frame");
-      if(fault_latched_) return;
       nav_msgs::msg::Odometry out;
       out.header=m.header; out.header.frame_id=world_frame_; out.child_frame_id="base_link";
       auto& op=out.pose.pose.position; op.x=b.position.x();op.y=b.position.y();op.z=b.position.z();
@@ -76,13 +73,13 @@ class BodyOdometryNode : public rclcpp::Node {
              b.pose_covariance.diagonal().head<3>().maxCoeff()<2 &&
              b.pose_covariance.diagonal().tail<3>().minCoeff()>=0 &&
              b.pose_covariance.diagonal().tail<3>().maxCoeff()<.5;
-      if(!valid_) return;
+      // Covariance health is diagnostic; PX4 decides whether to fuse the sample.
       output_->publish(out);
-      last_position_=b.position; last_output_ns_=stamp;
+      last_output_ns_=stamp;
       last_output_wall_=std::chrono::steady_clock::now();
     } catch(const std::exception& e) {
-      valid_=false; fault_latched_=true;
-      RCLCPP_ERROR_THROTTLE(get_logger(),*get_clock(),2000,"VIO output rejected: %s",e.what());
+      valid_=false;
+      RCLCPP_ERROR_THROTTLE(get_logger(),*get_clock(),2000,"Invalid VIO sample skipped; next sample will be retried: %s",e.what());
     }
   }
   std::string world_frame_;
@@ -92,11 +89,10 @@ class BodyOdometryNode : public rclcpp::Node {
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr input_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_;
   rclcpp::TimerBase::SharedPtr timer_;
-  Eigen::Vector3d last_position_=Eigen::Vector3d::Zero();
   int64_t last_output_ns_{0},last_image_ns_{0};
   std::chrono::steady_clock::time_point last_output_wall_{},last_image_wall_{};
   size_t image_updates_{0};
-  bool valid_{false},fault_latched_{false};
+  bool valid_{false};
 };
 int main(int argc,char** argv) {
   rclcpp::init(argc,argv);

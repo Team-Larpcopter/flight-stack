@@ -1,4 +1,5 @@
 import math
+import numpy as np
 import time
 import rclpy
 from rclpy.node import Node
@@ -85,7 +86,8 @@ class Bridge(Node):
         out.reset_counter = self.reset
         out.quality = 0
         for key, value in self.converter.convert(sample).items():
-            setattr(out, key, value)
+            with np.errstate(over="ignore", invalid="ignore"):
+                setattr(out, key, np.asarray(value, dtype=np.float32).astype(float).tolist())
         self.publisher.publish(out)
 
 

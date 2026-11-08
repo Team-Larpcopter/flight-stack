@@ -36,7 +36,7 @@ def test_goal_publication_and_optional_hold_gate(monkeypatch, wait_for_hold):
         callbacks['/autonomy/map_state'](M(localization_epoch=2))
         if wait_for_hold:
             callbacks['/flight_executive/state'](M(data='HOLD'))
-        assert len(published)==1
+        assert len(published)==2 and published[-1].localization_epoch==2
     monkeypatch.setattr(rclpy,'init',lambda:None)
     monkeypatch.setattr(rclpy,'create_node',lambda name:FakeNode())
     monkeypatch.setattr(rclpy,'spin',spin)

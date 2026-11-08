@@ -34,7 +34,7 @@ class Takeoff:
         self.reason = ''
 
     def acknowledge(self, command: int, result: int) -> None:
-        if (self.phase == Phase.MODE and self.attempts
+        if (not self.skybeta_compat and self.phase == Phase.MODE and self.attempts
                 and command == Command.OFFBOARD.value and result not in (0, 5)):
             self.reason = f'PX4 rejected OFFBOARD, result={result}'
 
@@ -45,7 +45,7 @@ class Takeoff:
         self.attempts = 0
 
     def _request(self, now: float) -> TakeoffResult:
-        if now >= self.phase_started + 2.0:
+        if not self.skybeta_compat and now >= self.phase_started + 2.0:
             return TakeoffResult(reason='OFFBOARD confirmation timed out after 2 seconds')
         if self.last_command is None or now >= self.last_command + 0.5:
             self.last_command = now

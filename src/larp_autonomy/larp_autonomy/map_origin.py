@@ -172,9 +172,9 @@ def main():
                         self.origin_pub.publish(view)
                         self.get_logger().info(f'Shared map origin frozen: source={origin.position}, yaw={origin.yaw:.4f}; start={self.target}, yaw={self.target_yaw:.4f}')
             ready=good and self.registration is not None
-            # After origin initialization, forward each new valid pose even when
+            # After origin initialization, forward each new pose even when
             # health/age diagnostics are false; preserve its original timestamp.
-            if self.registration is not None and numeric_valid and stamp>self.last_stamp:
+            if self.registration is not None and m is not None and stamp!=self.last_stamp:
                 # This callback owns m; replace only pose/world covariance. Twist stays body FLU.
                 self.last_stamp=stamp
                 out=Odometry()

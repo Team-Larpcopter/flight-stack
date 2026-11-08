@@ -44,11 +44,13 @@ The quaternion is wxyz, mapping vectors from IMU axes to aircraft FRD axes.
 No temporary integration workspace or calibration evidence path is required.
 
 The 50 Hz timer consumes only the newest sample once. Missing input stops output.
-Old, future, duplicate and backward timestamps are rejected. Sample timestamps
-remain unchanged in microseconds; publication timestamps use ROS time. PX4 uXRCE
-synchronizes the clocks, so do not apply another offset. If old float32 sqrtVINS
-builds quantize epoch timestamps, fix the publisher; do not replace capture time
-with receipt time. After a clock rollback restart the bridge after synchronization.
+With `max_sample_age_s: 0` (the mission launch setting), delayed and backward
+sample timestamps are forwarded; consecutive duplicates are coalesced. A positive
+age limit retains the optional standalone age/order policy. Capture timestamps
+remain unchanged; publication timestamps use ROS time. Neither pose jumps nor
+numeric measurement/covariance validity block the mission vision feed. PX4 owns
+measurement acceptance. Invalid configured extrinsics still prevent startup.
+
 
 The reported position and velocity remain at the IMU origin. Configure PX4's
 `EKF2_EV_POS_X/Y/Z` sensor offsets for that point. No lever-arm correction is

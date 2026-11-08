@@ -287,8 +287,10 @@ follower, fixed-course and triangle launches. It keeps publishing through PX4
 validity/failsafe diagnostics, telemetry age and timer gaps instead of latching
 ERROR. It does not enforce preflight loss, heartbeat warmup or ascent timeout;
 ascent completes within 0.3 m of target altitude. Position references persist
-without a receipt deadline. Pilot authorization, explicit mode acknowledgements,
-finite trajectory values and landing handoff remain. No automatic Offboard
+without a receipt deadline. Pilot authorization and landing handoff remain. Numeric setpoint values are
+forwarded to PX4, including NaN/Inf; float32 overflow is encoded as Inf. OFFBOARD
+and LAND requests do not latch off on local confirmation deadlines or rejected
+acknowledgements while the pilot-authorized request remains active. No automatic Offboard
 reacquisition occurs after pilot mode exit.
 
 Ground registration still needs a finite map/PX4 pose and a disarmed, landed

@@ -41,7 +41,7 @@ def test_origin_precedes_public_odometry_and_map_waits_for_px4_alignment():
             rclpy.spin_once(node,timeout_sec=.01);time.sleep(.01)
     try:
         feed(1.5,healthy=False)
-        assert not poses and not any(readiness)
+        assert not any(readiness)
         feed(2.)
         assert poses,'Stable origin did not release odometry'
         p=poses[-1].pose.pose.position
@@ -56,6 +56,11 @@ def test_origin_precedes_public_odometry_and_map_waits_for_px4_alignment():
         assert any(readiness)
         p=poses[-1].pose.pose.position
         assert (p.x,p.y,p.z)==pytest.approx((.1,0.,0.))
+        feed(.4,healthy=False,x=float('nan'))
+        assert any(m.pose.pose.position.x!=m.pose.pose.position.x for m in poses)
+        feed(.4,x=2.2)
+        assert poses[-1].pose.pose.position.x==pytest.approx(.2)
+
     finally:
         process.terminate();process.wait(timeout=5)
         node.destroy_node();rclpy.shutdown()

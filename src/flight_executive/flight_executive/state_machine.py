@@ -92,10 +92,6 @@ class StateMachine:
             return False
         if self.state not in (State.HOLD, State.TRACKING):
             return False
-        if self.active_trajectory_id not in (None, trajectory.trajectory_id):
-            return False
-        if trajectory.is_final and not stationary(trajectory):
-            return False
         self.active_trajectory_id = trajectory.trajectory_id
         self.tracking.accept(trajectory)
         return True
@@ -120,6 +116,7 @@ class StateMachine:
         target = Setpoint(p.x, p.y, p.z, p.yaw, (0., 0., 0.), (0., 0., 0.))
         self.tracking.clear()
         self.landing = Land(target, now, self.landing_timeout)
+        self.landing.skybeta_compat = self.skybeta_compat
         self.state = State.LAND
         return self._land(now)
 
