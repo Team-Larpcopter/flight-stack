@@ -89,3 +89,8 @@ trajectory/map diagnostics are disabled in this flight-monitor profile.
 
 The 1.8 m limit here is the companion planner/executive boundary; this does not
 upload or claim to configure PX4's independent onboard geofence parameters.
+
+Each pane runs its launch command from an interactive Bash shell. Ctrl+C stops
+that component and returns to the prompt; press Up then Enter to restart it.
+Mouse mode stays enabled. Restarting the mission executive still requires its
+normal grounded/pilot-transition conditions; it does not adopt an airborne mission.

@@ -56,16 +56,19 @@ for name in WORKSPACE INSTALL_PREFIX SDK_PREFIX; do
 done
 printf -v camera_cmd '%q ' "${common[@]}" "$container" bash "$remote_helper" camera
 printf -v vio_cmd '%q ' "${common[@]}" "$container" bash "$remote_helper" vio
-left=$(tmux new-session -d -s "$session" -n localization -P -F '#{pane_id}')
-# Keep errors visible if either process exits.
-tmux set-option -w -t "$left" remain-on-exit on
-right=$(tmux split-window -h -t "$left" -P -F '#{pane_id}')
+left=$(tmux new-session -d -s "$session" -n localization -P -F '#{pane_id}' 'bash --noprofile --norc -i')
+# Keep an interactive shell so Ctrl+C returns to a restartable prompt.
+tmux set-option -w -t "$left" remain-on-exit off
+right=$(tmux split-window -h -t "$left" -P -F '#{pane_id}' 'bash --noprofile --norc -i')
 tmux select-layout -t "$left" even-horizontal >/dev/null
 tmux select-pane -t "$left" -T Camera
 tmux select-pane -t "$right" -T sqrtVINS
 tmux set-option -w -t "$left" pane-border-status top
 tmux set-option -w -t "$left" pane-border-format ' #{pane_title} '
-tmux respawn-pane -k -t "$left" "$camera_cmd"
-tmux respawn-pane -k -t "$right" "$vio_cmd"
+tmux set-option -t "$session" mouse on
+tmux send-keys -t "$left" -l "$camera_cmd"
+tmux send-keys -t "$left" Enter
+tmux send-keys -t "$right" -l "$vio_cmd"
+tmux send-keys -t "$right" Enter
 tmux select-pane -t "$right"
 attach
