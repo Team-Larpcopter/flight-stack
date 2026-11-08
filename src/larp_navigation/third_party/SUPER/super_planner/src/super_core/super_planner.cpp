@@ -835,6 +835,14 @@ namespace super_planner {
     }
 
     RET_CODE SuperPlanner::generateBackupTrajectory(ExpTraj &ref_exp_traj, BackupTraj &back_traj_info) {
+        // Forward-only mode still commits atomically through the independent
+        // trajectory validator. Failure leaves the previous command intact.
+        if (!cfg_.backup_traj_en) {
+            back_traj_info.setEmpty();
+            // FINISH commits the independently validated forward replacement;
+            // NO_NEED in ReplanOnce intentionally keeps the old command.
+            return FINISH;
+        }
         drone_state_mutex_.lock();
         back_traj_info.setRobotPos(robot_state_.p);
         drone_state_mutex_.unlock();

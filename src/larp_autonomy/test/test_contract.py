@@ -54,3 +54,18 @@ def test_extended_certificate_budget_preserves_capture_time_expiry():
     assert Trajectory.decode(message,10.4,1,max_age=.6).certificate == 10.
     with pytest.raises(ValueError):
         Trajectory.decode(message,10.601,1,max_age=.6)
+
+
+def test_completed_curve_holds_endpoint_with_zero_feedforward():
+    from larp_autonomy.polynomial import Trajectory, Piece
+    # Small accepted terminal derivative residuals must not move an endpoint hold.
+    p=Piece(1., ((.01, 1.), (0., 2.), (0., 3.)))
+    y=Piece(1., ((.01, 0.),))
+    curve=Trajectory(10., 11., 1, 1, (p,), (y,))
+    assert curve.sample(10.5)[1][0] == pytest.approx(.01)
+    for stamp in (11., 1000.):
+        position,velocity,acceleration,yaw,rate=curve.sample(stamp)
+        assert position == pytest.approx((1.01,2.,3.))
+        assert velocity == acceleration == (0.,0.,0.)
+        assert yaw == pytest.approx(.01)
+        assert rate == 0.

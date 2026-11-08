@@ -210,7 +210,9 @@ class DepthMapNode : public rclcpp::Node {
     }
     command.status=command.VALID;
     trajectories_->publish(command);
-    const double begin=std::max(0.,now().seconds()-traj.start_WT),end=traj.getTotalDuration();
+    const double end=traj.getTotalDuration();
+    // Keep the terminal hold visible after the moving portion finishes.
+    const double begin=std::min(end,std::max(0.,now().seconds()-traj.start_WT));
     for(double s=begin;s<=end;s+=.05) {
       geometry_msgs::msg::PoseStamped p;p.header.frame_id="map";
       p.header.stamp=rclcpp::Time(int64_t((traj.start_WT+s)*1e9));p.pose.position=point(traj.getPos(s));p.pose.orientation.w=1;

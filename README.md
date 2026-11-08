@@ -92,3 +92,11 @@ hold the aircraft instead of triggering the planner hold timeout. Fresh certifie
 trajectories resume tracking; goal completion still lands. PX4 failsafes, pilot
 mode takeover, estimator-reset detection and body geofence enforcement remain.
 The dedicated takeoff/hold test retains its timed landing behavior.
+
+Full-mission planning disables SUPER's separate backup trajectory optimizer.
+A failed replacement leaves the existing certified curve executing; successful
+replacements commit atomically. After its duration, the curve commands its final
+position with zero velocity/acceleration and remains visible as a hold point.
+Localization health, map/collision certificate freshness, geofence checks, and
+collision-triggered braking remain enforced. A planner failure alone does not
+expire the curve or trigger landing; reaching the mission goal still does.

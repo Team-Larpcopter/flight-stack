@@ -36,6 +36,17 @@ int main(int argc,char** argv) {
   require((traj.getPos(0)-body.p).norm()<1e-9,"planner moved measured initial state to a voxel center");
   require((traj.getPos(traj.getTotalDuration())-Eigen::Vector3d(1,1,1)).norm()<.1,"goal terminal position wrong");
   require(traj.getVel(traj.getTotalDuration()).norm()<.05,"trajectory does not stop");
+  // A failed replacement must preserve the exact committed forward curve,
+  // including its endpoint hold after the polynomial duration has elapsed.
+  now=traj.start_WT+traj.getTotalDuration()+.1;
+  body.p=traj.getPos(traj.getTotalDuration());body.v.setZero();body.rcv_time=now;map->setBody(body);
+  planner.invalidateRoute();
+  require(planner.plan()==super_utils::FAILED,"replacement unexpectedly succeeded without a route");
+  require(planner.position().start_WT==traj.start_WT && planner.ensureSafeCommand(),
+          "failed replacement discarded the certified terminal hold");
+  require((planner.position().getPos(traj.getTotalDuration())-body.p).norm()<1e-9,
+          "failed replacement changed the terminal hold position");
+  now=10;body.p={0,0,1};body.rcv_time=now;map->setBody(body);
   // Regression: a goal just past an inflated wall must not replace the
   // externally supplied free-prefix endpoint merely because it is nearby.
   rog_map::PointCloud wall;
