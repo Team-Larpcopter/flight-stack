@@ -3,7 +3,7 @@
 <package format="3">
   <name>flight_trajectory</name>
   <version>0.1.0</version>
-  <description>Simulation-only hard-coded course trajectories for the flight executive.</description>
+  <description>Hard-coded course trajectories for the flight executive.</description>
   <maintainer email="team@larpcopter.local">Team Larpcopter</maintainer>
   <license>Apache-2.0</license>
 
