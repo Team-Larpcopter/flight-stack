@@ -12,12 +12,21 @@ int main(int argc,char**argv){
   auto free=[&](const Point&a,const Point&b){++calls;
     for(int i=0;i<=20;++i){Point p=a+(b-a)*(i/20.);if(wall&&p.x()>.75&&p.x()<1.25&&(sealed||std::abs(p.y())<.35))return false;}return true;};
   MasterRoute m(free);m.load(file);m.setBounds({-.5,-1,.8},{4.2,1,1.2});check(m.activate({4,0,1}),"activate");
-  auto p=m.nearby({0,0,1},1.5,1);check(p.size()>1&&m.searches()==0,"cached route needs no search");
+  auto p=m.nearby({0,0,1},1.5,1);check(p.size()>1&&m.searches()>0,"periodic forward search missing");
   wall=true;bool repaired=false;double maxms=0;
   for(int k=0;k<5000;++k){p=m.nearby({0,0,1},1.5,2);maxms=std::max(maxms,m.lastMs());
     check(m.lastPops()<=256,"pop bound");check(m.lastChecks()<=64,"collision bound");check(m.nodeCount()<=40000,"storage bound");
     if(m.reason()=="local repair joined forward CAD route"){repaired=true;break;}}
   check(repaired,"repair failed");for(size_t i=1;i<m.path().size();++i)check(free(m.path()[i-1],m.path()[i]),"repair collides");
+  // Opening a shortcut must improve an already valid detour, without waiting
+  // for that detour to become blocked.
+  MasterRoute opening(free);opening.load(file);opening.setBounds({-.5,-1,.8},{4.2,1,1.2});opening.activate({4,0,1});
+  for(int i=0;i<5000;++i){opening.nearby({0,0,1},1.5,2);if(opening.reason()=="local repair joined forward CAD route")break;}
+  wall=false;bool shortened=false;
+  for(int i=0;i<5000;++i){opening.nearby({0,0,1},1.5,3);double length=0;
+    for(size_t j=1;j<opening.path().size();++j)length+=(opening.path()[j]-opening.path()[j-1]).norm();
+    if(length<4.01){shortened=true;break;}}
+  check(shortened,"new free opening did not replace valid detour");wall=true;
   Point body(0,0,1);size_t old=0;
   for(int i=0;i<2000&&(body-Point(4,0,1)).norm()>.03;++i){p=m.nearby(body,.5,2);if(p.size()<2)std::cerr<<"stalled at "<<body.transpose()<<" progress "<<m.progress()<<" reason "<<m.reason()<<"\n";check(p.size()>1,"following repair stalled");
     Point d=p[1]-body;body+=d.normalized()*std::min(.03,d.norm());check(m.progress()>=old,"progress reversed");old=m.progress();}
@@ -33,6 +42,6 @@ int main(int argc,char**argv){
   check(!m.activate({3,0,1}),"wrong goal accepted");
   if(argc>1){MasterRoute course([](auto,auto){return true;});course.load(argv[1]);check(course.activate({-2.82128,-.77724,1}),"course goal");
     Point b(0,0,1);for(int i=0;i<3000&&(b-Point(-2.82128,-.77724,1)).norm()>.02;++i){auto q=course.nearby(b,1.5,1);check(q.size()>1,"course progress stalled");Point d=q[1]-b;b+=d.normalized()*std::min(.03,d.norm());}
-    check((b-Point(-2.82128,-.77724,1)).norm()<.02,"course goal not reached");check(course.searches()==0,"unchanged course searched");}
+    check((b-Point(-2.82128,-.77724,1)).norm()<.02,"course goal not reached");check(course.searches()>0,"periodic course search missing");}
   std::cout<<"master route tests passed; max repair slice "<<maxms<<" ms, searches="<<m.searches()<<"\n";
 }

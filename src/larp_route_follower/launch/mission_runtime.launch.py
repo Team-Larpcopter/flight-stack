@@ -81,6 +81,6 @@ def generate_launch_description():
         DeclareLaunchArgument('mode', default_value='shadow'),
         DeclareLaunchArgument('preplan_only', default_value='false'),
         DeclareLaunchArgument('follower_horizon_m', default_value='1.5'),
-        DeclareLaunchArgument('follower_replan_period_s', default_value='0.4'),
+        DeclareLaunchArgument('follower_replan_period_s', default_value='0.1'),
         DeclareLaunchArgument('follower_route_file', default_value=''),
         OpaqueFunction(function=nodes)])

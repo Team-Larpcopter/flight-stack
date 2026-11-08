@@ -25,7 +25,7 @@ using navigation::Polyline;
 
 struct FollowerSettings {
   double horizon{1.5};        // route look-ahead [m]; also capped by time
-  double replan_period{.4};   // keep a live certified curve at least this long [s]
+  double replan_period{.1};   // keep a live certified curve at least this long [s]
   bool scan_when_blocked{false}; // hold position and sweep once after 3 s without a route
   std::string route_file;     // optional preloaded map-frame polyline (x y z per line)
 };
@@ -129,7 +129,10 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
 
   bool ensureSafeCommand() override {
     if (!validClock() || !active_) return false;
-    if (validator_(position_) && yaw_validator_(yaw_)) return true;
+    if (certified_revision_==revision_ && certified_start_==position_.start_WT && !position_.empty()) return true;
+    if (validator_(position_) && yaw_validator_(yaw_)) {
+      certified_revision_=revision_;certified_start_=position_.start_WT;return true;
+    }
     auto stop = navigation::certifiedStop(position_, yaw_, clock_->getSimTime(), validator_);
     if (!stop || !yaw_validator_(stop->yaw)) return false;
     position_ = std::move(stop->position);
@@ -145,6 +148,8 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
     if (!validClock() || !active_) return FAILED;
     const double now = clock_->getSimTime();
     const auto wall = std::chrono::steady_clock::now();
+    work_deadline_=wall+std::chrono::milliseconds(40);planning_=true;
+    struct WorkScope {bool& flag;~WorkScope(){flag=false;}} work_scope{planning_};
     const auto state = map_->getRobotState();
     if (!state.rcv || !state.p.allFinite() || !state.v.allFinite() || !state.a.allFinite() ||
         !std::isfinite(state.yaw + state.rcv_time) || now - state.rcv_time > .3 || now - state.rcv_time < -.005)
@@ -166,14 +171,8 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
     if (!position_.empty() && !braking_ && (position_.getPos(position_.getTotalDuration()) - goal_).norm() < 1e-6 &&
         (state.p - goal_).norm() < .08 && state.v.norm() < .05)
       return NO_NEED;
-    // Execute committed corners instead of continually retiming their approach.
-    // ensureSafeCommand() still checks every map update and can brake immediately.
-    if (live && !resume_scan && end - now > std::max(2., 2 * settings_.replan_period + lead_)) {
-      // Keep ordered progress and background repair current while the existing
-      // smooth curve runs. No new timed trajectory is built in this branch.
-      if(master_.enabled())master_.nearby(state.p,settings_.horizon,revision_);
-      return NO_NEED;
-    }
+    // Fixed-rate replacement: no route-quality or remaining-duration trigger.
+    if (live && !resume_scan && now-last_commit_+1e-6<settings_.replan_period) return NO_NEED;
     if (live && end - now < lead_ + .02) return NO_NEED;
     const double handoff = live ? now + lead_ : now;
     Point p = state.p, v = state.v, a = state.a;
@@ -198,6 +197,7 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
     Polyline guide = guideFrom(p, horizon, now);
     if (guide.size() < 2) return scanForOpening(state, now);
     blocked_since_ = -1;
+    if(guide.size()>32)return failed("route knot work budget");
     guide = compact(guide);
     // One deterministic candidate, with timing derived from its speed profile.
     // Failure retains the existing certified curve; no shorter/slower retries.
@@ -209,10 +209,12 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
     if(!validator_(candidate))return failed("position: "+validator_.failure());
     if(!yaw_validator_(candidate_yaw))return failed("yaw: "+yaw_validator_.failure());
     if(std::abs(candidate.getTotalDuration()-candidate_yaw.getTotalDuration())>1e-3)return failed("yaw duration mismatch");
+    if(std::chrono::steady_clock::now()>work_deadline_)return failed("planning work deadline");
     if(live && std::chrono::duration<double>(std::chrono::steady_clock::now()-wall).count()>=lead_)
       return failed("handoff deadline exceeded");
     if(!live)candidate.start_WT=candidate_yaw.start_WT=clock_->getSimTime();
     position_=std::move(candidate);yaw_=std::move(candidate_yaw);braking_=false;last_commit_=now;
+    certified_revision_=revision_;certified_start_=position_.start_WT;
     return SUCCESS;
   }
 
@@ -317,7 +319,7 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
     const bool turn_first = from_rest && std::abs(delta) > .5;
     if (turn_first) position.emplace_back(yaw_time, quinticHermite(p, v, a, p, Point::Zero(), Point::Zero(), yaw_time));
     FollowOptions options{cruise_, accel_, scale, corners};
-    const auto path = followWaypoints(w, turn_first ? Point::Zero() : v, turn_first ? Point::Zero() : a, start, options);
+    const auto path = followBoundedWaypoints(w, turn_first ? Point::Zero() : v, turn_first ? Point::Zero() : a, start, options);
     if (path.empty()) return false;
     position.append(path);
     position.start_WT = start;
@@ -327,10 +329,29 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
     // First settle the inherited yaw derivatives, then follow the travel
     // tangent in bounded-duration blocks. Heading is rate/acceleration limited
     // independently of tiny geometric arc pieces; it may lag a tight turn.
-    const double initial=std::min(total,std::max(yaw_time,
-      (std::abs(yv)>1e-4 || std::abs(ya)>1e-4)?2.:.2));
-    yaw.emplace_back(initial,yawPiece(y,yv,ya,y+delta,initial));
-    double elapsed=initial,heading=y+delta;
+    double elapsed=0.,heading=y;
+    if(std::abs(yv)>1e-4 || std::abs(ya)>1e-4) {
+      // Bound the inherited yaw transition using its Bernstein derivative
+      // controls, steering toward the new heading without iterative retries.
+      const double settle=std::min(total,2.);
+      const double d1=yv+settle*ya/4.;
+      const double lo=std::max({-yaw_rate,d1-yaw_accel*settle/4.,-yaw_accel*settle/4.});
+      const double hi=std::min({yaw_rate,d1+yaw_accel*settle/4.,yaw_accel*settle/4.});
+      if(lo>hi || std::abs(d1)>limits_.yaw_rate)return false;
+      const double base=y+2.*settle*yv/5.+settle*settle*ya/20.;
+      const double desired=5.*(y+wrapAngle(target-y)-base)/settle;
+      const double end_heading=base+settle*std::clamp(desired,lo,hi)/5.;
+      yaw.emplace_back(settle,yawPiece(y,yv,ya,end_heading,settle));
+      elapsed=settle;heading=end_heading;
+    }
+    if(total-elapsed>1e-6) {
+      const double change=wrapAngle(target-heading);
+      const double initial=std::min(total-elapsed,yawDuration(change,yaw_rate,yaw_accel));
+      const double cap=std::min(yaw_rate*initial/1.875,yaw_accel*initial*initial/5.774);
+      const double end_heading=heading+std::clamp(change,-cap,cap);
+      yaw.emplace_back(initial,yawPiece(heading,0,0,end_heading,initial));
+      elapsed+=initial;heading=end_heading;
+    }
     while(total-elapsed>1e-6) {
       const double duration=std::min(2.,total-elapsed);
       const Point tangent=position.getVel(std::min(total-.001,elapsed+duration*.5));
@@ -370,16 +391,20 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
   bool lineFree(const Point& a, const Point& b) const { return inside(a) && inside(b) && map_->isLineFree(a, b, true, true); }
   // Straight chord swept by the certified body sphere, in short boxes.
   bool chordCertified(const Point& a, const Point& b) const {
+    if (planning_ && std::chrono::steady_clock::now()>work_deadline_) return false;
     if (!lineFree(a, b)) return false;
     const double distance = (b - a).norm();
     const int chunks = std::max(1, int(std::ceil(distance / .15)));
     for (int i = 0; i < chunks; ++i) {
+      if(planning_ && std::chrono::steady_clock::now()>work_deadline_)return false;
       const Point lo_end = a + (b - a) * (double(i) / chunks), hi_end = a + (b - a) * (double(i + 1) / chunks);
-      if (!boxFree(lo_end.cwiseMin(hi_end), lo_end.cwiseMax(hi_end))) return false;
+      if (!navigation::certifiedBoxFree(map_, limits_.radius+.03, lower_, upper_,
+          lo_end.cwiseMin(hi_end), hi_end.cwiseMax(lo_end))) return false;
     }
     return true;
   }
   bool boxFree(const Point& lo, const Point& hi) const {
+    if(planning_ && std::chrono::steady_clock::now()>work_deadline_)return false;
     return navigation::certifiedBoxFree(map_, limits_.radius, lower_, upper_, lo, hi);
   }
 
@@ -396,6 +421,8 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
   Point goal_{Point::Zero()}, lower_{Point::Constant(-INFINITY)}, upper_{Point::Constant(INFINITY)};
   double cruise_{.06}, accel_{.04}, lead_{.1}, goal_yaw_{0}, last_time_{-INFINITY},
       last_commit_{-INFINITY};
+  uint64_t certified_revision_{UINT64_MAX};
+  double certified_start_{-INFINITY};
   uint64_t goal_id_{0}, revision_{0}, recovery_count_{0}, route_sequence_{0};
   bool active_{false}, braking_{false}, clock_fault_{false}, goal_yaw_enabled_{false}, guide_valid_{false},
       internal_grid_route_{true};
@@ -403,6 +430,8 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
   int scan_leg_{0};
   double blocked_since_{-1},scan_heading_{0};
   Point scan_anchor_{Point::Zero()};
+  bool planning_{false};
+  std::chrono::steady_clock::time_point work_deadline_;
   std::string last_failure_;
 };
 }  // namespace larp_route_follower

@@ -68,19 +68,25 @@ int main(int argc, char** argv) {
   // Open space: with enough look-ahead the corner is shortcut straight to the goal.
   if (!fine) require((first_end - first_goal).norm() < 1e-6, "free-space plan did not reach the goal directly");
 
-  // 2) Consistency: a live, certified curve is kept rather than re-derived each tick.
+  // 2) Fixed-rate replacement preserves the old command through its handoff.
   now += .1;
   body.p = traj.getPos(.1);
   body.v = traj.getVel(.1);
   body.rcv_time = now;
   map->setBody(body);
-  require(planner.plan() == super_utils::NO_NEED, "live curve was replaced inside the replan period");
-  require(planner.position().start_WT == traj.start_WT, "committed curve changed without need");
+  require(planner.plan() == super_utils::SUCCESS, "periodic replacement failed");
+  const auto replaced=planner.position();
+  require(replaced.start_WT>traj.start_WT,"no fixed-rate replacement");
+  for(double dt: {0.,.025,.05}) {
+    require((replaced.getPos(dt)-traj.getPos(.1+dt)).norm()<1e-7,"handoff position jump");
+    require((replaced.getVel(dt)-traj.getVel(.1+dt)).norm()<1e-7,"handoff velocity jump");
+    require((replaced.getAcc(dt)-traj.getAcc(.1+dt)).norm()<1e-6,"handoff acceleration jump");
+  }
 
   // 3) Stale odometry: planning fails and the committed curve is preserved untouched.
   now += .5;
   require(planner.plan() == super_utils::FAILED, "planned on stale odometry");
-  require(planner.position().start_WT == traj.start_WT, "failed plan discarded the committed curve");
+  require(planner.position().start_WT == replaced.start_WT, "failed plan discarded the committed curve");
 
   // 4) A depth-observed wall across the route: the guide is truncated before it
   //    and the new curve stays certified short of the wall.
@@ -169,6 +175,11 @@ int main(int argc, char** argv) {
   require(scanning.accept({"map",1,0,1,now,{{0,0,1},{1.5,-1.5,1}}},0), "opening route rejected");
   require(scanning.plan()==super_utils::SUCCESS && scanning.ensureSafeCommand(), "scan did not resume route following");
   require((scanning.position().getPos(0)-body.p).norm()<1e-9, "scan resume jumped position");
+
+  if(argc>3 && std::string(argv[3])=="handoff") {
+    std::cout<<"fixed-rate handoff, retention, collision and scan tests passed\n";
+    return 0;
+  }
 
   // A newly observed frontal wall must repair the cached master route, not
   // repeatedly return a short prefix ending at that same wall.

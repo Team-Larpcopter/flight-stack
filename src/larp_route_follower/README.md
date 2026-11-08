@@ -13,19 +13,28 @@ compiled (A\* and the polynomial containers); no corridor or MINCO optimizer.
 
 ## How it plans
 
-The current mission loads the precomputed CAD master route and repairs only
-blocked local sections toward forward rejoin points. Completed route sections
+The current mission loads the precomputed CAD master route and searches forward reconnections at a fixed 10 Hz, even when the working
+route is usable. The previous updated route remains a candidate; shorter clear
+connections can replace it. All collision queries use the live ROG map. Completed route sections
 are excluded from the rejoin candidates. Required tunnel/window passages stay
 ordered. The map, whole-body collision validator and stopping behavior remain
 active. See [cached-route runtime](../../docs/runtime/cached-route-and-vins.md)
 for the heuristic, bounds, regeneration command and recovery behavior.
 
-Local curves use circular corner rounding, forward/backward speed passes and
-C2 quintic pieces. The curve ends at rest; a replacement preserves position,
-velocity and acceleration at its handoff. Yaw follows travel direction with
-continuous rate and acceleration. A rejected candidate leaves the current certified curve in place; there is no
-shorter/slower candidate cascade. A valid committed curve is retained until its
-last two seconds; live-map certification can interrupt it earlier.
+Local curves use C2 quintics whose Bernstein controls stay within 3 cm of
+checked route chords. Route clearance reserves that extra 3 cm without reducing
+the configured body radius. There is one construction and one candidate validation,
+no smoothing retry cascade. Replacements preserve position, velocity, acceleration
+and yaw derivatives through a future handoff; failures retain the current valid
+curve. Unchanged map revisions do not revalidate the same committed curve.
+
+Search has a 2 ms prefix slice plus a 5 ms search slice, 64 collision-query and
+256 queue-pop caps. Candidate generation has a cooperative 40 ms deadline and
+32-knot cap. Late timer periods are skipped; bridge subscription depth is one.
+The default replacement period is 0.1 s, replacing the former two-second-tail
+trigger. Planner logs report actual total planning and search times for bag review.
+A visual-health Boolean flicker alone no longer clears a curve while body pose and
+map are fresh; ground readiness and map-origin alignment gates remain intact.
 
 Work caps are cooperative, not a hard Linux WCET guarantee. This implementation
 does not certify thrust/attitude or continuous jerk. It sends the same position,
@@ -67,7 +76,7 @@ ros2 launch larp_route_follower mission_runtime.launch.py component:=planner \
 ```
 
 Follower arguments (all launch files): `follower_horizon_m` (default 1.5),
-`follower_replan_period_s` (0.4), `follower_route_file` (defaults to the installed CAD master route). A route file is a
+`follower_replan_period_s` (0.1), `follower_route_file` (defaults to the installed CAD master route). A route file is a
 map-frame text file, one `x y z` per line, sampled at <=15 cm, with optional
 `# gates` passage indices. Its endpoint must match the mission goal within 0.1 mm.
 

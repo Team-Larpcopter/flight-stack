@@ -6,6 +6,7 @@
 #include <sstream>
 #include <queue>
 #include <unordered_map>
+#include <unordered_set>
 #include <array>
 
 namespace larp_route_follower {
@@ -38,7 +39,7 @@ class MasterRoute {
     enabled_=master_.size()>1 && (master_.back()-goal).norm()<1e-4;
     if(!enabled_)return false;
     path_=master_;ids_.resize(path_.size());for(size_t i=0;i<ids_.size();++i)ids_[i]=i;
-    cursor_=progress_=gate_=0;cancel();expanded_=false;reason_="loaded CAD master route";return true;
+    cursor_=progress_=gate_=working_join_=0;cancel();expanded_=false;reason_="loaded CAD master route";return true;
   }
   bool enabled()const{return enabled_;}
   const Polyline& path()const{return path_;}
@@ -52,11 +53,11 @@ class MasterRoute {
   void setBounds(const Point& lo,const Point& hi){lower_=lo;upper_=hi;cancel();}
 
   Polyline nearby(const Point& start,double horizon,uint64_t revision) {
-    const auto begin=Clock::now();deadline_=begin+std::chrono::milliseconds(5);
+    const auto begin=Clock::now();deadline_=begin+std::chrono::milliseconds(2);
     checks_=last_pops_=0;
     struct Timer{MasterRoute* p;Clock::time_point t;~Timer(){p->last_ms_=std::chrono::duration<double,std::milli>(Clock::now()-t).count();}} timer{this,begin};
     if(!enabled_||!start.allFinite()||!revision)return {};
-    if(revision!=revision_){edge_cache_.clear();revision_=revision;}
+    if(revision!=revision_){edge_cache_.clear();bad_targets_.clear();revision_=revision;}
     // Advance only through the next local route segments, never nearest point
     // over the entire maze. A repair's interior does not advance master progress.
     // Rounded curves need not pass each original polyline vertex. Associate
@@ -86,33 +87,51 @@ class MasterRoute {
     for(size_t i=cursor_+1;i<path_.size() && length<horizon;++i) {
       const Point delta=path_[i]-prefix.back();const double d=delta.norm();if(d<1e-7)continue;
       const Point q=prefix.back()+delta*(std::min(d,horizon-length)/d);
-      if(!available()){reason_="route validation slice";return {};}
+      if(!available()){reason_="route validation slice";break;}
       if(!checked(prefix.back(),q)){blocked=i;break;}
       prefix.push_back(q);length+=std::min(d,horizon-length);
     }
+    // Reserve a separate search slice so prefix validation cannot starve it.
+    deadline_=begin+std::chrono::milliseconds(7);
+    const bool prefix_clear=blocked==path_.size();
     const double needed=std::min(horizon,(start-master_.back()).norm());
     if(blocked==path_.size() && length+.02>=needed) {
-      cancel();expanded_=false;reason_="following cached CAD route";return simplify(prefix);
+      reason_="following cached CAD route; periodic forward repair";
     }
-    if(pending_ && (start-search_start_).norm()>.2)cancel();
+    const size_t first=std::max({progress_+1,working_join_,blocked<ids_.size()?ids_[blocked]:progress_+1});
+    if((pending_ && (start-search_start_).norm()>.2) ||
+       ((pending_ || !solution_.empty()) && search_first_<first))cancel();
     if(!pending_ && solution_.empty()) {
-      if(Clock::now()<retry_after_)return safePrefix(prefix);
       // Forward-only candidate indices; never discard the original master tail.
-      const size_t first=std::max(progress_+1,blocked<ids_.size()?ids_[blocked]:progress_+1);
       beginSearch(start,first);
     }
     if(pending_ && available())advance();
     if(!solution_.empty()) {
       // Revalidate each proposed repair edge against the latest revision over
       // slices. Map changes restart validation, not the entire A* search.
-      if(solution_revision_!=revision_){solution_revision_=revision_;validate_at_=1;}
+      if(solution_revision_!=revision_){solution_revision_=revision_;validate_at_=1;tail_at_=solution_join_;tail_distance_=0;}
       while(validate_at_<solution_.size() && available()) {
         if(!checked(solution_[validate_at_-1],solution_[validate_at_])) {
           cancel();reason_="repair changed during search; retry";return safePrefix(prefix);
         }
         ++validate_at_;
       }
-      if(validate_at_==solution_.size()) {
+      while(validate_at_==solution_.size() && tail_at_+1<master_.size() && tail_distance_<horizon && available()) {
+        if(!checked(master_[tail_at_],master_[tail_at_+1])) {
+          bad_targets_.insert(solution_join_);cancel();reason_="forward tail blocked; continue periodic search";
+          return prefix_clear?simplify(prefix):safePrefix(prefix);
+        }
+        tail_distance_+=(master_[tail_at_+1]-master_[tail_at_]).norm();++tail_at_;
+      }
+      if(validate_at_==solution_.size() && (tail_at_+1==master_.size() || tail_distance_>=horizon)) {
+        double old_cost=(start-path_[cursor_]).norm(),new_cost=remaining_[solution_join_];
+        for(size_t i=cursor_+1;i<path_.size();++i)old_cost+=(path_[i]-path_[i-1]).norm();
+        for(size_t i=1;i<solution_.size();++i)new_cost+=(solution_[i]-solution_[i-1]).norm();
+        // Retain the working route when the new connection offers no improvement.
+        if(blocked==path_.size() && length+.02>=needed && new_cost>=old_cost-.02) {
+          cancel();reason_="periodic search retained working route";return simplify(prefix);
+        }
+        working_join_=solution_join_;
         path_=solution_;ids_.assign(path_.size(),progress_);ids_.back()=solution_join_;
         for(size_t i=solution_join_+1;i<master_.size();++i){path_.push_back(master_[i]);ids_.push_back(i);}
         cursor_=0;cancel();expanded_=false;reason_="local repair joined forward CAD route";
@@ -120,7 +139,7 @@ class MasterRoute {
         // and accidentally spend a second work slice in this invocation.
       }
     }
-    return safePrefix(prefix);
+    return prefix_clear?simplify(prefix):safePrefix(prefix);
   }
  private:
   using Clock=std::chrono::steady_clock;
@@ -160,12 +179,13 @@ class MasterRoute {
   double heuristic(Key k)const{double h=INFINITY;for(const auto& t:targets_)h=std::min(h,diagonal(k,t.key)+t.terminal);return h;}
   void cancel(){pending_=false;open_={};nodes_.clear();targets_.clear();solution_.clear();expanding_=false;best_=INFINITY;}
   void beginSearch(const Point& start,size_t first) {
-    cancel();search_start_=start;search_lo_=start;search_hi_=start;
+    cancel();search_first_=first;search_start_=start;search_lo_=start;search_hi_=start;
     const size_t last=gates_[gate_];
     size_t previous=first;
     for(size_t i=first;i<=last && i<master_.size() && targets_.size()<24;++i) {
       if(remaining_[first]-remaining_[i]>(expanded_?6.:3.))break;
       if(i!=first && i!=last && remaining_[previous]-remaining_[i]<.29)continue;
+      if(bad_targets_.count(i))continue;
       previous=i;
       Key k=key(master_[i]);targets_.push_back({k,i,remaining_[i]+(pos(k)-master_[i]).norm()});
       search_lo_=search_lo_.cwiseMin(master_[i]);search_hi_=search_hi_.cwiseMax(master_[i]);
@@ -183,7 +203,7 @@ class MasterRoute {
             Key at=best_key_;Polyline reverse{master_[solution_join_],pos(at)};
             while(nodes_.at(at).has_parent){at=nodes_.at(at).parent;reverse.push_back(pos(at));}
             solution_=simplify(Polyline(reverse.rbegin(),reverse.rend()));
-            validate_at_=1;solution_revision_=revision_;pending_=false;reason_="validating local repair";return;
+            validate_at_=1;tail_at_=solution_join_;tail_distance_=0;solution_revision_=revision_;pending_=false;reason_="validating local repair";return;
           }
           cancel();expanded_=!expanded_;retry_after_=Clock::now()+std::chrono::milliseconds(250);reason_="local repair blocked; hold/scan";return;
         }
@@ -217,6 +237,9 @@ class MasterRoute {
     }
   }
   Free free_;Polyline master_,path_,solution_;std::vector<size_t> gates_,ids_;std::vector<double> remaining_;
+  std::unordered_set<size_t> bad_targets_;
+  size_t tail_at_=0;double tail_distance_=0;
+  size_t search_first_=0,working_join_=0;
   size_t cursor_=0,progress_=0,gate_=0,searches_=0,last_pops_=0,checks_=0,validate_at_=0,solution_join_=0;
   uint64_t revision_=0,solution_revision_=0;
   bool enabled_=false,pending_=false,expanded_=false,expanding_=false;
