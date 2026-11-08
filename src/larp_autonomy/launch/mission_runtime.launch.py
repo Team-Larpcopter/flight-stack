@@ -47,6 +47,7 @@ def nodes(context):
                      remappings=[('/odomimu','/autonomy/odomimu'),('/poseimu','/autonomy/poseimu'),
                          ('/navigation/odometry','/autonomy/unregistered_odometry'),
                          ('/navigation/vio_healthy','/autonomy/unregistered_vio_healthy')]),
+                node('larp_autonomy','map_global_tf',[{'rig_file':cfg['rig_file']}]),
                 node('larp_autonomy','map_origin',[dict(hardware_enabled=active,
                      initial_position_m=cfg['initial_position_m'],initial_yaw_rad=cfg['initial_yaw_rad'],
                      target_system=cfg.get('target_system',1),target_component=cfg.get('target_component',1))])]

@@ -69,3 +69,10 @@ its path for Foxglove whenever aligned localization, map freshness and collision
 checks permit. No second preview planner runs. Execution remains gated separately
 to HOLD/TRACKING; a grounded pose without a collision-free starting state may
 still have no valid trajectory to display.
+
+The VINS pane also publishes a fixed `map -> global` transform on `/tf_static`,
+exposed by Foxglove. It is derived once from timestamp-matched raw IMU and aligned
+body odometry, including `T_body_imu`; TF consumers can query either direction.
+No transform is guessed before aligned map odometry exists. Restart this publisher
+with VINS when establishing a new mission origin. This is visualization/frame
+registration and does not authorize map updates or flight execution.
