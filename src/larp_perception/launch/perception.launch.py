@@ -35,8 +35,10 @@ from launch_ros.substitutions import FindPackageShare
 PX4_POSITION = "/fmu/out/vehicle_local_position@10"
 VINS_THROTTLE = ["/autonomy/poseimu@10", "/autonomy/imu/data@20",
                  *[f"/autonomy/points_{kind}@2" for kind in ("slam", "msckf", "aruco", "sim")]]
-THROTTLE = VINS_THROTTLE + ["/autonomy/goal@2", "/autonomy/map_state@5",
-            "/autonomy/committed_trajectory@5", "/autonomy/rejected_map@1", PX4_POSITION]
+COMMAND_THROTTLE = ["/larper/trajectory_in@20", "/fmu/in/trajectory_setpoint@20",
+                    "/autonomy/committed_trajectory@5"]
+THROTTLE = VINS_THROTTLE + COMMAND_THROTTLE + ["/autonomy/goal@2", "/autonomy/map_state@5",
+            "/autonomy/rejected_map@1", PX4_POSITION]
 SERVE = "['^/viz/.*$', '^/tf_static$']"  # monitoring plus fixed frame registration; no client writes
 NOTHING = "['^$']"
 
@@ -48,7 +50,7 @@ def relay(context):
     raw += ["/native_oak/rectified/left/image", "/native_oak/rectified/right/image"] if on("viz_rectified") else []
     raw += ["/autonomy/trackhist"] if on("viz_tracks") else []
     flight = on("flight_monitor_only")
-    throttle = VINS_THROTTLE + ["/flight_executive/state@2", "/autonomy/map_state@2", "/autonomy/takeoff_ready@2", PX4_POSITION] if flight else THROTTLE
+    throttle = VINS_THROTTLE + COMMAND_THROTTLE + ["/flight_executive/state@2", "/autonomy/map_state@2", "/autonomy/takeoff_ready@2", PX4_POSITION] if flight else THROTTLE
     arg = LaunchConfiguration
     return [
         Node(
