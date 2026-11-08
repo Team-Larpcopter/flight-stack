@@ -5,11 +5,6 @@
         "imageTopic": "/viz/native_oak/left/image_undistorted/compressed"
       }
     },
-    "Image!right": {
-      "imageMode": {
-        "imageTopic": "/viz/native_oak/right/image_undistorted/compressed"
-      }
-    },
     "3D!sqrtvins": {
       "followTf": "global",
       "followMode": "follow-none",
@@ -22,32 +17,27 @@
       },
       "transforms": {},
       "topics": {
-        "/autonomy/pathimu": {
+        "/viz/autonomy/poseimu/path": {
           "visible": true,
           "lineWidth": 0.03,
           "color": "#ff7a45ff"
         },
-        "/autonomy/odomimu": {
-          "visible": true,
-          "type": "arrow",
-          "arrowScale": [
-            0.3,
-            0.06,
-            0.06
-          ],
-          "color": "#ff7a45ff"
-        },
-        "/autonomy/points_slam": {
+        "/viz/autonomy/points_slam": {
           "visible": true,
           "pointSize": 5,
           "colorMode": "flat",
           "flatColor": "#ffd166ff"
         },
-        "/autonomy/points_msckf": {
+        "/viz/autonomy/points_msckf": {
           "visible": true,
           "pointSize": 3,
           "colorMode": "flat",
           "flatColor": "#ffb38a88"
+        },
+        "/viz/autonomy/poseimu": {
+          "visible": true,
+          "type": "arrow",
+          "color": "#ff7a45ff"
         }
       },
       "layers": {
@@ -89,25 +79,25 @@
       }
     },
     "RawMessages!sqrtvins": {
-      "topicPath": "/autonomy/odomimu.pose.pose",
+      "topicPath": "/viz/autonomy/poseimu.pose.pose",
       "diffEnabled": false,
       "expansion": "all"
     },
     "Plot!sqrtvins_pos": {
-      "title": "sqrtVINS IMU position, global (m)",
+      "title": "sqrtVINS position, global (m)",
       "paths": [
         {
-          "value": "/autonomy/odomimu.pose.pose.position.x",
+          "value": "/viz/autonomy/poseimu.pose.pose.position.x",
           "enabled": true,
           "timestampMethod": "receiveTime"
         },
         {
-          "value": "/autonomy/odomimu.pose.pose.position.y",
+          "value": "/viz/autonomy/poseimu.pose.pose.position.y",
           "enabled": true,
           "timestampMethod": "receiveTime"
         },
         {
-          "value": "/autonomy/odomimu.pose.pose.position.z",
+          "value": "/viz/autonomy/poseimu.pose.pose.position.z",
           "enabled": true,
           "timestampMethod": "receiveTime"
         }
@@ -121,20 +111,20 @@
       "followingViewWidth": 20
     },
     "Plot!accel": {
-      "title": "Corrected acceleration, raw IMU axes (m/s\u00b2)",
+      "title": "Raw acceleration, raw IMU axes (m/s\u00b2)",
       "paths": [
         {
-          "value": "/autonomy/imu/data.linear_acceleration.x",
+          "value": "/viz/autonomy/imu/data.linear_acceleration.x",
           "enabled": true,
           "timestampMethod": "receiveTime"
         },
         {
-          "value": "/autonomy/imu/data.linear_acceleration.y",
+          "value": "/viz/autonomy/imu/data.linear_acceleration.y",
           "enabled": true,
           "timestampMethod": "receiveTime"
         },
         {
-          "value": "/autonomy/imu/data.linear_acceleration.z",
+          "value": "/viz/autonomy/imu/data.linear_acceleration.z",
           "enabled": true,
           "timestampMethod": "receiveTime"
         }
@@ -151,17 +141,17 @@
       "title": "Angular velocity, raw IMU axes (rad/s)",
       "paths": [
         {
-          "value": "/autonomy/imu/data.angular_velocity.x",
+          "value": "/viz/autonomy/imu/data.angular_velocity.x",
           "enabled": true,
           "timestampMethod": "receiveTime"
         },
         {
-          "value": "/autonomy/imu/data.angular_velocity.y",
+          "value": "/viz/autonomy/imu/data.angular_velocity.y",
           "enabled": true,
           "timestampMethod": "receiveTime"
         },
         {
-          "value": "/autonomy/imu/data.angular_velocity.z",
+          "value": "/viz/autonomy/imu/data.angular_velocity.z",
           "enabled": true,
           "timestampMethod": "receiveTime"
         }
@@ -173,27 +163,22 @@
       "isSynced": true,
       "xAxisVal": "timestamp",
       "followingViewWidth": 20
-    },
-    "Image!tracks": {
-      "imageMode": {
-        "imageTopic": "/viz/autonomy/trackhist/compressed"
-      }
     },
     "Plot!velocity": {
-      "title": "sqrtVINS velocity, IMU frame (m/s)",
+      "title": "Body velocity, map frame (m/s)",
       "paths": [
         {
-          "value": "/autonomy/odomimu.twist.twist.linear.x",
+          "value": "/viz/autonomy/body_odom.twist.twist.linear.x",
           "enabled": true,
           "timestampMethod": "receiveTime"
         },
         {
-          "value": "/autonomy/odomimu.twist.twist.linear.y",
+          "value": "/viz/autonomy/body_odom.twist.twist.linear.y",
           "enabled": true,
           "timestampMethod": "receiveTime"
         },
         {
-          "value": "/autonomy/odomimu.twist.twist.linear.z",
+          "value": "/viz/autonomy/body_odom.twist.twist.linear.z",
           "enabled": true,
           "timestampMethod": "receiveTime"
         }
@@ -205,6 +190,100 @@
       "isSynced": true,
       "xAxisVal": "timestamp",
       "followingViewWidth": 20
+    },
+    "Image!depth": {
+      "imageMode": {
+        "imageTopic": "/viz/stereo/depth/image/compressed"
+      }
+    },
+    "3D!planning": {
+      "followTf": "map",
+      "followMode": "follow-none",
+      "scene": {
+        "backgroundColor": "#101418"
+      },
+      "topics": {
+        "/viz/autonomy/occupied": {
+          "visible": true,
+          "pointSize": 3,
+          "colorMode": "flat",
+          "flatColor": "#ffcc66ff"
+        },
+        "/viz/autonomy/route": {
+          "visible": true,
+          "lineWidth": 0.04,
+          "color": "#44aaffff"
+        },
+        "/viz/autonomy/committed_path": {
+          "visible": true,
+          "lineWidth": 0.06,
+          "color": "#44ff88ff"
+        },
+        "/viz/autonomy/body_path": {
+          "visible": true,
+          "lineWidth": 0.025,
+          "color": "#ffffffff"
+        },
+        "/viz/autonomy/body_pose": {
+          "visible": true,
+          "type": "arrow",
+          "color": "#ff7744ff"
+        },
+        "/viz/autonomy/goal_pose": {
+          "visible": true,
+          "type": "arrow",
+          "color": "#ff44ffff"
+        }
+      },
+      "layers": {
+        "grid": {
+          "layerId": "foxglove.Grid",
+          "visible": true,
+          "frameId": "map",
+          "size": 20,
+          "divisions": 40,
+          "lineWidth": 1,
+          "color": "#3a4450ff",
+          "instanceId": "f1d0abad-53ac-437d-92ad-a0f2a7bbac56"
+        }
+      },
+      "cameraState": {
+        "perspective": true,
+        "distance": 6.0,
+        "phi": 55,
+        "thetaOffset": 45,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOffset": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "fovy": 45,
+        "near": 0.01,
+        "far": 500
+      }
+    },
+    "RawMessages!map": {
+      "topicPath": "/viz/autonomy/map_state",
+      "diffEnabled": false
+    },
+    "RawMessages!trajectory": {
+      "topicPath": "/viz/autonomy/committed_trajectory",
+      "diffEnabled": false
+    },
+    "RawMessages!health": {
+      "topicPath": "/viz/autonomy/vio_healthy",
+      "diffEnabled": false
     }
   },
   "globalVariables": {},
@@ -213,44 +292,38 @@
     "speed": 1
   },
   "layout": {
-    "direction": "row",
+    "direction": "column",
     "first": {
-      "direction": "column",
+      "direction": "row",
       "first": {
         "direction": "column",
         "first": "Image!left",
-        "second": "Image!right",
-        "splitPercentage": 50
-      },
-      "second": "Image!tracks",
-      "splitPercentage": 66
-    },
-    "second": {
-      "direction": "column",
-      "first": {
-        "direction": "row",
-        "first": "3D!sqrtvins",
-        "second": "RawMessages!sqrtvins",
-        "splitPercentage": 77
+        "second": "Image!depth"
       },
       "second": {
         "direction": "row",
-        "first": {
-          "direction": "column",
-          "first": "Plot!sqrtvins_pos",
-          "second": "Plot!velocity",
-          "splitPercentage": 50
-        },
+        "first": "3D!planning",
+        "second": "3D!sqrtvins"
+      },
+      "splitPercentage": 25
+    },
+    "second": {
+      "direction": "row",
+      "first": {
+        "direction": "column",
+        "first": "RawMessages!map",
+        "second": "RawMessages!health"
+      },
+      "second": {
+        "direction": "row",
+        "first": "RawMessages!trajectory",
         "second": {
           "direction": "column",
-          "first": "Plot!accel",
-          "second": "Plot!gyro",
-          "splitPercentage": 50
-        },
-        "splitPercentage": 50
-      },
-      "splitPercentage": 62
+          "first": "Plot!sqrtvins_pos",
+          "second": "Plot!velocity"
+        }
+      }
     },
-    "splitPercentage": 25
+    "splitPercentage": 70
   }
 }

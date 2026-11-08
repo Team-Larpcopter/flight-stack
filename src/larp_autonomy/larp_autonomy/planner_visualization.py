@@ -7,7 +7,7 @@ def main():
     import rclpy
     from rclpy.node import Node
     from rclpy.qos import QoSProfile, DurabilityPolicy, qos_profile_sensor_data
-    from dronehacks_msgs.msg import MapSnapshot, RoutePolyline
+    from dronehacks_msgs.msg import MapSnapshot, RoutePolyline, NavigationGoal
     from sensor_msgs.msg import PointCloud2
     from nav_msgs.msg import Path, Odometry
     from geometry_msgs.msg import PoseStamped
@@ -22,6 +22,12 @@ def main():
     odom_pub = node.create_publisher(Odometry, '/viz/autonomy/body_odom', 1)
     history_pub = node.create_publisher(Path, '/viz/autonomy/body_path', 1)
     health_pub = node.create_publisher(Bool, '/viz/autonomy/vio_healthy', 1)
+    goal_pub = node.create_publisher(PoseStamped, '/viz/autonomy/goal_pose', latched)
+    def goal_view(msg):
+        pose = PoseStamped()
+        pose.header, pose.pose = msg.header, msg.pose
+        goal_pub.publish(pose)
+    node.create_subscription(NavigationGoal, '/autonomy/goal', goal_view, latched)
     latest = {'map': None, 'route': None, 'plan': None, 'odom': None}
     history = deque(maxlen=1500)
     previous_stamp = None

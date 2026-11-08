@@ -1,5 +1,9 @@
 # Jetson tools
 
+For the ARM64-emulated build on a PC, transfer-only host script, and separate
+Jetson camera/VINS/Foxglove tmux launcher, see
+[offboard deployment](../docs/offboard-arm64.md).
+
 Start with [fresh-clone native build and launch](../docs/jetson-fresh-clone.md).
 The legacy organizer-stack helpers below are retained for existing deployments.
 

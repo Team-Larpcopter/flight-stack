@@ -2,6 +2,7 @@
 from pathlib import Path
 import math
 import tempfile
+import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription,
@@ -26,13 +27,17 @@ def nodes(context):
         'rig_file', 'navigation_config', 'cad_prior_file', 'boundary_config',
         'initial_map_x', 'initial_map_y', 'initial_map_z', 'initial_map_yaw',
         'map_heading_ned', 'map_origin_ned_x', 'map_origin_ned_y', 'map_origin_ned_z',
-        'alignment_verified', 'mission_id', 'takeoff_height', 'hold_timeout')}
+        'alignment_verified', 'mission_id', 'takeoff_height', 'hold_timeout', 'static_cad_only')}
     files = ['rig_file', 'navigation_config', 'cad_prior_file', 'boundary_config', 'estimator_config']
     if active:
         files.append('bridge_params')
     for name in files:
         if not Path(value(name)).is_file():
             raise ValueError('Missing input file: ' + name + '=' + value(name))
+    if value('static_cad_only').lower() != 'true':
+        rig = yaml.safe_load(Path(value('rig_file')).read_text())
+        if not rig.get('T_body_depth') or rig.get('depth_frame') != 'native_oak_depth_optical':
+            raise ValueError('Dynamic LAS mapping requires a rig generated with native_calibration --depth')
     numeric = [float(value(k)) for k in ('goal_x', 'goal_y', 'goal_z', 'goal_yaw',
                'initial_map_x', 'initial_map_y', 'initial_map_z', 'initial_map_yaw',
                'map_heading_ned', 'map_origin_ned_x', 'map_origin_ned_y', 'map_origin_ned_z')]
@@ -61,12 +66,22 @@ def nodes(context):
         result.extend([
             Node(package='larp_hardware', executable='oak_native_node', output='screen',
                  parameters=[{'connect_device': True, 'publish_images': True, 'align_imu': True,
+                              'publish_rectified': value('static_cad_only').lower() != 'true',
                               'factory_calibration_out': directory + '/factory.json',
                               'camera_fps': 30.0, 'accel_hz': 500, 'gyro_hz': 400,
                               'max_exposure_us': 5000, 'capture_seconds': 0.0}]),
             Node(package='ov_srvins', executable='run_subscribe_msckf', namespace='autonomy',
                  output='screen', parameters=[{'config_path': value('estimator_config'), 'verbosity': 'INFO'}],
                  remappings=[('/sim/processed/vio', '/autonomy/processed_vio')])])
+    if value('start_depth').lower() == 'true':
+        result.append(IncludeLaunchDescription(PythonLaunchDescriptionSource(str(
+            Path(get_package_share_directory('larp_liteanystereo')) / 'launch/las_depth.launch.py')),
+            launch_arguments={'engine_path': value('engine_path'), 'publish_as_primary': 'true',
+                              'max_depth_m': '6.0', 'viz_rate_hz': '5.0'}.items()))
+    if value('start_visualization').lower() == 'true':
+        result.append(IncludeLaunchDescription(PythonLaunchDescriptionSource(str(
+            Path(get_package_share_directory('larp_perception')) / 'launch/perception.launch.py')),
+            launch_arguments={'port': value('foxglove_port'), 'send_buffer_limit': '8388608'}.items()))
     if active:
         result.append(Node(package='larp_px4_bridge', executable='vins_px4_bridge',
                            parameters=[value('bridge_params'), {'input_topic': '/autonomy/odomimu',
@@ -90,6 +105,8 @@ def generate_launch_description():
         'bridge_params': '', 'navigation_config': str(nav / 'navigation.yaml'),
         'cad_prior_file': str(nav / 'course_cad_prior.txt'),
         'estimator_config': str(estimator), 'start_localization': 'true',
+        'static_cad_only': 'true', 'start_depth': 'false', 'start_visualization': 'true',
+        'foxglove_port': '8766', 'engine_path': '/models/las2_m_320x480_d192_fp16.engine',
         'agent_transport': 'udp4', 'agent_port': '8888', 'agent_device': '/dev/px4', 'agent_baud': '921600',
         'goal_yaw': '0.0', 'initial_map_x': '0.0', 'initial_map_y': '0.0', 'initial_map_z': '0.0',
         'initial_map_yaw': '0.0', 'map_heading_ned': '0.0', 'map_origin_ned_x': '0.0',
