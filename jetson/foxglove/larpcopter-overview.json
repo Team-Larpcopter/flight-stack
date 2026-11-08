@@ -233,6 +233,38 @@
       "isSynced": true,
       "xAxisVal": "timestamp",
       "followingViewWidth": 20
+    },
+    "Plot!px4_pos": {
+      "title": "PX4 position estimate, NED (m): x north, y east, z down",
+      "paths": [
+        {
+          "value": "/viz/fmu/out/vehicle_local_position.x",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/viz/fmu/out/vehicle_local_position.y",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/viz/fmu/out/vehicle_local_position.z",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        }
+      ],
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 20
+    },
+    "RawMessages!px4": {
+      "topicPath": "/viz/fmu/out/vehicle_local_position",
+      "diffEnabled": false,
+      "expansion": "all"
     }
   },
   "globalVariables": {},
@@ -271,9 +303,19 @@
         },
         "second": {
           "direction": "column",
-          "first": "Plot!accel",
-          "second": "Plot!gyro",
-          "splitPercentage": 50
+          "first": {
+            "direction": "row",
+            "first": "Plot!px4_pos",
+            "second": "RawMessages!px4",
+            "splitPercentage": 60
+          },
+          "second": {
+            "direction": "column",
+            "first": "Plot!accel",
+            "second": "Plot!gyro",
+            "splitPercentage": 50
+          },
+          "splitPercentage": 34
         },
         "splitPercentage": 40
       },

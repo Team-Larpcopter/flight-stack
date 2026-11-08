@@ -31,8 +31,10 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
+# PX4's own position estimate (EKF2, NED, px4_msgs MESSAGE_VERSION 0 -> no _v suffix).
+PX4_POSITION = "/fmu/out/vehicle_local_position@10"
 THROTTLE = ["/autonomy/poseimu@10", "/autonomy/imu/data@20", "/autonomy/points_slam@2", "/autonomy/points_msckf@2", "/autonomy/goal@2", "/autonomy/map_state@5",
-            "/autonomy/committed_trajectory@5", "/autonomy/rejected_map@1"]
+            "/autonomy/committed_trajectory@5", "/autonomy/rejected_map@1", PX4_POSITION]
 SERVE = "['^/viz/.*$']"  # only the throttled /viz copies; no client writes at all
 NOTHING = "['^$']"
 
@@ -44,7 +46,7 @@ def relay(context):
     raw += ["/native_oak/rectified/left/image", "/native_oak/rectified/right/image"] if on("viz_rectified") else []
     raw += ["/autonomy/trackhist"] if on("viz_tracks") else []
     flight = on("flight_monitor_only")
-    throttle = ["/flight_executive/state@2", "/autonomy/map_state@2", "/autonomy/takeoff_ready@2"] if flight else THROTTLE
+    throttle = ["/flight_executive/state@2", "/autonomy/map_state@2", "/autonomy/takeoff_ready@2", PX4_POSITION] if flight else THROTTLE
     arg = LaunchConfiguration
     return [
         Node(
