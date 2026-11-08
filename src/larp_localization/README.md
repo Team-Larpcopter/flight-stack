@@ -72,7 +72,7 @@ and makes the node exit with "unable to parse all parameters".
 | `num_opencv_threads` | 1 | upstream EuRoC default |
 | `init_max_reproj` / `init_min_feat` | 3.0 / 20 | upstream EuRoC defaults |
 | `record_init_pose` / `record_init_timing` | true | upstream EuRoC defaults |
-| `try_zupt` / `zupt_only_at_beginning` | false / false | upstream EuRoC defaults |
+| `try_zupt` / `zupt_only_at_beginning` | true / false | enable zero-velocity updates throughout the run |
 | `calib_cam_extrinsics` / `_intrinsics` / `_timeoffset` | true | refine the nominal IMU pose and timing online |
 
 ## Known gaps
