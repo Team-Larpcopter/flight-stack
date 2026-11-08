@@ -34,7 +34,7 @@ The launch includes:
 
 1. XRCE-DDS Agent, connected over UDP or explicitly mapped serial.
 2. Native OAK driver and sqrtVINS, with bundled camera calibration/raw aligned IMU.
-3. Body odometry, static CAD mapper, Air-FAR and SUPER.
+3. Body odometry, static CAD mapper and SUPER A* / trajectory planning.
 4. A latched goal publisher, using the first observed map localization epoch.
 5. Polynomial sampling bridge and planner visualization topics.
 6. In `hardware` mode only: external vision to PX4 and the flight executive.
@@ -70,7 +70,7 @@ values, not missing software dependencies:
 - Hardware requires `alignment_verified:=true`, a unique `mission_id`, and
   surveyed `map_heading_ned`, `map_origin_ned_x/y/z` for the planner/PX4 transform.
 
-Bundled navigation, Air-FAR, course CAD and estimator files are defaults; each
+Bundled navigation, course CAD and estimator files are defaults; each
 can be explicitly overridden. The goal remains tied to the initial epoch. A
 localization reset needs a deliberate mission restart and updated EV reset counter.
 No CAD pose matching or automatic map/PX4 alignment is performed.

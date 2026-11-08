@@ -23,11 +23,11 @@ def nodes(context):
     if active and (value('alignment_verified').lower() != 'true' or not value('mission_id').strip()):
         raise ValueError('Hardware execution requires alignment_verified:=true and mission_id')
     args = {name: value(name) for name in (
-        'rig_file', 'navigation_config', 'airfar_config', 'cad_prior_file', 'boundary_config',
+        'rig_file', 'navigation_config', 'cad_prior_file', 'boundary_config',
         'initial_map_x', 'initial_map_y', 'initial_map_z', 'initial_map_yaw',
         'map_heading_ned', 'map_origin_ned_x', 'map_origin_ned_y', 'map_origin_ned_z',
         'alignment_verified', 'mission_id', 'takeoff_height', 'hold_timeout')}
-    files = ['rig_file', 'navigation_config', 'airfar_config', 'cad_prior_file', 'boundary_config', 'estimator_config']
+    files = ['rig_file', 'navigation_config', 'cad_prior_file', 'boundary_config', 'estimator_config']
     if active:
         files.append('bridge_params')
     for name in files:
@@ -88,7 +88,7 @@ def generate_launch_description():
     required = ('rig_file', 'boundary_config', 'goal_x', 'goal_y', 'goal_z')
     defaults = {'mode': 'shadow', 'alignment_verified': 'false', 'mission_id': '',
         'bridge_params': '', 'navigation_config': str(nav / 'navigation.yaml'),
-        'airfar_config': str(nav / 'airfar_geometry.yaml'), 'cad_prior_file': str(nav / 'course_cad_prior.txt'),
+        'cad_prior_file': str(nav / 'course_cad_prior.txt'),
         'estimator_config': str(estimator), 'start_localization': 'true',
         'agent_transport': 'udp4', 'agent_port': '8888', 'agent_device': '/dev/px4', 'agent_baud': '921600',
         'goal_yaw': '0.0', 'initial_map_x': '0.0', 'initial_map_y': '0.0', 'initial_map_z': '0.0',
