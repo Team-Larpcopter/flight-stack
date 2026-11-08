@@ -20,6 +20,8 @@ def nodes(context):
     mode = value('mode')
     if mode not in ('shadow', 'hardware'):
         raise ValueError('mode must be shadow or hardware')
+    if value('planner') not in ('super', 'ego'):
+        raise ValueError('planner must be super or ego')
     active = mode == 'hardware'
     if active and (value('alignment_verified').lower() != 'true' or not value('mission_id').strip()):
         raise ValueError('Hardware execution requires alignment_verified:=true and mission_id')
@@ -87,6 +89,7 @@ def nodes(context):
                            parameters=[value('bridge_params'), {'input_topic': '/autonomy/odomimu',
                            'output_topic': '/fmu/in/vehicle_visual_odometry'}], output='screen'))
     args['mode'] = mode
+    args['planner'] = value('planner')
     result.extend([
         IncludeLaunchDescription(PythonLaunchDescriptionSource(str(
             Path(get_package_share_directory('larp_autonomy')) / 'launch/planner_mission.launch.py')),
@@ -101,7 +104,7 @@ def generate_launch_description():
     nav = Path(get_package_share_directory('larp_navigation')) / 'config'
     estimator = Path(get_package_share_directory('larp_localization')) / 'config/oak_d_s2/estimator_config.yaml'
     required = ('rig_file', 'boundary_config', 'goal_x', 'goal_y', 'goal_z')
-    defaults = {'mode': 'shadow', 'alignment_verified': 'false', 'mission_id': '',
+    defaults = {'planner': 'super', 'mode': 'shadow', 'alignment_verified': 'false', 'mission_id': '',
         'bridge_params': '', 'navigation_config': str(nav / 'navigation.yaml'),
         'cad_prior_file': str(nav / 'course_cad_prior.txt'),
         'estimator_config': str(estimator), 'start_localization': 'true',

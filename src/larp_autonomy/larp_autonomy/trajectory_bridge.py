@@ -1,4 +1,4 @@
-"""Sample certified SUPER curves; only the executive owns PX4 commands.
+"""Sample certified planner curves; only the executive owns PX4 commands.
 
 Default output is shadow-only. Active output requires explicit hardware or
 simulation selection, surveyed alignment, and a flight-stable mission ID.

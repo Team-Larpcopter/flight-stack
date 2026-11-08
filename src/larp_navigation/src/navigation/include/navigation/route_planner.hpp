@@ -1,5 +1,6 @@
 #pragma once
 #include <navigation/planner_clock.hpp>
+#include <navigation/planner_contract.hpp>
 #include <navigation/route_guide.hpp>
 #include <navigation/global_grid_route.hpp>
 #include <navigation/trajectory_validator.hpp>
@@ -12,23 +13,11 @@
 namespace navigation {
 // Single-owner coordinator: route callbacks, map updates and planning run on
 // the same executor. A separate controller must sample the committed trajectory.
-class RoutePlanner {
-  struct Limits {double v,a,budget,yaw_rate,yaw_acceleration,radius;};
-  static Limits loadLimits(const std::string& file) {
-    const auto root=YAML::LoadFile(file),s=root["navigation_safety"];
-    Limits l{s["max_velocity"].as<double>(),s["max_acceleration"].as<double>(),s["validation_budget_ms"].as<double>(),
-      s["max_yaw_rate"].as<double>(),s["max_yaw_acceleration"].as<double>(),root["super_planner"]["robot_r"].as<double>()};
-    if(!std::isfinite(l.v+l.a+l.budget+l.yaw_rate+l.yaw_acceleration+l.radius) || l.radius<=0 || l.v<=0 || l.a<=0 || l.budget<=0 ||
-       l.yaw_rate<=0 || l.yaw_rate>1 || l.yaw_acceleration<=0 || l.yaw_acceleration>2 ||
-       root["traj_opt"]["boundary"]["max_vel"].as<double>()>=l.v ||
-       root["traj_opt"]["boundary"]["max_acc"].as<double>()>=l.a)
-      throw std::invalid_argument("optimizer targets require margin below hard dynamic limits");
-    return l;
-  }
+class RoutePlanner : public PlannerContract {
  public:
   RoutePlanner(const std::string& config,rog_map::ROGMap::Ptr map,
                std::shared_ptr<PlannerClock> clock,bool internal_grid_route=false)
-    :map_(std::move(map)),clock_(std::move(clock)),limits_(loadLimits(config)),planner_(config,clock_,map_,true),
+    :map_(std::move(map)),clock_(std::move(clock)),limits_(PlannerLimits::load(config)),planner_(config,clock_,map_,true),
      validator_([this](const Point& lo,const Point& hi){return boxFree(lo,hi);},limits_.v,limits_.a,limits_.budget),
      yaw_validator_([](const Point&,const Point&){return true;},limits_.yaw_rate,limits_.yaw_acceleration,limits_.budget) {
     if(YAML::LoadFile(config)["navigation_safety"]["prefer_observable_heading"].as<bool>(false))
@@ -139,25 +128,9 @@ class RoutePlanner {
     return insideEnvelope(a) && insideEnvelope(b) && map_->isLineFree(a,b,true,true);
   }
   bool boxFree(const Point& lo,const Point& hi) const {
-    if(!lo.allFinite() || !hi.allFinite() || !insideEnvelope(lo) || !insideEnvelope(hi))return false;
-    Eigen::Vector3i a,b;map_->infMapPosToGlobalIndex(lo,a);map_->infMapPosToGlobalIndex(hi,b);
-    const Eigen::Vector3i count=b-a+Eigen::Vector3i::Ones();
-    if(count.minCoeff()<=0 || count.maxCoeff()>64 || int64_t(count.x())*count.y()*count.z()>4096)return false;
-    // The inflation grid is a conservative route-search approximation, not a
-    // second robot geometry. An inflated cell may still contain a valid centre
-    // position. Certify the declared sphere against full occupied AND unknown
-    // voxels instead; CIRI already reserves radius plus voxel circumradius.
-    const double search_radius=limits_.radius+map_->getResolution()*.5;
-    const Point expanded_lo=lo-Point::Constant(search_radius),expanded_hi=hi+Point::Constant(search_radius);
-    if(!map_->insideLocalMap(expanded_lo) || !map_->insideLocalMap(expanded_hi))return false;
-    super_utils::vec_Vec3f obstacles;
-    for(const auto type:{super_utils::OCCUPIED,super_utils::UNKNOWN}) {
-      map_->boxSearch(expanded_lo,expanded_hi,type,obstacles);
-      for(const auto& p:obstacles)
-        if(!sphereBoxClear(lo,hi,p,map_->getResolution(),limits_.radius))return false;
-    }
-    return true;
+    return certifiedBoxFree(map_,limits_.radius,envelope_lower_,envelope_upper_,lo,hi);
   }
+
   void adaptGuideHorizon(super_utils::RET_CODE result) {
     // Retry the same global polyline with a shorter nearby section when the
     // optimizer cannot certify it. Never relax geometry or command a rejected
@@ -168,7 +141,7 @@ class RoutePlanner {
   }
   double guide_horizon_scale_{1.};bool last_guide_valid_{false};
   rog_map::ROGMap::Ptr map_;std::shared_ptr<PlannerClock> clock_;
-  Limits limits_;
+  PlannerLimits limits_;
   std::unique_ptr<GlobalGridRoute> grid_route_;uint64_t map_revision_{0};
   super_planner::SuperPlanner planner_;RouteGuide guide_;TrajectoryValidator validator_,yaw_validator_;
   StopCommand stop_;bool braking_{false};uint64_t recovery_count_{0};

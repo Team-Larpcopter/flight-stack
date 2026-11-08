@@ -1,0 +1,31 @@
+{
+  "url": "https://github.com/ZJU-FAST-Lab/ego-planner-swarm",
+  "branch": "ros2_version",
+  "commit": "23a8d5a191711dd65633df689bd00f55d4dea8f9",
+  "files": {
+    "src/planner/plan_env/include/plan_env/linear_obj_model.hpp": "2b52ab8f83ecf9f5e30047ffb016a21476573d59379a86745c6fce5ef0f5ad98",
+    "src/planner/plan_env/include/plan_env/grid_map.h": "5704d70393141618693ec20ec49433c8a250daa77a592596139a1ed19530bbba",
+    "src/planner/plan_env/include/plan_env/obj_predictor.h": "413909f550922ca9c17ec2cefb4cfb3767c0260d08aae9161cd6f5a0c4b1f5a0",
+    "src/planner/plan_env/include/plan_env/raycast.h": "0bf2bfc853eed90f8ca3b47ae14050db40a08fbe5ea1db8c3ab1fb4b363b39b0",
+    "src/planner/plan_env/src/grid_map.cpp": "b9715e1d24afe14f04273b56d0fb4e7969e4d5ee674bfe8c76520befd8f69d04",
+    "src/planner/plan_env/src/raycast.cpp": "d7cd0a81c3264fe8aa0920b796cf5dd86241b35aa74c15890af5a5c10f270a40",
+    "src/planner/plan_env/src/obj_predictor.cpp": "bb1e01fb06232b3cd11713e41390f4fe263efb0809d259281bbfcde278ad579d",
+    "src/planner/path_searching/include/path_searching/dyn_a_star.h": "7d782f3abdd45bb518a3d16656890a4c6acf1e3d329f2fe213d84cd77c9e820f",
+    "src/planner/path_searching/src/dyn_a_star.cpp": "59359ae1ae683e97a9807aa093bec80f3826b960c51be305845a2efd711dcef2",
+    "src/planner/bspline_opt/include/bspline_opt/lbfgs.hpp": "39174dfe750b142f448fe8ac637976edc8a1bcf6a6ab8a56930e6543cfdf6b07",
+    "src/planner/bspline_opt/include/bspline_opt/uniform_bspline.h": "6c2dc80d8b87ce7fa6d7e4a7a098296160db83d24e7edf71468ebe371d3f0629",
+    "src/planner/bspline_opt/include/bspline_opt/gradient_descent_optimizer.h": "09341567c7645ab92d326ddf0d4d1fe5d2db3fbb006804c7cf9b39ffcaff0d94",
+    "src/planner/bspline_opt/include/bspline_opt/bspline_optimizer.h": "eddbbecf4a4ecb4140d8dcb78d6d0527c06de85335f186dee37c29e477b883e1",
+    "src/planner/bspline_opt/src/gradient_descent_optimizer.cpp": "1891c663ed801c12a3a2dc97cf2ad8ca19bbe2deaf2261c2c5521eed8d92dd7b",
+    "src/planner/bspline_opt/src/bspline_optimizer.cpp": "13cf0895a9e00fb8e7280bce333814a9767920887ac27de10c9f47df3e0ef2ed",
+    "src/planner/bspline_opt/src/uniform_bspline.cpp": "f03094a2fd3e36525ebe8ba0a1f4fd251502492464565f668b412cf7e3233398",
+    "src/planner/traj_utils/include/traj_utils/plan_container.hpp": "a30417cc42b0ebc01fc50422c0f6acd79fb3dc50d62e82c8597019e4cbd0e729",
+    "src/planner/traj_utils/include/traj_utils/polynomial_traj.h": "ee96ef33c38386c30869e6a470a68b4034c4f55a73b80d014abaf855ab24e03e",
+    "src/planner/traj_utils/include/traj_utils/planning_visualization.h": "35c3fd55b4c3cdfff6b342c214ea7d920de581761253313cd46d0497083862ed",
+    "src/planner/traj_utils/src/polynomial_traj.cpp": "608005c392dbfa46315cfa3f6e5f3b9db5bc3a10cb3f9ac539c3321505acdb18",
+    "src/planner/traj_utils/src/planning_visualization.cpp": "0924bcc7281e21477f2df621a840312d9ba8477731a5fe2c6ab68b7333dc7e43",
+    "src/planner/plan_manage/include/ego_planner/planner_manager.h": "5fb295e2df808fea258b3508cdc9fa33afecec652be2a0dd5c23fd4de51d8a16",
+    "src/planner/plan_manage/src/planner_manager.cpp": "89feb7684cba072a65e3949a23c21980194de273a1b8625d0b27ec174d780215",
+    "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+  }
+}

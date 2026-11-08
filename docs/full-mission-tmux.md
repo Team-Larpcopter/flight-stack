@@ -1,4 +1,4 @@
-# Eight-pane full system and PX4 mission
+# Full system and PX4 mission in tmux
 
 Run on the Jetson after offboard build and transfer. Offboard builds compile
 production targets by default; `RUN_TESTS=1` also builds/runs the C++ test targets. The host scripts only build
@@ -8,13 +8,14 @@ and transfer; these scripts launch separately:
 export DEPLOYMENT_CONFIG=$HOME/flight-stack/config
 # Full sensing, mapping, planning and visualization; no executive/PX4 commands:
 bash ~/flight-stack/deployment/arm64/launch_full_system_tmux.sh
-# Or the real mission (stop the shadow system first):
+# Or the real SUPER mission:
 bash ~/flight-stack/deployment/arm64/launch_mission_tmux.sh
 ```
 
-Both use one tiled tmux screen, mouse enabled, with eight panes: Drivers,
-Foxglove, sqrtVINS, DDS, LAS depth, ROG map, SUPER, Mission executive. Each pane
-has one launch command. ROG and SUPER deliberately share one process/map;
+Both use one tiled tmux screen, mouse enabled, with nine panes: Drivers,
+Foxglove, sqrtVINS, DDS, LAS depth, ROG map, planner, Mission executive and a
+manual recorder (press Enter in that pane to start recording). Each pane
+has one command. ROG and the selected planner share one process/map;
 the ROG pane displays small map-state messages, avoiding a duplicate map and
 large cloud transfers between planning processes. The VINS pane also runs the
 body-frame adapter and, in hardware mode, the PX4 external-vision bridge.
@@ -22,17 +23,18 @@ body-frame adapter and, in hardware mode, the PX4 external-vision bridge.
 Copy `src/larp_autonomy/config/mission.yaml` to the configuration directory,
 alongside calibrated `rig.json` and PX4 `bridge.yaml`. Set the surveyed map/PX4
 alignment and `alignment_verified: true` for hardware. The nominal course XY
-boundary is only appropriate at the matching surveyed placement. The entire
-vehicle is bounded below map z=1.8 m, with 0.4 m clearance: commanded body-centre
-altitude stays at or below 1.4 m. The executive independently checks measured
-position and outgoing setpoints against the same boundary. Ground contact is
-allowed during takeoff and landing, but never relaxes the ceiling or XY limits.
+boundary is only appropriate at the matching surveyed placement. The planner
+retains the map z=1.8 m ceiling and 0.4 m flight-envelope margin: planned
+body-centre altitude stays at or below 1.4 m. The current mission launchers set
+`enforce_boundary=False` in the executive, so its independent measured-position
+and outgoing-setpoint geofence checks are disabled. Planner map boundaries and
+trajectory clearance checks remain enabled.
 
 The mission matches the successful `sqrtvins-course-053` simulation configuration:
 take off 1.0 m, navigate to map `[-1.90688, -0.47244, 1.0]`, yaw 0, then land.
 There are no intermediate mission waypoints. In hardware mode the final goal is
-published after takeoff reaches HOLD, avoiding global searches and trajectory
-optimization while waiting on the ground or ascending. The older short-goal and scripted
+published before takeoff for planning and visualization. The trajectory bridge
+independently prevents execution until the executive reaches HOLD/TRACKING. The older short-goal and scripted
 course examples remain available but are not used by these launchers.
 
 Start the stack while landed and disarmed in a manual flight mode. Once localization, depth,
@@ -53,6 +55,43 @@ still applies when commands cease.
 Do not run the old localization launcher concurrently: the full system owns the
 camera and VINS publishers.
 
+## Select EGO for the full mission
+
+After rebuilding and transferring the runtime bundle, use either dedicated entry point:
+
+```bash
+# Configuration and installed-library checks; starts no mission components:
+bash ~/flight-stack/deployment/arm64/launch_ego_mission_tmux.sh --check
+# Full sensing/planning, with executive output disabled:
+bash ~/flight-stack/deployment/arm64/launch_ego_full_system_tmux.sh
+# Real mission using EGO trajectories through the existing executive:
+bash ~/flight-stack/deployment/arm64/launch_ego_mission_tmux.sh
+```
+
+EGO uses the same `DEPLOYMENT_CONFIG/mission.yaml`, rig, PX4 bridge configuration,
+mission goal and pilot-start contract. It replaces the local optimizer; shared
+ROG mapping, SUPER A* global route guidance, whole-curve certification, the
+trajectory bridge and executive stay in the path. The EGO pane shows the mapper
+and EGO backend. Foxglove and the recorder consume the existing trajectory topics.
+See [EGO integration and validation](ego-planner.md) for implementation limits.
+
+Default EGO tmux sessions are `flight-stack-ego-hardware` and
+`flight-stack-ego-shadow`; containers are `flight-stack-mission-ego-hardware` and
+`flight-stack-mission-ego-shadow`. `SESSION` and `CONTAINER` still override these.
+An explicit launch replaces known SUPER/EGO/localization stack containers and
+sessions, so switch planners only while landed and disarmed. The check command
+does not stop anything, attach devices, or use host networking. If a new runtime
+archive needs extraction while an existing container owns its files, the check
+fails with the existing loader's stop-first message. A normal launch stops known
+owners before extracting the update. Custom container/session names must be
+reused or stopped explicitly when switching.
+
+The existing SUPER wrappers retain their default. The shared script also accepts
+`launch_system_tmux.sh hardware --planner ego` (or `shadow`) and `--check`.
+For an individual pane, use `ros2 launch larp_autonomy mission_runtime.launch.py
+component:=planner planner:=ego mode:=hardware mission_file:=/config/mission.yaml`.
+The legacy `component:=super` alias is retained; `planner` selects its backend.
+
 ## Depth, map and runtime cost
 
 The runtime uses `navigation_fine.yaml` and `course_cad_prior_fine.txt`: 5 cm
@@ -60,7 +99,8 @@ voxels, a revisable CAD prior, and one shared map for SUPER A* and trajectories.
 The packaged priors include the updated W1/W2 wall layout; see
 [planning-map provenance and regeneration](course-map-prior.md) for geometry,
 coordinate registration, and rebuild requirements.
-LAS and the mapper both reject metric depth outside 0.3–3.0 m. Invalid/no-return
+This launcher configures LAS and the mapper with a 0.2 m minimum and no additional
+finite maximum; the navigation map retains its configured ray range. Invalid/no-return
 pixels are unknown; they never count as free-space rays.
 
 New occupancy needs three hit-bearing depth frames. Clearing occupied cells needs
@@ -71,7 +111,8 @@ previously unknown cells remain unknown. One byte per voxel stores
 both streak directions (roughly 6 MB for the configured map), with constant work
 only on touched cells. Hard boundaries cannot be cleared by sensor observations.
 
-The fine-grid global search budget is 250 ms. A native-host actual-CAD check found
+The configured fine-grid global search budget is capped to 20 ms work slices
+with progress retained across planner ticks. A native-host actual-CAD check found
 the full route in about 188 ms under the 1.8 m ceiling; geometric inspection of
 the route confirmed the first divider, Gate A, tunnel and window passages to the
 final goal. This is a route check, not an executed flight or target timing result.
@@ -91,7 +132,7 @@ quality 60, with latest-only queues and dropping before conversion. LAS's own
 preview/disparity JPEGs, right-camera preview, feature clouds, IMU plots and raw
 trajectory/map diagnostics are disabled in this flight-monitor profile.
 
-The 1.8 m limit here is the companion planner/executive boundary; this does not
+The 1.8 m limit here is the companion planner boundary; this does not
 upload or claim to configure PX4's independent onboard geofence parameters.
 
 Each pane runs its launch command from an interactive Bash shell. Ctrl+C stops
@@ -106,7 +147,8 @@ DDS and executive. It loads an adjacent `deployment.env` when present. The pilot
 arms then selects Position; the executive requests Offboard, ascends 0.5 m,
 holds for 2 seconds, then requests landing. It starts no planner or trajectory
 publisher and intentionally does not require map/obstacle readiness. PX4
-preflight, pilot sequencing, telemetry and body-envelope checks remain active.
+preflight, pilot sequencing and telemetry checks remain active. Like the current
+full mission and triangle launchers, this launcher disables the executive geofence.
 This does not resolve or qualify unstable VIO.
 
 Run `bash launch_takeoff_hold_tmux.sh --check` for configuration/import checks

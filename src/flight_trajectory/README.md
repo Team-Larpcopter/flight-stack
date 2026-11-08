@@ -108,3 +108,26 @@ Like the takeoff/hold launcher, it does not run obstacle planning or require
 map readiness. Stale telemetry or excessive tracking error stops the course;
 the existing executive handles loss of trajectory with HOLD, then landing.
 The DroneHacks course remains simulation-only.
+
+## Fixed tunnel/window route
+
+`bash launch_fixed_course_tmux.sh` starts drivers, Foxglove, sqrtVINS, DDS,
+the fixed-course executive, and an unstarted manual bag command. Mouse mode is
+on; Ctrl+C in a pane returns to its shell. It replaces existing stack sessions.
+It does not launch LAS depth, ROG Map, SUPER or collision checking. Existing
+flight-executive telemetry/alignment and tracking checks remain; executive
+geofence enforcement is disabled as requested. Pilot arming and a transition
+to Position authorize the executive to request Offboard and take off.
+
+The launch-relative `(forward, left)` vertices, in metres, are:
+`(0,0) -> (1.2,0) -> (1.2,-4.8261) -> (-3.3863,-4.8261)`
+`-> (-3.3863,-0.77724) -> (-2.82128,-0.77724)`.
+Takeoff and all route legs use 1.0 m height. Each straight leg stops at its end;
+quintic yaw turns occur at rest before the next leg. Translation is limited to
+0.2 m/s and 0.2 m/s², yaw to 0.3 rad/s and 0.4 rad/s². The executive lands after
+reaching and settling at the final goal. The route is independent of online maps.
+
+The tunnel and window coordinates are derived from the reference CAD, which
+the operator reports is outdated. Physical opening location and height are operator-confirmed.
+The planned path is shown through `/viz/autonomy/committed_path` and its goal
+through `/viz/autonomy/goal_pose`, using the frozen map-to-PX4 alignment.

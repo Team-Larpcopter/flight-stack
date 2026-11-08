@@ -1,10 +1,11 @@
-# Single final-goal course mission, matching sqrtvins-course-053.
+# Single final-goal course mission, shifted from the original simulation goal.
 # Copy to DEPLOYMENT_CONFIG/mission.yaml and set the surveyed alignment.
 mission_id: course-goal
 alignment_verified: false
 rig_file: /config/rig.json
 bridge_params: /config/bridge.yaml
-goal: [-1.90688, -0.47244, 1.0, 0.0]
+# Goal shifted 3 ft backward and 1 ft right in the configured starting frame.
+goal: [-2.82128, -0.77724, 1.0, 0.0]
 takeoff_height: 1.0
 map_heading_ned: 0.0
 map_origin_ned: [0.0, 0.0, 0.0]
