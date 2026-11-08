@@ -5,14 +5,13 @@
 #        run it on a laptop: needs CPU PyTorch + torchvision + timm, which the Jetson
 #        image lacks) -> $LAS_OUT/las2_<size>_<H>x<W>_d<max_disp>.onnx
 #   las_ws.sh engine [SIZE] [HEIGHT] [WIDTH] [MAX_DISP]   (Jetson HOST) TensorRT FP16
-#        engine from that ONNX -> $MODELS_DIR/las2_<size>_<H>x<W>_d<max_disp>_fp16.engine
-#   las_ws.sh install                                     (Jetson HOST) copy the saved engine
-#        (models/ in this package) into $MODELS_DIR, where the node loads it
+#        engine from that ONNX, in the LAS image (NVIDIA Isaac ROS Humble, see jetson/stack.sh)
+#        -> $MODELS_DIR/las2_<size>_<H>x<W>_d<max_disp>_fp16.engine
 #
 # Defaults: SIZE m (s|m|l|h), 320 x 480 (both divisible by 32, as LAS requires),
 # MAX_DISP 192 (0.12 m at 480 px wide with the OAK's 7.55 cm baseline).
 # Copy the ONNX from the laptop to the Jetson's $MODELS_DIR before `engine`:
-#   scp las_models/las2_m_320x480_d192.onnx dronehacks@<drone>:depth_ws/models/
+#   scp las_models/las2_m_320x480_d192.onnx <drone>:<checkout>/src/larp_liteanystereo/models/
 #
 # Upstream: github.com/TomTomTommi/LiteAnyStereo (MIT) at a pinned commit; weights
 # from huggingface.co/tomtomtommi/LiteAnyStereoV2.
@@ -21,10 +20,9 @@ SIZE="${2:-m}"; H="${3:-320}"; W="${4:-480}"; D="${5:-192}"
 LAS_COMMIT=8c97bd4c4da3712c2ac60003a23201dfdb5935f4
 NAME="las2_${SIZE}_${H}x${W}_d${D}"
 LAS_OUT="${LAS_OUT:-$PWD/las_models}"
-MODELS_DIR="${MODELS_DIR:-$HOME/depth_ws/models}"
-INTEGRATION="${INTEGRATION:-$HOME/flight_integration_ws_20261107}"
-IMAGE="${IMAGE:-larp-integration:20261107}"
 HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+MODELS_DIR="${MODELS_DIR:-$(dirname "$HERE")/models}"
+IMAGE="${LAS_IMAGE:-nvcr.io/nvidia/isaac/ros:aarch64-ros2_humble_4c0c55dddd2bbcc3e8d5f9753bee634c}"
 [[ $SIZE =~ ^(s|m|l|h)$ ]] || { echo "SIZE must be s, m, l or h"; exit 2; }
 (( H % 32 == 0 && W % 32 == 0 )) || { echo "HEIGHT and WIDTH must be divisible by 32"; exit 2; }
 
@@ -58,10 +56,6 @@ PY"
       "/usr/src/tensorrt/bin/trtexec --onnx=/models/$NAME.onnx --saveEngine=/models/${NAME}_fp16.engine \
         --fp16 --builderOptimizationLevel=3 --memPoolSize=workspace:2048M --skipInference"
     ls -la "$MODELS_DIR/${NAME}_fp16.engine"
-    ;;
-  install)
-    mkdir -p "$MODELS_DIR"
-    cp -v "$(dirname "$HERE")"/models/*.engine "$MODELS_DIR"/
     ;;
   *) awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; exit 2 ;;
 esac

@@ -27,13 +27,9 @@ vio)
 monitor)
   exec ros2 topic hz /autonomy/poseimu
   ;;
-las)
-  # Lite Any Stereo depth from the camera's rectified pair -> /stereo/depth/image
-  exec ros2 launch larp_liteanystereo las_depth.launch.py publish_as_primary:=true "${@:2}"
-  ;;
 fox)
   # read-only Foxglove bridge on 8766 + throttled /viz relay
   exec ros2 launch larp_perception perception.launch.py "${@:2}"
   ;;
-*) echo 'Usage: localization_pane.sh camera|vio|monitor|las|fox'; exit 2;;
+*) echo 'Usage: localization_pane.sh camera|vio|monitor|fox'; exit 2;;
 esac

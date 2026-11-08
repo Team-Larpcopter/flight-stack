@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-pcl-msgs ros-humble-pcl-conversions \
     ros-humble-cv-bridge ros-humble-image-transport ros-humble-message-filters \
     ros-humble-tf2-ros ros-humble-tf2-geometry-msgs \
+    ros-humble-foxglove-bridge ros-humble-rosidl-runtime-py \
  && rm -rf /var/lib/apt/lists/*
 # Also tolerate the historically used team base with inconsistent Boost headers.
 RUN if ! grep -q '^#define BOOST_VERSION 107400$' /usr/include/boost/version.hpp; then \

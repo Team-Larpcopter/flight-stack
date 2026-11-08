@@ -27,6 +27,7 @@ export LD_LIBRARY_PATH="$workspace/sdk_install/lib:${LD_LIBRARY_PATH:-}"
 # and CUDA depth experiments are not dependencies of this stack.
 colcon build --base-paths src --executor sequential \
   --packages-up-to larp_hardware larp_autonomy flight_executive larp_px4_bridge \
+    larp_perception larp_liteanystereo \
   --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
     -DENABLE_ARUCO_TAGS=OFF -DBoost_NO_BOOST_CMAKE=ON \
     -DBoost_NO_SYSTEM_PATHS=ON -DBOOST_ROOT=/usr \
@@ -37,6 +38,7 @@ export ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=187
 ctest --test-dir build/larp_hardware --output-on-failure
 ctest --test-dir build/larp_navigation --output-on-failure
 python3 -m pytest -q src/larp_autonomy/test src/larp_px4_bridge/test/test_core.py
+python3 -m pytest -q src/larp_perception/test src/larp_liteanystereo/test
 ros2 pkg executables larp_hardware
 ros2 pkg executables ov_srvins
 

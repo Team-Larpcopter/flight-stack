@@ -44,7 +44,9 @@ The skybeta-era camera node (`larp_oak`), team image, depth benchmarks and
 and the camera's rectified pair), `src/larp_liteanystereo` (Lite Any Stereo depth
 on the Jetson GPU) and `src/larp_perception` (read-only Foxglove bridge on 8766
 with throttled `/viz` copies, `stack` run commands, benchmarks). See
-`src/larp_perception/README.md`.
+`src/larp_perception/README.md`. Run everything with `jetson/stack.sh camera|vio|fox|status|stop`
+(after `bash jetson/build.sh`); Lite Any Stereo runs in its own GPU container on NVIDIA's Isaac ROS
+Humble image.
 
 ## Setup on a fresh drone
 

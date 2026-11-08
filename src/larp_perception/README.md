@@ -24,20 +24,23 @@ OAK-D S2 (on the camera)                         Jetson
 ## Running (on the drone)
 
 ```bash
-git clone -b hari/las-depth https://github.com/Team-Larpcopter/flight-stack.git ~/depth_ws
-~/depth_ws/src/larp_perception/scripts/depth_ws.sh build      # once per code change
+git pull                    # main, from the flight-stack checkout
+bash jetson/build.sh        # main's build (includes larp_perception and larp_liteanystereo)
 
-S=~/depth_ws/src/larp_perception/scripts/stack.sh             # or link it as `stack`
-$S camera          # camera + Lite Any Stereo depth   (camera off = no depth)
-$S vio             # sqrtVINS (keep still a few seconds)
-$S fox             # Foxglove on ws://<drone-ip>:8766   (--tracks: sqrtVINS feature tracks)
-$S status          # what runs + last log line; logs: $S logs camera|vio|fox
-$S stop [PART]
+jetson/stack.sh camera      # camera + rectified pair + Lite Any Stereo depth (camera off: no depth)
+jetson/stack.sh vio         # sqrtVINS (bundled calibration; keep still a few seconds)
+jetson/stack.sh fox         # Foxglove on ws://<drone-ip>:8766 (--tracks: sqrtVINS feature tracks)
+jetson/stack.sh status      # what runs + last log line;  logs camera|las|vio|fox;  stop [part]
 ```
 
-Each command starts its part in the background in container `larp-depth`
-(started when needed) and returns. Logs are in `~/depth_ws/logs/`. Only one
-program can own the camera: stop other camera nodes first.
+Each command starts its part in the background and returns; logs are in
+`log/stack/` of the checkout. Camera, sqrtVINS and Foxglove run in main's
+`flight-stack-localization` container; Lite Any Stereo runs in `flight-stack-las`
+(same checkout, GPU, same ROS domain) on NVIDIA's public Isaac ROS Humble image
+(CUDA, TensorRT 10.3, PyTorch; already on skybeta drones, pulled if missing).
+Nothing is built for it and the TensorRT engine is not rebuilt:
+it is saved in `larp_liteanystereo/models`. Only one program can own the camera:
+stop other camera drivers first (e.g. `jetson/launch_localization_tmux.sh`).
 
 ## Foxglove
 
@@ -60,7 +63,7 @@ Connect to `ws://<drone-ip>:8766` and import
 
 ## Benchmarks
 
-`depth_ws.sh tool bench.py 20 --out FILE.json`: per topic rate, p95/max gap and
+`python3 tools/bench.py 20 --out FILE.json` (in the localization container, ROS sourced): per topic rate, p95/max gap and
 header-stamp age at arrival; depth fill ratio and temporal noise; CPU per process.
 For image topics prefer their `camera_info` (one per image, cheap): Python receiving
 full images reads low on a busy Jetson.
@@ -71,5 +74,5 @@ capture, IMU 399 Hz.
 
 ## Tests
 
-`depth_ws.sh test` (or `python3 -m pytest test`): relay conversions and benchmark
+`python3 -m pytest test` (also run by `jetson/build.sh`): relay conversions and benchmark
 statistics.

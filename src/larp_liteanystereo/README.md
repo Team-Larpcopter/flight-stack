@@ -34,11 +34,20 @@ it reached only 10-16 Hz (Python receiving two 1 MB images per pair).
 
 ## Rebuilding the engine (`scripts/las_ws.sh`)
 
+Only needed after a JetPack / TensorRT change or for another model size; the saved
+engine is used otherwise.
+
 ```bash
 las_ws.sh export m 320 480 192    # laptop (docker): ONNX, needs CPU torch + torchvision + timm
-scp las_models/las2_m_320x480_d192.onnx dronehacks@<drone>:depth_ws/models/
-las_ws.sh engine m 320 480 192    # Jetson: trtexec FP16 (~10 min)
+scp las_models/las2_m_320x480_d192.onnx <drone>:<checkout>/src/larp_liteanystereo/models/
+las_ws.sh engine m 320 480 192    # Jetson: trtexec FP16 in the Isaac ROS image (~10 min)
 ```
+
+## Running
+
+`jetson/stack.sh camera` starts the camera and this node (GPU container
+`flight-stack-las` on NVIDIA's public Isaac ROS Humble image, which has CUDA,
+TensorRT 10.3 and PyTorch; nothing to build).
 
 An engine only loads on the same GPU type and TensorRT version: rebuild after a
 JetPack / TensorRT change. Sizes `s|m|l|h`; width and height must be divisible by 32.
