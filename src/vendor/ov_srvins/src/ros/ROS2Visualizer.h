@@ -219,6 +219,8 @@ protected:
   /// measurement This also handles out-of-order camera measurements, which is
   /// rare, but a nice feature to have for general robustness to bad camera
   /// drivers.
+  bool low_latency_camera{false};
+  uint64_t dropped_camera_frames{0};
   std::deque<ov_core::CameraData> camera_queue;
   std::mutex camera_queue_mtx;
 

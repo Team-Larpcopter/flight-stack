@@ -376,8 +376,9 @@ namespace path_search {
                     0.3, 1);
         }
 
+        size_t slice_work=0;
         while (!open_set.empty()) {
-            if(wallSeconds()-time_1>time_out)return yield_search();
+            if((expansion_limit_ && slice_work++>=expansion_limit_) || wallSeconds()-time_1>time_out)return yield_search();
             num_iter++;
             const auto entry=open_set.top();open_set.pop();
             current=entry.node;

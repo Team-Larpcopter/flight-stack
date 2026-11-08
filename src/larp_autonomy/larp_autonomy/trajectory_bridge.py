@@ -71,7 +71,7 @@ def main():
     topic='/larper/trajectory_in' if active else '/autonomy/shadow/trajectory_in'
     if active and not alignment:raise ValueError('Executive output needs verified map/PX4 alignment')
     pub=node.create_publisher(TrajectorySetpoint,topic,4)
-    state={'goal':None,'curve':None,'health':False,'health_at':-math.inf,'sequence':-1,'clock':None}
+    state={'goal':None,'curve':None,'health':False,'health_at':-math.inf,'sequence':-1,'clock':None,'received_at':-math.inf}
     def now():return node.get_clock().now().nanoseconds*1e-9
     def align(m):
         nonlocal origin,heading,alignment_received
@@ -117,7 +117,7 @@ def main():
         try:
             curve=Trajectory.decode(m,now(),g.goal_id,g.localization_epoch,None)
             if curve.sequence<state['sequence']:raise ValueError('Out-of-order trajectory')
-            state.update(curve=curve,sequence=curve.sequence)
+            state.update(curve=curve,sequence=curve.sequence,received_at=time.monotonic())
         except ValueError:
             state['curve']=None
     def tick():
@@ -127,6 +127,8 @@ def main():
             state.update(curve=None,goal=None,sequence=-1);return
         curve=state['curve'];g=state['goal']
         if curve is None or g is None:return
+        # Producer heartbeat, independent of sensor clocks/certificate lifetime.
+        if time.monotonic()-state['received_at']>1.:return
         p,v,a,yaw,rate=curve.sample(stamp)
         if not all(math.isfinite(x) for x in (*p,*v,*a,yaw,rate)):return
         out=TrajectorySetpoint();out.header.frame_id='local_ned'

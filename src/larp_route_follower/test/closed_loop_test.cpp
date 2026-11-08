@@ -13,8 +13,11 @@ static void require(bool ok, const char* why) {
 
 int main(int argc, char** argv) {
   if (argc < 2) return 2;
+  const bool course = argc > 2;
   double now = 10;
-  auto map = std::make_shared<navigation::ObservedMap>(argv[1], [&] { return now; });
+  auto map = std::make_shared<navigation::ObservedMap>(argv[1], [&] { return now; }, course);
+  const Eigen::Vector3d course_lo(-4.1624,-5.5626,0.),course_hi(1.9336,.5334,1.8);
+  if(course)map->setHardBoundary(course_lo,course_hi,.4);
   super_utils::RobotState body;
   body.p = {0, 0, 1};
   body.v.setZero();
@@ -29,6 +32,7 @@ int main(int argc, char** argv) {
   // a camera would be. Re-run as the body moves so the map grows with the flight.
   const Eigen::Vector3d pillar_lo(.55, .55, 0), pillar_hi(1.05, 1.05, 2);
   auto sense = [&](const Eigen::Vector3d& origin) {
+    if(course)return;
     rog_map::PointCloud cloud;
     for (int i = 0; i < 8000; ++i) {
       const double z = 1. - 2. * (i + .5) / 8000., az = i * 2.399963229728653, rad = std::sqrt(1 - z * z);
@@ -59,14 +63,25 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 4; ++i) map->integrate(cloud, {origin, Eigen::Quaterniond::Identity()});
     map->setBody(body);
   };
+  if(course)map->loadCadPrior(argv[2],true);
   sense(body.p);
   map->declareLaunchCylinder(.8, .1, 1.6);
   auto clock = std::make_shared<navigation::PlannerClock>([&] { return now; }, [](const std::string&) {});
-  larp_route_follower::FollowerRoutePlanner planner(argv[1], map, clock, {}, false);
-  const Eigen::Vector3d goal(1.6, 1.6, 1);
+  larp_route_follower::FollowerRoutePlanner planner(argv[1], map, clock, {}, course);
+  const Eigen::Vector3d goal=course ? Eigen::Vector3d(-2.82128,-.77724,1.) : Eigen::Vector3d(1.6,1.6,1.);
   require(planner.setGoal(1, goal, 0), "goal rejected");
-  require(planner.accept({"map", 1, 0, 1, now, {{0, 0, 1}, {1.6, 0, 1}, goal}}, 0), "route rejected");
+  if(!course)require(planner.accept({"map", 1, 0, 1, now, {{0, 0, 1}, {1.6, 0, 1}, goal}}, 0), "route rejected");
 
+  if(course) {
+    planner.setSearchBounds(course_lo,course_hi);
+    planner.setFlightEnvelope(course_lo+Eigen::Vector3d::Constant(.4),course_hi-Eigen::Vector3d::Constant(.4));
+    planner.setMapRevision(1);
+    const auto warmup=std::chrono::steady_clock::now();
+    while(!planner.prepareRoute(body.p))
+      require(std::chrono::steady_clock::now()-warmup<std::chrono::seconds(30), "course preplanning timed out");
+    std::cout << "course cached in " << std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-warmup).count()
+              << " ms, vertices " << planner.gridRoute()->route().points.size() << std::endl;
+  }
   int plans = 0, successes = 0, failures = 0, blank = 0, unsafe = 0;
   double max_jump = 0, max_speed = 0, max_plan_ms = 0;
   const double start = now;

@@ -38,6 +38,7 @@ practice are in [CONTRIBUTING.md](CONTRIBUTING.md). PRs use
 - [Fly the hard-coded DroneHacks course](src/flight_trajectory/README.md)
 - [Workspace setup](docs/workspace.md)
 - [EGO alternative planner and full mission launcher](docs/ego-planner.md)
+- [Cached-route timing contract and VINS profiling](docs/runtime/cached-route-and-vins.md)
 - [Deterministic route follower and mission launchers](src/larp_route_follower/README.md)
 - [AI assistant setup](docs/ai-assistants.md)
 - [Agent / project contract](AGENTS.md)
@@ -65,12 +66,13 @@ layout after upgrading, and restart the Foxglove pane (bridge and visualization
 publisher together). The bridge queue cap is 32 for retained chunks; ordinary
 single-writer depth-one monitoring streams keep depth one.
 
-The mission goal is published as soon as a localization epoch is available,
-without waiting for takeoff/HOLD. The single SUPER planner computes and publishes
-its path for Foxglove whenever aligned localization, map freshness and collision
-checks permit. No second preview planner runs. Execution remains gated separately
-to HOLD/TRACKING; a grounded pose without a collision-free starting state may
-still have no valid trajectory to display.
+The standard mission launcher now selects the cached-route follower. It computes
+route geometry before takeoff and waits for `/autonomy/route_ready`; timed motion
+starts only in HOLD/TRACKING, from the measured pose. Dynamic depth updates
+revalidate the local route and command rather than the entire course. Explicit
+`--planner super` and `--planner ego` retain the previous alternatives. See the
+[timing contract](docs/runtime/cached-route-and-vins.md) for work limits and the
+isolated stationary VINS profiling command.
 
 The VINS pane also publishes a fixed `map -> global` transform on `/tf_static`,
 exposed by Foxglove. It is derived once from timestamp-matched raw IMU and aligned
@@ -84,7 +86,7 @@ boundary. Depth rays still clear their observed in-bound portions; exterior cell
 remain blocked by the boundary. This avoids unknown-inflation work outside the
 operating volume without changing voxel size, clearance or confirmation counts.
 
-Full-mission A* runs in at most 20 ms work slices, retaining its frontier between
+The legacy SUPER/EGO A* uses cooperative 20 ms work slices, retaining its frontier between
 planner ticks with no total search deadline. New map revisions do not discard
 unfinished work; a completed route is checked against the current map before use.
 Goal changes, substantial start movement, or an invalid search restart the search.

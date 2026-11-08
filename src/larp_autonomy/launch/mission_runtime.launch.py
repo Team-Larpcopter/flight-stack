@@ -18,7 +18,7 @@ def nodes(context):
     part, mode=value('component'),value('mode')
     if part not in COMPONENTS: raise ValueError('Unknown runtime component')
     planner=value('planner')
-    if planner not in ('super','ego'): raise ValueError('planner must be super or ego')
+    if planner not in ('follower','super','ego'): raise ValueError('planner must be follower, super or ego')
     cfg=load_config(value('mission_file'),mode)
     active=mode=='hardware'
     nav=Path(share('larp_navigation'))/'config'
@@ -29,6 +29,9 @@ def nodes(context):
         return Node(package=pkg,executable=exe,output='screen',parameters=params or [],**kwargs)
     def include(pkg,file,args):
         return IncludeLaunchDescription(PythonLaunchDescriptionSource(str(Path(share(pkg))/'launch'/file)),launch_arguments=args.items())
+    if planner=='follower' and part in ('planner','super','map'):
+        return [include('larp_route_follower','mission_runtime.launch.py',
+                        {'component':part,'mode':mode,'mission_file':value('mission_file')})]
     if part=='drivers':
         calibration_dir=tempfile.mkdtemp(prefix='flight-stack-camera-')
         result=[node('larp_hardware','oak_native_node',[dict(factory_calibration_out=calibration_dir+'/factory.json',
@@ -43,7 +46,7 @@ def nodes(context):
                     ceiling_cut_z=cfg['hard_boundary_upper'][2]-.1)])]
     elif part=='vins':
         config=cfg.get('estimator_config',str(Path(share('larp_localization'))/'config/oak_d_s2/estimator_config.yaml'))
-        result=[node('ov_srvins','run_subscribe_msckf',[{'config_path':config,'verbosity':'INFO'}],namespace='autonomy',
+        result=[node('ov_srvins','run_subscribe_msckf',[{'config_path':config,'verbosity':'INFO','low_latency_camera':True}],namespace='autonomy',
                      remappings=[('/sim/processed/vio','/autonomy/processed_vio')]),
                 node('larp_navigation','body_odometry_node',[{'rig_file':cfg['rig_file'],'world_frame':'vio_odom'}],
                      remappings=[('/odomimu','/autonomy/odomimu'),('/poseimu','/autonomy/poseimu'),
@@ -97,7 +100,7 @@ def nodes(context):
             result.append(node('flight_executive','flight_executive_node',[dict(
                 simulation_only=False,hardware_enabled=True,takeoff_trigger='position',align_px4_to_map_on_ground=True,
                 target_system=cfg.get('target_system',1),target_component=cfg.get('target_component',1),
-                takeoff_height=cfg['takeoff_height'],hold_timeout=cfg['planner_hold_timeout_s'],wait_for_planner=True,require_autonomy_ready=True,enforce_boundary=False,
+                takeoff_height=cfg['takeoff_height'],hold_timeout=cfg['planner_hold_timeout_s'],wait_for_planner=True,require_preplanned_route=planner=='follower',require_autonomy_ready=True,enforce_boundary=False,
                 map_boundary_lower=cfg['hard_boundary_lower'],map_boundary_upper=cfg['hard_boundary_upper'],
                 map_heading_ned=cfg['map_heading_ned'],map_origin_ned=cfg['map_origin_ned'])]))
     return [RegisterEventHandler(OnProcessExit(on_exit=[EmitEvent(event=Shutdown(reason='Component exited'))])),*result]
@@ -106,4 +109,4 @@ def nodes(context):
 def generate_launch_description():
     return LaunchDescription([DeclareLaunchArgument('component'),DeclareLaunchArgument('mission_file'),
         DeclareLaunchArgument('mode',default_value='shadow'),
-        DeclareLaunchArgument('planner',default_value='super'),OpaqueFunction(function=nodes)])
+        DeclareLaunchArgument('planner',default_value='follower'),OpaqueFunction(function=nodes)])

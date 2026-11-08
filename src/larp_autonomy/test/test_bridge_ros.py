@@ -70,12 +70,12 @@ def test_certified_super_sample_reaches_executive_input_after_hold():
         assert sample.header.frame_id == 'local_ned'
         assert (sample.position.x, sample.position.y, sample.position.z) == (1., -2., -3.)
         assert sample.trajectory_id == 'synthetic-flight'
-        assert sample.is_final and sample.certificate_required
+        assert sample.is_final and not sample.certificate_required
         deadline=sample.valid_until.sec+sample.valid_until.nanosec*1e-9
         sent=sample.header.stamp.sec+sample.header.stamp.nanosec*1e-9
         assert 0 < deadline-sent < .25, 'Capture time must bound remaining lease'
         # A healthy stream without new map certificates must stop producing commands.
-        until=time.monotonic()+.8
+        until=time.monotonic()+1.2
         while time.monotonic()<until:
             health.publish(Bool(data=True))
             rclpy.spin_once(node,timeout_sec=.02)

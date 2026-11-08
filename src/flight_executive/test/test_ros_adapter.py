@@ -327,3 +327,20 @@ def test_disarmed_px4_frame_reset_refreshes_alignment_and_takeoff(node, reset_in
     c.position=replace(c.position,x=5.,reset_counters=(9,9,9,9,9))
     assert node._align_on_ground(now+.03)
     assert len(node.alignment_pub.messages)==2
+
+
+def test_cached_route_gate_precedes_takeoff_even_in_compat_mode(node, monkeypatch):
+    from unittest.mock import Mock
+    node.auto_alignment = False
+    node.skybeta_compat = True
+    node.require_preplanned_route = True
+    node.route_ready = False
+    c = node.state_machine
+    c.state = State.WAITING
+    tick = Mock(wraps=c.tick)
+    monkeypatch.setattr(c, 'tick', tick)
+    node._tick()
+    assert tick.call_count == 0
+    node.route_ready = True
+    node._tick()
+    assert tick.call_count == 1

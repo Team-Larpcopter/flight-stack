@@ -25,6 +25,7 @@ using navigation::Polyline;
 struct FollowerSettings {
   double horizon{1.5};        // route look-ahead [m]; also capped by time
   double replan_period{.4};   // keep a live certified curve at least this long [s]
+  bool scan_when_blocked{false}; // hold position and sweep once after 3 s without a route
   std::string route_file;     // optional preloaded map-frame polyline (x y z per line)
 };
 
@@ -41,6 +42,7 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
         yaw_validator_([](const Point&, const Point&) { return true; }, limits_.yaw_rate,
                        limits_.yaw_acceleration, limits_.budget),
         internal_grid_route_(internal_grid_route) {
+    route_.useLocalValidation(256, .005);
     const auto root = YAML::LoadFile(config);
     cruise_ = root["traj_opt"]["boundary"]["max_vel"].as<double>();
     accel_ = root["traj_opt"]["boundary"]["max_acc"].as<double>();
@@ -54,6 +56,17 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
     if (!settings_.route_file.empty()) preload_ = loadRoute(settings_.route_file);
   }
 
+  // Suspend timed commands without discarding the reusable geometric route.
+  void suspendExecution() {
+    position_.clear(); yaw_.clear(); braking_ = false;
+    last_commit_ = -INFINITY;
+    scanning_ = false; blocked_since_ = -1; scan_leg_ = 0;
+  }
+  bool prepareRoute(const Point& start) {
+    if (!active_ || !start.allFinite()) return false;
+    return guideFrom(start, settings_.horizon, clock_->getSimTime()).size() >= 2;
+  }
+
   void setMapRevision(uint64_t revision) override { revision_ = revision; }
   void setSearchBounds(const Point& lo, const Point& hi) override { route_.setBounds(lo, hi); }
   const navigation::GlobalGridRoute* gridRoute() const override { return &route_; }
@@ -65,6 +78,7 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
   }
   bool setGoal(uint64_t id, const Point& goal, double yaw) override {
     if (clock_fault_ || !id || id <= goal_id_ || !goal.allFinite() || !std::isfinite(yaw)) return false;
+    scanning_ = false; blocked_since_ = -1; scan_leg_ = 0;
     goal_id_ = id;
     goal_ = goal;
     goal_yaw_ = yaw;
@@ -126,6 +140,14 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
     if (!state.rcv || !state.p.allFinite() || !state.v.allFinite() || !state.a.allFinite() ||
         !std::isfinite(state.yaw + state.rcv_time) || now - state.rcv_time > .3 || now - state.rcv_time < -.005)
       return FAILED;
+    if (scanning_) {
+      const auto opening = guideFrom(state.p, settings_.horizon, now);
+      if (opening.size() < 2 || length(opening) < std::min(.2, (goal_-state.p).norm()))
+        return scanForOpening(state, now);
+      // Preserve the active yaw prefix for a continuous handoff out of scanning.
+      scanning_ = false; blocked_since_ = -1;
+      clock_->warn("Follower found route during yaw scan; resuming");
+    }
     const double end = position_.empty() ? now : position_.start_WT + position_.getTotalDuration();
     if (braking_ && (now < end + .2 || state.v.norm() > .1)) return NO_NEED;
     const bool live = !position_.empty() && now < end && !braking_;
@@ -159,7 +181,8 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
     // Continuous replanning extends the curve long before it decelerates.
     const double horizon = std::min(settings_.horizon * horizon_scale_, cruise_ * 8.);
     Polyline guide = guideFrom(p, horizon, now);
-    if (guide.size() < 2) return failed("no certified route section from the current state");
+    if (guide.size() < 2) return scanForOpening(state, now);
+    blocked_since_ = -1;
     guide = compact(guide);
     // A guide cut at the edge of observed space can end just inside the body
     // clearance: retry this cycle with the end pulled back, then slower timing.
@@ -168,7 +191,10 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
       Polyline shorter = trimEnd(guides.back(), pull);
       if (shorter.size() >= 2) guides.push_back(shorter);
     }
+    unsigned candidate_count = 0;
     for (const auto& [section, scale, corners] : attempts(guides)) {
+      // Check before each attempt: continue paths must not bypass the budget.
+      if (++candidate_count > 12 || std::chrono::steady_clock::now() - wall > std::chrono::milliseconds(20)) break;
       {
         geometry_utils::Trajectory position, yaw;
         if (!build(*section, p, v, a, y, yv, ya, handoff, !live, scale, corners, position, yaw)) continue;
@@ -192,6 +218,8 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
         // A moving handoff must be ready before its preserved prefix expires.
         if (live && std::chrono::duration<double>(std::chrono::steady_clock::now() - wall).count() >= lead_)
           return failed("handoff deadline exceeded");
+        // A new execution starts at publication, never at the beginning of search.
+        if (!live) candidate.start_WT = candidate_yaw.start_WT = clock_->getSimTime();
         position_ = std::move(candidate);
         yaw_ = std::move(candidate_yaw);
         braking_ = false;
@@ -199,7 +227,7 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
         horizon_scale_ = std::min(1., horizon_scale_ * 1.25);
         return SUCCESS;
       }
-      if (std::chrono::steady_clock::now() - wall > std::chrono::milliseconds(40)) break;
+
     }
     // Shorter look-ahead next cycle; the previous certified curve is untouched.
     horizon_scale_ = std::max(.25, horizon_scale_ * .5);
@@ -227,6 +255,33 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
   }
 
  private:
+  super_utils::RET_CODE scanForOpening(const super_utils::RobotState& state, double now) {
+    using namespace super_utils;
+    if (!settings_.scan_when_blocked) return failed("no certified route section from the current state");
+    if (blocked_since_ < 0) blocked_since_ = now;
+    const double end = position_.empty() ? now : position_.start_WT + position_.getTotalDuration();
+    if (!scanning_) {
+      // Never replace a moving command with an instantaneous stationary target.
+      if (now-blocked_since_ < 3. || state.v.norm() > .03 || now < end)
+        return failed("route blocked; waiting stationary before yaw scan");
+      scan_anchor_ = state.p; scan_heading_ = state.yaw; scan_leg_ = 0;
+    } else if (now < end || scan_leg_ >= 3) return NO_NEED;
+    const double offsets[] = {M_PI/4., -M_PI/4., 0.};
+    const double target = state.yaw + wrapAngle(scan_heading_+offsets[scan_leg_]-state.yaw);
+    const double duration = yawDuration(target-state.yaw, .8*limits_.yaw_rate, .8*limits_.yaw_acceleration);
+    geometry_utils::Trajectory hold, turn;
+    Eigen::MatrixXd constant = Eigen::MatrixXd::Zero(3,6); constant.col(5)=scan_anchor_;
+    hold.start_WT=turn.start_WT=now;
+    hold.emplace_back(duration,constant);
+    turn.emplace_back(duration,yawPiece(state.yaw,0.,0.,target,duration));
+    if ((state.p-scan_anchor_).norm()>.1 || !validator_(hold) || !yaw_validator_(turn))
+      return failed("yaw scan cannot certify stationary clearance");
+    position_=std::move(hold);yaw_=std::move(turn);braking_=false;scanning_=true;
+    last_commit_=now;++scan_leg_;
+    clock_->warn("Follower blocked: stationary yaw scan leg "+std::to_string(scan_leg_)+"/3");
+    return SUCCESS;
+  }
+
   Polyline guideFrom(const Point& p, double horizon, double now) {
     if ((p - goal_).norm() <= horizon && chordCertified(p, goal_)) return {p, goal_};
     Polyline guide;
@@ -375,6 +430,10 @@ class FollowerRoutePlanner final : public navigation::PlannerContract {
   uint64_t goal_id_{0}, revision_{0}, recovery_count_{0}, route_sequence_{0};
   bool active_{false}, braking_{false}, clock_fault_{false}, goal_yaw_enabled_{false}, guide_valid_{false},
       internal_grid_route_{true};
+  bool scanning_{false};
+  int scan_leg_{0};
+  double blocked_since_{-1},scan_heading_{0};
+  Point scan_anchor_{Point::Zero()};
   std::string last_failure_;
 };
 }  // namespace larp_route_follower

@@ -5,9 +5,9 @@ here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 if [[ -f $here/deployment.env ]]; then source "$here/deployment.env"; fi
 mode=${1:-shadow}
 if (($#)); then shift; fi
-planner=super
+planner=follower
 check=false
-usage() { echo 'Usage: launch_system_tmux.sh shadow|hardware [--planner super|ego] [--check]'; }
+usage() { echo 'Usage: launch_system_tmux.sh shadow|hardware [--planner follower|super|ego] [--check]'; }
 [[ $mode == shadow || $mode == hardware ]] || { usage >&2; exit 2; }
 while (($#)); do
   case $1 in
@@ -17,7 +17,7 @@ while (($#)); do
     *) usage >&2; exit 2 ;;
   esac
 done
-[[ $planner == super || $planner == ego ]] || { usage >&2; exit 2; }
+[[ $planner == follower || $planner == super || $planner == ego ]] || { usage >&2; exit 2; }
 : "${DEPLOYMENT_CONFIG:?Set DEPLOYMENT_CONFIG to the directory containing mission.yaml, rig.json and bridge.yaml}"
 image=${RUNTIME_IMAGE:-larp-flight-stack:arm64-runtime}
 suffix=''
@@ -50,7 +50,7 @@ fi
 if ! $check; then source "$here/replace_stack.sh"; fi
 source "$here/runtime_mounts.sh"
 docker run --rm --network none "${runtime_mounts[@]}" -v "$config:/config:ro" "$image" \
-  python3 -c 'import ctypes, sys; from pathlib import Path; from ament_index_python.packages import get_package_prefix; from larp_autonomy.runtime_config import load_config; load_config("/config/mission.yaml",sys.argv[1]); ctypes.CDLL(str(Path(get_package_prefix("larp_ego_planner"))/"lib/libego_optimizer.so")); assert (Path(get_package_prefix("larp_navigation"))/"lib/larp_navigation/depth_map_node").is_file()' "$mode"
+  python3 -c 'import ctypes, sys; from pathlib import Path; from ament_index_python.packages import get_package_prefix; from larp_autonomy.runtime_config import load_config; load_config("/config/mission.yaml",sys.argv[1]); pkg,exe=("larp_route_follower","route_follower_node") if sys.argv[2]=="follower" else ("larp_navigation","depth_map_node"); assert (Path(get_package_prefix(pkg))/"lib"/pkg/exe).is_file()' "$mode" "$planner"
 if $check; then
   echo "Mission preflight passed: planner=$planner mode=$mode; no mission processes started."
   exit 0

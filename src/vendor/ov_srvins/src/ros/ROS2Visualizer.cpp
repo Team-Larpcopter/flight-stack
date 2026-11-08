@@ -28,6 +28,7 @@
 
 
 #include "ROS2Visualizer.h"
+#include <chrono>
 
 #include "core/VioManager.h"
 #include "ros/ROSVisualizerHelper.h"
@@ -184,6 +185,8 @@ void ROS2Visualizer::setup_subscribers(
 
   pub_processed = _node->create_publisher<std_msgs::msg::Int64>("/sim/processed/vio", rclcpp::QoS(20).reliable());
 
+  _node->get_parameter_or<bool>("low_latency_camera", low_latency_camera, false);
+  // Keep the full IMU stream for integration; only visual observations may be skipped.
   // Create imu subscriber (handle legacy ros param info)
   std::string topic_imu;
   _node->declare_parameter<std::string>("topic_imu", "/imu0");
@@ -214,14 +217,16 @@ void ROS2Visualizer::setup_subscribers(
                            "rostopic", cam_topic1);
     // Create sync filter (they have unique pointers internally, so we have to
     // use move logic here...)
+    auto image_qos = rmw_qos_profile_sensor_data;
+    if (low_latency_camera) image_qos.depth = 1;
     auto image_sub0 =
         std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>(
-            _node, cam_topic0, rmw_qos_profile_sensor_data);
+            _node, cam_topic0, image_qos);
     auto image_sub1 =
         std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>(
-            _node, cam_topic1, rmw_qos_profile_sensor_data);
+            _node, cam_topic1, image_qos);
     auto sync = std::make_shared<message_filters::Synchronizer<sync_pol>>(
-        sync_pol(10), *image_sub0, *image_sub1);
+        sync_pol(low_latency_camera ? 2 : 10), *image_sub0, *image_sub1);
     sync->registerCallback(std::bind(&ROS2Visualizer::callback_stereo, this,
                                      std::placeholders::_1,
                                      std::placeholders::_2, 0, 1));
@@ -503,14 +508,29 @@ void ROS2Visualizer::drain_camera_queue() {
   // arrival: delayed images must not wait for a future lockstep IMU tick.
   const double imu_in_camera = latest_imu_timestamp -
       _app->get_state()->calib_dt_CAMtoIMU->value()(0);
+  if (low_latency_camera) {
+    // Retain the newest observation with IMU coverage and any future frame.
+    while (camera_queue.size() > 1 && camera_queue[1].timestamp < imu_in_camera) {
+      camera_queue.pop_front(); ++dropped_camera_frames;
+    }
+  }
   while (!camera_queue.empty() && camera_queue.front().timestamp < imu_in_camera) {
     auto measurement = std::move(camera_queue.front());
     camera_queue.pop_front();
+    const auto processing_start = std::chrono::steady_clock::now();
     _app->feed_measurement_camera(measurement);
     visualize();
     // An attempted update (including initialization failure) has consumed
     // this frame. Pose publication is deliberately not the lockstep signal.
     acknowledge_frame(measurement.timestamp);
+    const double processing_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now()-processing_start).count();
+    RCLCPP_INFO_THROTTLE(_node->get_logger(), *_node->get_clock(), 2000,
+        "VINS visual update: processing=%.1f ms age=%.1f ms pending=%zu dropped=%lu",
+        processing_ms, 1000.*(_node->now().seconds()-measurement.timestamp),
+        camera_queue.size(), static_cast<unsigned long>(dropped_camera_frames));
+    // Give IMU callbacks another executor turn instead of draining a backlog.
+    if (low_latency_camera) break;
   }
 }
 
@@ -545,6 +565,9 @@ void ROS2Visualizer::callback_monocular(
   // append it to our queue of images
   camera_queue.push_back(message);
   std::sort(camera_queue.begin(), camera_queue.end());
+  while (low_latency_camera && camera_queue.size() > 2) {
+    camera_queue.pop_front(); ++dropped_camera_frames;
+  }
   drain_camera_queue();
 }
 
@@ -597,6 +620,9 @@ void ROS2Visualizer::callback_stereo(
   // append it to our queue of images
   camera_queue.push_back(message);
   std::sort(camera_queue.begin(), camera_queue.end());
+  while (low_latency_camera && camera_queue.size() > 2) {
+    camera_queue.pop_front(); ++dropped_camera_frames;
+  }
   drain_camera_queue();
 }
 

@@ -22,6 +22,9 @@ class GlobalGridRoute {
     setBounds(map_->getLocalMapOrigin()-map_->getLocalMapSize()*.5,
               map_->getLocalMapOrigin()+map_->getLocalMapSize()*.5);
   }
+  void useLocalValidation(size_t expansions,double seconds) {
+    local_validation_=true; astar_.setExpansionLimit(expansions); budget_=std::min(budget_,seconds);
+  }
   void setBounds(const Point& lo,const Point& hi){astar_.setSearchBounds(lo,hi);clear();}
   void clear(){astar_.cancelSearch();route_={};guide_.clear();reason_="no cached global route";retry_pending_=false;}
   const Route& route() const{return route_;}
@@ -35,12 +38,18 @@ class GlobalGridRoute {
     if(!map_->isKnownFreeInflate(start) || !free_(start,start)) {clear();reason_="measured start is not configuration-free";return {};}
     if(!map_->isKnownFreeInflate(goal) || !free_(goal,goal)) {clear();reason_="goal is not configuration-free";return {};}
     if(!route_.points.empty() && route_.map_revision!=revision) {
-      if(!valid(route_.points)){clear();reason_="map change invalidated cached route";}
+      if(!local_validation_ && !valid(route_.points)){clear();reason_="map change invalidated cached route";}
       else route_.map_revision=revision;
     }
     if(!route_.points.empty() && guide_.renew(now)) {
       auto path=guide_.nearby(start,horizon,now,goal_id,free_);
-      if(path.size()>=2){route_.capture_time=now;reason_="cached SUPER A* route";return path;}
+      double available=0;
+      for(size_t i=1;i<path.size();++i)available+=(path[i]-path[i-1]).norm();
+      // A truncated free prefix is a stopping opportunity, not an intact route.
+      // Start repair now rather than repeatedly approaching the same obstruction.
+      if(path.size()>=2 && (!local_validation_ || available+.02>=std::min(horizon,(goal-start).norm()))) {
+        route_.capture_time=now;reason_="cached SUPER A* route";return path;
+      }
     }
     route_={};guide_.clear();
     const auto wall=std::chrono::steady_clock::now();
@@ -88,6 +97,7 @@ class GlobalGridRoute {
   rog_map::ROGMap::Ptr map_;std::shared_ptr<PlannerClock> clock_;EdgeFree free_;
   path_search::Astar astar_;RouteGuide guide_;Route route_;
   double budget_,last_search_ms_{0};uint64_t searches_{0},retry_goal_{0},retry_revision_{0};
+  bool local_validation_{false};
   bool retry_pending_{false};Point retry_start_=Point::Zero(),retry_goal_point_=Point::Zero();
   std::chrono::steady_clock::time_point last_attempt_{};std::string reason_{"no cached global route"};
 };

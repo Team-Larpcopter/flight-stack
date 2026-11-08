@@ -144,6 +144,55 @@ int main(int argc, char** argv) {
   if (!fine) require(corner, "trajectory cut the corner through the pillar");
   else require(std::abs(bend.getPos(bend.getTotalDuration()).x()) < .05, "curve left the first route leg");
 
+  // A withheld command must not advance a virtual curve while preplanning.
+  planner.suspendExecution();
+  require(planner.position().empty(), "suspension retained timed command");
+  now += 3.; body.rcv_time=now; map->setBody(body);
+  require(planner.prepareRoute(body.p), "suspension discarded cached geometry");
+  require(planner.position().empty(), "preplanning created a timed command");
+  require(planner.plan()==super_utils::SUCCESS, "resume failed");
+  require((planner.position().getPos(0)-body.p).norm()<1e-9,
+          "resume skipped forward along an unexecuted curve");
+
+  // Stationary recovery is delayed, holds translation, and yields to a new route.
+  body.p={0,0,1};body.v.setZero();body.a.setZero();body.yaw=0;body.rcv_time=now;map->setBody(body);
+  larp_route_follower::FollowerSettings scan_settings;scan_settings.scan_when_blocked=true;
+  larp_route_follower::FollowerRoutePlanner scanning(argv[1],map,clock,scan_settings,false);
+  require(scanning.setGoal(1,{1.5,-1.5,1},0), "scan goal rejected");
+  require(scanning.plan()==super_utils::FAILED && scanning.position().empty(), "scan started before blocked timeout");
+  now+=3.1;body.rcv_time=now;map->setBody(body);
+  require(scanning.plan()==super_utils::SUCCESS && scanning.ensureSafeCommand(), "stationary scan unavailable");
+  const auto scan_position=scanning.position(),scan_yaw=scanning.yaw();
+  require((scan_position.getPos(scan_position.getTotalDuration())-body.p).norm()<1e-9,
+          "scan translated toward an unseen opening");
+  now+=1.;body.yaw=scan_yaw.getPos(1.).x();body.rcv_time=now;map->setBody(body);
+  require(scanning.accept({"map",1,0,1,now,{{0,0,1},{1.5,-1.5,1}}},0), "opening route rejected");
+  require(scanning.plan()==super_utils::SUCCESS && scanning.ensureSafeCommand(), "scan did not resume route following");
+  require((scanning.position().getPos(0)-body.p).norm()<1e-9, "scan resume jumped position");
+
+  // A newly observed frontal wall must repair the cached master route, not
+  // repeatedly return a short prefix ending at that same wall.
+  body.yaw=0;body.rcv_time=now;map->setBody(body);
+  larp_route_follower::FollowerRoutePlanner repair(argv[1],map,clock);
+  require(repair.setGoal(1,{2.5,0,1},0), "repair goal rejected");repair.setMapRevision(1);
+  auto prepare=[&] {
+    const auto began=std::chrono::steady_clock::now();
+    while(!repair.prepareRoute(body.p))
+      require(std::chrono::steady_clock::now()-began<std::chrono::seconds(5), "cached route repair timed out");
+  };
+  prepare();const auto searches=repair.gridRoute()->searches();
+  rog_map::PointCloud frontal_wall;
+  for(double y=-.5;y<=.5;y+=.05)for(double z=.2;z<=1.8;z+=.05) {
+    rog_map::PointType point;point.x=1.;point.y=y;point.z=z;point.intensity=1;frontal_wall.push_back(point);
+  }
+  for(int frame=0;frame<3;++frame)map->integrate(frontal_wall,{body.p,body.q});
+  require(map->isOccupied({1.,0.,1.}), "three observed wall frames did not update map");
+  repair.setMapRevision(2);prepare();
+  require(repair.gridRoute()->searches()>searches, "blocked cached prefix did not trigger route repair");
+  bool detour=false;
+  for(const auto& point:repair.gridRoute()->route().points)detour|=std::abs(point.y())>.5;
+  require(detour, "repaired path still crosses the new frontal wall");
+
   // 6) Preloaded route file round trip.
   const char* file = "/tmp/larp_route_follower_test_route.txt";
   if (FILE* f = std::fopen(file, "w")) {
