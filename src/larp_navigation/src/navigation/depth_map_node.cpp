@@ -38,9 +38,10 @@ class DepthMapNode : public rclcpp::Node {
     if(!std::isfinite(depth_age) || depth_age<=0 || depth_age>1.)throw std::invalid_argument("max_depth_age_s must be (0,1]");
     max_depth_age_ns_=int64_t(depth_age*1e9);
     stride_=declare_parameter<int>("pixel_stride",4);
+    ignore_top_rows_=declare_parameter<int>("ignore_top_depth_rows",0);
     min_depth_=declare_parameter<double>("min_depth_m",.3);
     max_depth_=declare_parameter<double>("max_depth_m",6.0);
-    if(epoch_==0 || stride_<1 || stride_>16 || !(min_depth_>0 && max_depth_>min_depth_)) throw std::invalid_argument("invalid mapping limits");
+    if(ignore_top_rows_<0 || epoch_==0 || stride_<1 || stride_>16 || !(min_depth_>0 && max_depth_>min_depth_)) throw std::invalid_argument("invalid mapping limits");
     cad_prior_=declare_parameter<std::string>("cad_prior_file","");
     static_cad_only_=declare_parameter<bool>("static_cad_only",false);
     if(static_cad_only_ && cad_prior_.empty())throw std::invalid_argument("static CAD mode requires a CAD prior");
@@ -314,6 +315,8 @@ class DepthMapNode : public rclcpp::Node {
     rog_map::PointCloud points;
     points.reserve((m->width/stride_)*(m->height/stride_));
     if(!static_cad_only_) for(unsigned v=0;v<m->height;v+=stride_) for(unsigned u=0;u<m->width;u+=stride_) {
+      // Ignore noisy rows only for mapping: preserve inference, image geometry and intrinsics.
+      if(v<static_cast<unsigned>(ignore_top_rows_))continue;
       double d;
       if(bytes==2) {uint16_t raw;std::memcpy(&raw,&m->data[v*m->step+u*2],2);d=raw*.001;}
       else {float raw;std::memcpy(&raw,&m->data[v*m->step+u*4],4);d=raw;}
@@ -396,7 +399,7 @@ class DepthMapNode : public rclcpp::Node {
   super_utils::RobotState body_;
   sensor_msgs::msg::CameraInfo::ConstSharedPtr calibration_;
   std::deque<sensor_msgs::msg::Image::ConstSharedPtr> pending_;
-  uint64_t epoch_{1},revision_{0};int stride_{4};double min_depth_{.3},max_depth_{6};
+  uint64_t epoch_{1},revision_{0};int stride_{4},ignore_top_rows_{0};double min_depth_{.3},max_depth_{6};
   int64_t last_depth_ns_{0},last_snapshot_ns_{0};bool healthy_{false};
   std::chrono::steady_clock::time_point health_received_{};
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_;

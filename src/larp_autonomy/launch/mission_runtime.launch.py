@@ -70,7 +70,7 @@ def nodes(context):
         params={k:cfg[k] for k in ('rig_file','hard_boundary_lower','hard_boundary_upper','hard_boundary_reference','takeoff_height')}
         params.update(config_file=cfg.get('navigation_config',str(nav/'navigation_fine.yaml')),
             cad_prior_file=cfg.get('cad_prior_file',str(nav/'course_cad_prior_fine.txt')),
-            min_depth_m=.2,max_depth_m=float("inf"),snapshot_include_free=False,
+            min_depth_m=.2,max_depth_m=float("inf"),ignore_top_depth_rows=10,snapshot_include_free=False,
             max_depth_age_s=cfg['trajectory_max_age_s'],
             require_hard_boundary=True,static_cad_only=False,route_backend='super_astar',
             flight_envelope_lower=[v+.4 for v in cfg['hard_boundary_lower']],
