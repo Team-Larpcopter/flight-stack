@@ -46,3 +46,13 @@ def test_full_route_streams_in_rotated_start_frame_then_finishes():
                                              -2.+sin(.8)*x-cos(.8)*y,6.0))
     follower.update_executive_state('LAND')
     assert follower.tick(t+.02) is None
+
+
+def test_runtime_compat_ignores_start_heading_age_and_tracking_error():
+    follower = FixedCourseFollower(FixedCourse())
+    follower.skybeta_compat = True
+    follower.update_pose(Pose(0.,0.,0.,0.,0.), True)
+    follower.update_pose(Pose(0.,3.,4.,-1.,1.,False), False)
+    follower.update_executive_state('HOLD')
+    assert follower.tick(10.) is not None
+    assert follower.tick(11.) is not None

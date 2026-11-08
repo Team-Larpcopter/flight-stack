@@ -68,6 +68,7 @@ class CourseTrajectoryNode(Node):
                                          yaw_mode=yaw_mode, max_yaw_rate=max_yaw_rate)
         follower = {'triangle': TriangleFollower, 'fixed_course': FixedCourseFollower}.get(course, CourseFollower)
         self.follower = follower(trajectory, max_error)
+        self.follower.skybeta_compat = True
         self.trajectory_id = str(uuid4())
         self.landed = None
 

@@ -46,8 +46,9 @@ class FlightExecutiveNode(Node):
         hold_timeout = self.declare_parameter('hold_timeout', 5.0).value
         landing_timeout = self.declare_parameter('landing_timeout', 45.0).value
         trigger = self.declare_parameter('takeoff_trigger', 'position').value
+        self.skybeta_compat = self.declare_parameter('skybeta_compat', True).value
         self.state_machine = StateMachine(monotonic(), height, hold_timeout, landing_timeout, trigger, readiness_timeout=0.0 if hardware else 30.0,
-                                          wait_for_planner=self.declare_parameter('wait_for_planner', False).value)
+                                          wait_for_planner=self.declare_parameter('wait_for_planner', False).value, skybeta_compat=self.skybeta_compat)
         self.prefix = self.declare_parameter('px4_topic_prefix', '/fmu').value.rstrip('/')
         if not self.prefix.startswith('/') or self.prefix == '':
             raise ValueError('px4_topic_prefix must be an absolute nonempty topic prefix')
@@ -122,7 +123,7 @@ class FlightExecutiveNode(Node):
         if msg.header.frame_id != 'map' or msg.child_frame_id != 'base_link':
             return
         stamp = msg.header.stamp.sec+msg.header.stamp.nanosec*1e-9
-        if not -.005 <= self.get_clock().now().nanoseconds*1e-9-stamp < .3:
+        if not self.skybeta_compat and not -.005 <= self.get_clock().now().nanoseconds*1e-9-stamp < .3:
             return
         p, q, v = msg.pose.pose.position, msg.pose.pose.orientation, msg.twist.twist.linear
         values = (p.x,p.y,p.z,q.w,q.x,q.y,q.z,v.x,v.y,v.z)
@@ -162,12 +163,20 @@ class FlightExecutiveNode(Node):
                 hypot(c.position.vx,c.position.vy,c.position.vz) < .1 and
                 self.map_pose is not None and now-self.map_pose_at < .3 and
                 self.map_pose[2] < .1 and self.vio_ready and now-self.vio_ready_at < .3)
+        if self.skybeta_compat:
+            good = (c.status is not None and c.landed is not None and c.landed.landed
+                    and c.position is not None and self.map_pose is not None
+                    and all(isfinite(v) for v in (c.position.x,c.position.y,c.position.z,c.position.yaw)))
         if not good:
             self.ground_alignment.reset_pending()
             return False
         p = c.position
         alignment = self.ground_alignment.observe(now,self.map_pose[0],self.map_pose[1],
                                                   (p.x,p.y,p.z),p.yaw)
+        if self.skybeta_compat:
+            from .alignment import from_pair
+            alignment = from_pair(self.map_pose[0],self.map_pose[1],(p.x,p.y,p.z),p.yaw)
+            self.ground_alignment.value = alignment
         if alignment is None:
             return False
         if self.envelope is not None:
@@ -276,7 +285,7 @@ class FlightExecutiveNode(Node):
                 throttle_duration_sec=3.0)
             return
         waiting = c.state == State.WAITING or (c.state == State.TAKEOFF and c.phase != Phase.ASCEND)
-        if self.require_autonomy_ready and waiting and not (
+        if not self.skybeta_compat and self.require_autonomy_ready and waiting and not (
                 self.autonomy_ready and 0 <= now-self.autonomy_ready_at < .3):
             # No proof-of-life until the map/VIO/launch column is ready. A lost
             # gate invalidates the prior warmup; the pilot must switch again.

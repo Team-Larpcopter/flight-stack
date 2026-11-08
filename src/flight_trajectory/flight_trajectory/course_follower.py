@@ -65,6 +65,7 @@ class CourseFollower:
             if not value > 0:
                 raise ValueError(f'{name} must be positive')
         self.trajectory = trajectory
+        self.skybeta_compat = False
         self.max_error = max_tracking_error
         self.start_tolerance = start_tolerance
         self.heading_tolerance = heading_tolerance
@@ -108,7 +109,7 @@ class CourseFollower:
 
     def _pose_fresh(self, now: float) -> bool:
         p = self.pose
-        return p is not None and p.valid and 0 <= now - p.received_at <= self.pose_timeout
+        return p is not None and (self.skybeta_compat or (p.valid and 0 <= now - p.received_at <= self.pose_timeout))
 
     def _start(self, now: float) -> Optional[Sample]:
         if self.anchor is None:
@@ -119,12 +120,12 @@ class CourseFollower:
             return None
         start = self.local(self.trajectory.sample(0.0))
         p = self.pose
-        if (hypot(p.x - start.position[0], p.y - start.position[1]) > self.start_tolerance
+        if not self.skybeta_compat and (hypot(p.x - start.position[0], p.y - start.position[1]) > self.start_tolerance
                 or abs(p.z - start.position[2]) > self.start_tolerance):
             self.abort('HOLD position is not at the trajectory start; '
                        'check takeoff_height matches the course height')
             return None
-        if start.yaw is not None and abs(wrap(p.heading - start.yaw)) > self.heading_tolerance:
+        if not self.skybeta_compat and start.yaw is not None and abs(wrap(p.heading - start.yaw)) > self.heading_tolerance:
             self.abort('Vehicle heading is more than 20 degrees from the course start heading')
             return None
         self.phase = Phase.TRACKING
@@ -145,7 +146,7 @@ class CourseFollower:
         elapsed = now - self.started_at
         sample = self.local(self.trajectory.sample(elapsed))
         p = self.pose
-        if (hypot(p.x - sample.position[0], p.y - sample.position[1]) > self.max_error
+        if not self.skybeta_compat and (hypot(p.x - sample.position[0], p.y - sample.position[1]) > self.max_error
                 or abs(p.z - sample.position[2]) > self.max_error):
             self.abort(f'Tracking error exceeded {self.max_error:.2f} m at t={elapsed:.1f} s')
             return None

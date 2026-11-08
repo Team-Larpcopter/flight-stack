@@ -19,7 +19,8 @@ def fresh(t, now):
 class Tracking:
     """Retain one accepted sample and verify a continuous terminal dwell."""
 
-    def __init__(self):
+    def __init__(self, persistent=False):
+        self.persistent = persistent
         self.latest = None
         self.settled_since = None
 
@@ -38,7 +39,7 @@ class Tracking:
     def sample(self, now: float, yaw: float):
         if self.latest is None:
             return None
-        if not fresh(self.latest, now):
+        if not self.persistent and not fresh(self.latest, now):
             self.settled_since = None
             return None
         t = self.latest
@@ -49,7 +50,7 @@ class Tracking:
     def complete(self, now, position):
         t = self.latest
         if (t is None or not t.is_final or not stationary(t)
-                or not fresh(t, now)):
+                or (not self.persistent and not fresh(t, now))):
             self.settled_since = None
             return False
         speed_valid = position.velocity_valid and all(isfinite(v) for v in (

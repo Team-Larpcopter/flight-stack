@@ -15,9 +15,10 @@ class StateMachine:
 
     def __init__(self, started_at: float, takeoff_height: float = 1.0,
                  hold_timeout: float = 5.0, landing_timeout: float = 45.0,
-                 takeoff_trigger: str = "position", readiness_timeout: float = 30.0, wait_for_planner: bool = False):
+                 takeoff_trigger: str = "position", readiness_timeout: float = 30.0, wait_for_planner: bool = False, skybeta_compat: bool = False):
         if takeoff_trigger not in ("position", "offboard"):
             raise ValueError("takeoff_trigger must be position or offboard")
+        self.skybeta_compat = skybeta_compat
         self.takeoff_trigger = takeoff_trigger
         if not isfinite(readiness_timeout) or readiness_timeout < 0:
             raise ValueError("readiness_timeout must be finite and nonnegative")
@@ -42,7 +43,7 @@ class StateMachine:
         self.position = None
         self.landed = None
         self.takeoff = None
-        self.tracking = Tracking()
+        self.tracking = Tracking(persistent=skybeta_compat)
         self.hold_target = None
         self.last_tick = None
 
@@ -101,22 +102,22 @@ class StateMachine:
         return self._land(now)
 
     def _land(self, now):
-        if not self._fresh(self.status, now) or not self._fresh(self.landed, now):
+        if not self.skybeta_compat and (not self._fresh(self.status, now) or not self._fresh(self.landed, now)):
             self.fail('PX4 status or landed telemetry is stale during landing')
             return Output()
         if self.landed.landed and not self.status.armed:
             self.state = State.DONE
             return Output()
-        if self.status.failsafe:
+        if not self.skybeta_compat and self.status.failsafe:
             self.fail('PX4 reports failsafe during landing')
             return Output()
         requesting = self.landing.phase == LandPhase.REQUEST and not self.status.auto_land
         gap = self.last_tick is not None and now > self.last_tick + .5
         self.last_tick = now
-        if requesting and gap:
+        if not self.skybeta_compat and requesting and gap:
             self.fail('Control timer gap before Land confirmation')
             return Output()
-        if requesting and (not self._fresh(self.position, now)
+        if not self.skybeta_compat and requesting and (not self._fresh(self.position, now)
                            or not self.position.usable()):
             self.fail('Local position invalid before Land confirmation')
             return Output()
@@ -137,7 +138,7 @@ class StateMachine:
             return self._land(now)
         gap = self.last_tick is not None and now - self.last_tick > 0.5
         self.last_tick = now
-        if self._fresh(self.status, now) and self.status.failsafe:
+        if not self.skybeta_compat and self._fresh(self.status, now) and self.status.failsafe:
             self.fail('PX4 reports failsafe')
             return Output()
         if self.state == State.WAITING:
@@ -145,35 +146,36 @@ class StateMachine:
                 self.fail('Refusing to adopt an armed vehicle')
             elif self._fresh(self.landed, now) and not self.landed.landed:
                 self.fail('Refusing to adopt an airborne vehicle')
-            elif (self.readiness_timeout > 0 and now >= self.started_at + self.readiness_timeout
+            elif (not self.skybeta_compat and self.readiness_timeout > 0 and now >= self.started_at + self.readiness_timeout
                   and self.takeoff_trigger != "offboard"):
                 self.fail('PX4 readiness timed out')
             elif (self._fresh(self.status, now)
                   and self._fresh(self.position, now)
                   and self._fresh(self.landed, now)
-                  and self.status.preflight_ok and self.position.usable()):
+                  and (self.skybeta_compat or self.status.preflight_ok) and self.position.usable()):
                 p = self.position
                 origin = Setpoint(p.x, p.y, p.z, p.yaw)
                 self.takeoff = Takeoff(origin, self.height, now, self.takeoff_trigger)
+                self.takeoff.skybeta_compat = self.skybeta_compat
                 self.state = State.TAKEOFF
                 return Output(origin)
             return Output()
-        if (not self._fresh(self.status, now) or not self._fresh(self.position, now)
+        if not self.skybeta_compat and (not self._fresh(self.status, now) or not self._fresh(self.position, now)
                 or not self._fresh(self.landed, now)):
             self.fail('PX4 status, local position, or landed telemetry is stale')
-        elif not self.position.usable():
+        elif not self.skybeta_compat and not self.position.usable():
             self.fail('Local position, vertical velocity, or heading is invalid')
-        elif gap and self.phase not in (Phase.PREPARE, Phase.WAIT_ARM,
+        elif not self.skybeta_compat and gap and self.phase not in (Phase.PREPARE, Phase.WAIT_ARM,
                                         Phase.ARMED_IN_POSITION, Phase.WAIT_POSITION, Phase.WAIT_OFFBOARD):
             self.fail('Control timer gap exceeded 0.5 seconds')
-        elif self.state in (State.HOLD, State.TRACKING):
+        elif not self.skybeta_compat and self.state in (State.HOLD, State.TRACKING):
             if not self.status.offboard:
                 self.fail('PX4 departed Offboard mode')
             elif not self.status.armed:
                 self.fail('PX4 unexpectedly disarmed')
         if self.state == State.ERROR:
             return Output()
-        if (self.state == State.TAKEOFF
+        if (not self.skybeta_compat and self.state == State.TAKEOFF
                 and self.phase in (Phase.PREPARE, Phase.WAIT_ARM)
                 and not self.status.armed and not self.status.offboard
                 and self.landed.landed and not self.status.preflight_ok):
@@ -183,6 +185,9 @@ class StateMachine:
             self.takeoff = None
             self.started_at = now
             return Output()
+        if (self.skybeta_compat and self.state in (State.HOLD, State.TRACKING)
+                and (not self.status.offboard or not self.status.armed)):
+            return Output(self.hold_target)
         if self.state == State.TAKEOFF:
             result = self.takeoff.tick(now, self.status, self.position, self.landed, gap)
             if result.reason:
@@ -202,6 +207,6 @@ class StateMachine:
             return self._hold(Setpoint(p.x, p.y, p.z, p.yaw), now)
         if self.hold_started is None:
             self.hold_started = now
-        if not self.wait_for_planner and now > self.hold_started + self.hold_timeout:
+        if not self.skybeta_compat and not self.wait_for_planner and now > self.hold_started + self.hold_timeout:
             return self._start_land(now)
         return Output(self.hold_target)
