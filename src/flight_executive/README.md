@@ -1,10 +1,9 @@
-> **Hardware runtime:** the default trigger is now pilot-selected **Offboard**
-> after arming, with no software arm or Offboard-entry command. Existing Offboard or
-> airborne sessions are not adopted. Preflight waiting has no startup deadline.
-> The eight-pane launcher also requires fresh map/VIO readiness and enforces the
-> body geofence. See [full mission runtime](../../docs/full-mission-tmux.md).
-> The Position-triggered sequence below describes the retained SITL default;
-> `takeoff_trigger` explicitly selects `offboard` or `position`.
+> **Hardware runtime:** start disarmed on the ground, arm using the radio, then
+> switch to **Position**. The software requests Offboard and ascends only after
+> PX4 confirms it. Already-armed or airborne startup is refused. Preflight waiting
+> has no startup deadline. The eight-pane launcher requires fresh map/VIO readiness
+> and enforces the body geofence. See [full mission runtime](../../docs/full-mission-tmux.md).
+> `takeoff_trigger` still supports explicit `offboard` or `position` selection.
 
 > Planner integration now provides an explicit `hardware_enabled` opt-in.
 > See [planner integration](../../docs/planner-executive-integration.md) for current

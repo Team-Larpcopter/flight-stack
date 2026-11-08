@@ -15,10 +15,13 @@ class StateMachine:
 
     def __init__(self, started_at: float, takeoff_height: float = 1.0,
                  hold_timeout: float = 5.0, landing_timeout: float = 45.0,
-                 takeoff_trigger: str = "position"):
+                 takeoff_trigger: str = "position", readiness_timeout: float = 30.0):
         if takeoff_trigger not in ("position", "offboard"):
             raise ValueError("takeoff_trigger must be position or offboard")
         self.takeoff_trigger = takeoff_trigger
+        if not isfinite(readiness_timeout) or readiness_timeout < 0:
+            raise ValueError("readiness_timeout must be finite and nonnegative")
+        self.readiness_timeout = readiness_timeout
         if not isfinite(takeoff_height) or takeoff_height <= 0:
             raise ValueError('takeoff_height must be finite and positive')
         for name, value in (('hold_timeout', hold_timeout),
@@ -143,7 +146,8 @@ class StateMachine:
                 self.fail('Refusing to adopt an armed vehicle')
             elif self._fresh(self.landed, now) and not self.landed.landed:
                 self.fail('Refusing to adopt an airborne vehicle')
-            elif now >= self.started_at + 30.0 and self.takeoff_trigger != "offboard":
+            elif (self.readiness_timeout > 0 and now >= self.started_at + self.readiness_timeout
+                  and self.takeoff_trigger != "offboard"):
                 self.fail('PX4 readiness timed out')
             elif (self._fresh(self.status, now)
                   and self._fresh(self.position, now)
