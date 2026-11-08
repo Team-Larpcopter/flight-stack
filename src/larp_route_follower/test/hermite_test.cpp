@@ -52,6 +52,22 @@ int main() {
   const auto moving = larp_route_follower::followWaypoints(w, Vec3(.05, 0, 0), Vec3::Zero(), 0., {});
   require((moving.getVel(0) - Vec3(.05, 0, 0)).norm() < 1e-9, "initial velocity not preserved");
 
+  // Capsule-bounded construction: every curve stays within the reserved 3 cm.
+  const auto bounded=larp_route_follower::followBoundedWaypoints(w,Vec3::Zero(),Vec3::Zero(),0.,{});
+  require(bounded.size()==w.size()-1,"bounded construction failed");
+  for(size_t i=0;i<bounded.size();++i) {
+    const Vec3 edge=w[i+1]-w[i];
+    for(int j=0;j<=100;++j) {
+      const Vec3 p=bounded[i].getPos(bounded[i].getDuration()*j/100.);
+      const double u=std::clamp((p-w[i]).dot(edge)/edge.squaredNorm(),0.,1.);
+      require((p-w[i]-u*edge).norm()<=.03000001,"curve escaped reserved margin");
+    }
+    if(i+1<bounded.size()) {
+      const double end=bounded[i].getDuration();
+      require((bounded[i].getVel(end)-bounded[i+1].getVel(0)).norm()<1e-8,"bounded velocity jump");
+      require((bounded[i].getAcc(end)-bounded[i+1].getAcc(0)).norm()<1e-8,"bounded acceleration jump");
+    }
+  }
   // Yaw piece: scalar in row 0, ends at rest at the target.
   geometry_utils::Trajectory yaw;
   const double ty = larp_route_follower::yawDuration(1.2, .28, .4);

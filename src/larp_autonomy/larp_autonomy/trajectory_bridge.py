@@ -114,6 +114,8 @@ def main():
     def receive(m):
         g=state['goal']
         if g is None or not gate.ready:return
+        # An older queued packet must not erase a newer accepted trajectory.
+        if m.sequence<state['sequence']:return
         try:
             curve=Trajectory.decode(m,now(),g.goal_id,g.localization_epoch,None)
             if curve.sequence<state['sequence']:raise ValueError('Out-of-order trajectory')
@@ -148,7 +150,7 @@ def main():
         pub.publish(out)
     node.create_subscription(NavigationGoal,'/autonomy/goal',goal,
                              QoSProfile(depth=1,durability=DurabilityPolicy.TRANSIENT_LOCAL))
-    node.create_subscription(CommittedTrajectory,'/autonomy/committed_trajectory',receive,4)
+    node.create_subscription(CommittedTrajectory,'/autonomy/committed_trajectory',receive,1)
     node.create_subscription(Bool,'/autonomy/vio_healthy',health,qos_profile_sensor_data)
     node.create_timer(.02,tick)
     try:rclpy.spin(node)

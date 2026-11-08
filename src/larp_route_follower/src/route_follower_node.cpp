@@ -124,10 +124,10 @@ class DepthMapNode : public rclcpp::Node {
         execution_allowed_=m.data=="HOLD" || m.data=="TRACKING";
         if(execution_gated_ && !execution_allowed_ && planner_)planner_->suspendExecution();
       });
-    health_=create_subscription<std_msgs::msg::Bool>("/navigation/vio_healthy",10,[this](const std_msgs::msg::Bool& m) {
+    health_=create_subscription<std_msgs::msg::Bool>("/navigation/vio_healthy",1,[this](const std_msgs::msg::Bool& m) {
       healthy_=m.data;health_received_=std::chrono::steady_clock::now();
     });
-    odom_=create_subscription<nav_msgs::msg::Odometry>("/navigation/odometry",rclcpp::SensorDataQoS().keep_last(static_cad_only_?1:100),
+    odom_=create_subscription<nav_msgs::msg::Odometry>("/navigation/odometry",rclcpp::SensorDataQoS().keep_last(4),
       [this](nav_msgs::msg::Odometry::ConstSharedPtr m) {
         if(m->header.frame_id!="map" || m->child_frame_id!="base_link") return;
         const auto& p=m->pose.pose.position;const auto& q=m->pose.pose.orientation;
@@ -179,7 +179,7 @@ class DepthMapNode : public rclcpp::Node {
     trajectory_sequence_=std::max(trajectory_sequence_+1,static_cast<uint64_t>(std::max<int64_t>(1,t)));
     command.sequence=trajectory_sequence_;
     auto invalidate=[&](const char* reason){
-      planner_->suspendExecution();
+      if(!planner_->position().empty())planner_->suspendExecution();
       std_msgs::msg::Bool pending;route_ready_->publish(pending);
       path_->publish(out);trajectories_->publish(command);
       if(internal_grid_route_ && (!healthy_ || !planner_->active() || !map_ready_for_route_))publishGridRoute(false,reason);
@@ -189,7 +189,7 @@ class DepthMapNode : public rclcpp::Node {
     const bool map_ready=static_cad_only_?cad_prior_loaded_:(t-last_depth_ns_<=max_depth_age_ns_);
     map_ready_for_route_=map_ready && body_.rcv && t*1e-9-body_.rcv_time<=.3 &&
       t*1e-9-body_.rcv_time>=-.005 && std::chrono::steady_clock::now()-health_received_<=std::chrono::seconds(1);
-    if(!healthy_ || !planner_->active() || !map_ready || !body_.rcv ||
+    if(!planner_->active() || !map_ready || !body_.rcv ||
        t*1e-9-body_.rcv_time>.3 ||
        std::chrono::steady_clock::now()-health_received_>std::chrono::seconds(1)) {invalidate("health, goal, localization or map freshness");return;}
     if(execution_gated_ && !execution_allowed_) {
@@ -205,7 +205,16 @@ class DepthMapNode : public rclcpp::Node {
     }
     int result=-1;
     if(t-last_plan_ns_>=100'000'000) {
-      last_plan_ns_=t;planner_->setMapRevision(revision_);result=int(planner_->plan());
+      last_plan_ns_=t;planner_->setMapRevision(revision_);
+      const auto started=std::chrono::steady_clock::now();
+      result=int(planner_->plan());
+      const double elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
+      const auto& search=planner_->masterRoute();
+      RCLCPP_INFO_THROTTLE(get_logger(),*get_clock(),1000,
+        "Fixed replan: %.2f ms, search %.2f ms, pops %zu, checks %zu, result %d",
+        elapsed,search.lastMs(),search.lastPops(),search.lastChecks(),result);
+      // Skip elapsed periods rather than immediately processing catch-up work.
+      if(elapsed>=100.)last_plan_ns_=now().nanoseconds();
       if(internal_grid_route_)publishGridRoute(now().seconds()-body_.rcv_time<=.3);
 
     }

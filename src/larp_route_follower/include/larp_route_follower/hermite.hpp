@@ -126,6 +126,50 @@ inline geometry_utils::Trajectory followWaypoints(const Waypoints& input, const 
   return out;
 }
 
+// One construction, no fitting/clearance retry loop. Each quintic's Bernstein
+// controls lie in its straight chord's convex capsule (3 cm reserved by route
+// clearance). Convex-hull containment bounds the entire curve, not samples.
+inline geometry_utils::Trajectory followBoundedWaypoints(const Waypoints& w, const Vec3& v0,
+    const Vec3& a0, double start, const FollowOptions& o, double allowance=.03) {
+  geometry_utils::Trajectory out;out.start_WT=start;
+  if(w.size()<2 || w.size()>32 || !v0.allFinite() || !a0.allFinite())return out;
+  std::vector<double> times;
+  std::vector<Vec3,Eigen::aligned_allocator<Vec3>> velocities(w.size(),Vec3::Zero());
+  velocities.front()=v0;
+  for(size_t i=0;i+1<w.size();++i) {
+    const double d=(w[i+1]-w[i]).norm();if(d<1e-6)return {};
+    times.push_back(o.time_scale*segmentDuration(1.875*d,o.cruise,o.accel));
+  }
+  for(size_t i=1;i+1<w.size();++i) {
+    const Vec3 a=(w[i]-w[i-1]).normalized(),b=(w[i+1]-w[i]).normalized();
+    if(o.stop_at_corners || (a+b).norm()<1e-6)continue;
+    const Vec3 direction=(a+b).normalized();double speed=o.cruise/o.time_scale;
+    // Interior acceleration is zero: furthest control is 2*T*v/5 from
+    // its knot. Bound lateral excursion and forward projection on both edges.
+    for(size_t j: {i-1,i}) {
+      const Vec3 edge=w[j+1]-w[j],axis=edge.normalized();
+      const double lateral=(direction-axis*direction.dot(axis)).norm();
+      speed=std::min(speed,2.5*allowance/(times[j]*std::max(lateral,1e-9)));
+      speed=std::min(speed,1.25*edge.norm()/times[j]);
+    }
+    velocities[i]=speed*direction;
+  }
+  for(size_t i=0;i+1<w.size();++i) {
+    const double t=times[i];const Vec3 acceleration=i==0?a0:Vec3::Zero();
+    const Vec3 c[6]={w[i],w[i]+t*velocities[i]/5.,
+      w[i]+2.*t*velocities[i]/5.+t*t*acceleration/20.,
+      w[i+1]-2.*t*velocities[i+1]/5.,w[i+1]-t*velocities[i+1]/5.,w[i+1]};
+    const Vec3 edge=w[i+1]-w[i];
+    for(const auto& control:c) {
+      const double u=std::clamp((control-w[i]).dot(edge)/edge.squaredNorm(),0.,1.);
+      if((control-w[i]-u*edge).norm()>allowance+1e-9)return {};
+    }
+    out.emplace_back(t,quinticHermite(w[i],velocities[i],acceleration,
+      w[i+1],velocities[i+1],Vec3::Zero(),t));
+  }
+  return out;
+}
+
 inline double wrapAngle(double a) { return std::atan2(std::sin(a), std::cos(a)); }
 
 // Scalar quintic in row 0 (rows 1-2 zero), the yaw convention of the bridge.
