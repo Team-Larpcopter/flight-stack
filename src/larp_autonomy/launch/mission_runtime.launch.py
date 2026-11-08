@@ -72,6 +72,7 @@ def nodes(context):
         if active:
             result.append(node('flight_executive','flight_executive_node',[dict(
                 simulation_only=False,hardware_enabled=True,takeoff_trigger='position',
+                target_system=cfg.get('target_system',1),target_component=cfg.get('target_component',1),
                 takeoff_height=cfg['takeoff_height'],require_autonomy_ready=True,enforce_boundary=True,
                 map_boundary_lower=cfg['hard_boundary_lower'],map_boundary_upper=cfg['hard_boundary_upper'],
                 map_heading_ned=cfg['map_heading_ned'],map_origin_ned=cfg['map_origin_ned'])]))
