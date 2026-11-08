@@ -37,7 +37,7 @@ super_planner:
   planning_horizon: 2.0
   sensing_horizon: -1
   receding_dis: 2.0
-  robot_r: 0.35
+  robot_r: 0.30
   yaw_dot_max: 1.0
   yaw_mode: 1
   mpc_horizon: 15
@@ -107,9 +107,9 @@ astar:
 rog_map:
   resolution: 0.1
   inflation_resolution: 0.1
-  inflation_step: 4
+  inflation_step: 3
   unk_inflation_en: true
-  unk_inflation_step: 4
+  unk_inflation_step: 3
   map_size:
   - 12
   - 12
