@@ -67,7 +67,7 @@ def nodes(context):
             node('larp_autonomy','mission_goal',[dict(zip(('x','y','z','yaw'),cfg['goal']),wait_for_hold=active)])]
         if active:
             result.append(node('flight_executive','flight_executive_node',[dict(
-                simulation_only=False,hardware_enabled=True,takeoff_trigger='offboard',
+                simulation_only=False,hardware_enabled=True,takeoff_trigger='position',
                 takeoff_height=cfg['takeoff_height'],require_autonomy_ready=True,enforce_boundary=True,
                 map_boundary_lower=cfg['hard_boundary_lower'],map_boundary_upper=cfg['hard_boundary_upper'],
                 map_heading_ned=cfg['map_heading_ned'],map_origin_ned=cfg['map_origin_ned'])]))

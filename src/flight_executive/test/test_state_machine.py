@@ -466,3 +466,22 @@ def test_stale_telemetry_prevents_mode_retry(snapshot):
     assert output.setpoint is None
     assert output.command is None
     assert f.c.state == State.ERROR
+
+
+def test_hardware_position_trigger_waits_without_startup_deadline():
+    f = Flight()
+    f.c = StateMachine(0.0, readiness_timeout=0.0)
+    f.status = replace(f.status, preflight_ok=False)
+    f.tick(60.0)
+    assert f.c.state == State.WAITING
+    f.status = replace(f.status, preflight_ok=True)
+    f.mode_request()
+    assert f.c.phase == Phase.MODE
+
+
+def test_hardware_position_trigger_rejects_already_armed_startup():
+    f = Flight()
+    f.c = StateMachine(0.0, readiness_timeout=0.0)
+    f.status = replace(f.status, armed=True)
+    assert f.tick().command is None
+    assert f.c.state == State.ERROR

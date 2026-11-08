@@ -40,8 +40,8 @@ The launch includes:
 6. In `hardware` mode only: external vision to PX4 and the flight executive.
 
 The executive is the sole owner of offboard heartbeat, setpoints and landing
-commands. In hardware mode, pilot arming followed by an Offboard-mode
-transition authorizes automatic takeoff; the executive hands control to planner
+commands. In hardware mode, pilot arming followed by a switch into Position
+authorizes a software Offboard request, then automatic takeoff after confirmation; the executive hands control to planner
 samples in HOLD/TRACKING and lands after certified arrival or its hold timeout.
 The launch itself does not send an arm command.
 

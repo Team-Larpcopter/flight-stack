@@ -35,12 +35,13 @@ published after takeoff reaches HOLD, avoiding global searches and trajectory
 optimization while waiting on the ground or ascending. The older short-goal and scripted
 course examples remain available but are not used by these launchers.
 
-Start the stack while landed in a manual flight mode. Once localization, depth,
+Start the stack while landed and disarmed in a manual flight mode. Once localization, depth,
 and the mapped launch column are ready, the executive streams a ground-position
-hold heartbeat. Arm using the radio, then switch to **Offboard** after at least
-two seconds of continuous heartbeat. Position mode never authorizes this mission.
-The software never arms the vehicle and will not adopt an existing Offboard
-session or an airborne vehicle. Leaving Offboard relinquishes control; there is
+hold heartbeat. After at least two seconds of continuous heartbeat, arm using
+the radio, then switch to **Position**. The software requests Offboard and begins
+ascent only after PX4 confirms Offboard. Arming while already in Position requires
+switching out and back into Position while still grounded. The software never
+arms the vehicle and refuses already-armed, existing Offboard or airborne startup. Leaving Offboard relinquishes control; there is
 no automatic re-entry or restart. If a component exits, its pane stays visible.
 A new mission requires deliberate container cleanup rather than restarting the
 executive over a possibly flying vehicle. PX4's configured Offboard-loss behavior
