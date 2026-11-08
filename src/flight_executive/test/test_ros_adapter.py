@@ -289,8 +289,9 @@ def test_ground_alignment_waits_then_freezes_before_geofence(node,monkeypatch):
     assert c.state==State.ERROR
 
 
-def test_ground_alignment_never_adopts_armed_start(node):
+def test_ground_alignment_waits_without_adopting_armed_start(node):
     node.auto_alignment=True
     node.state_machine.status=Status(monotonic(),True,False,True)
     node._tick()
-    assert node.state_machine.state==State.ERROR
+    assert node.state_machine.state==State.WAITING
+    assert node.ground_alignment.value is None

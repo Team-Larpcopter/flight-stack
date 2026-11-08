@@ -144,13 +144,15 @@ class FlightExecutiveNode(Node):
             # alignment window between normal landed updates.
             limit = LANDED_TIMEOUT if isinstance(msg, Landed) else 1.0 if isinstance(msg, Status) else .3
             return msg is not None and 0 <= now-msg.received_at < limit
-        if fresh(c.status) and (c.status.armed or c.status.offboard):
-            c.fail('Start disarmed outside Offboard before ground-frame alignment')
-            self._report()
-            return False
         if fresh(c.landed) and not c.landed.landed:
             c.fail('Refusing airborne ground-frame alignment')
             self._report()
+            return False
+        if fresh(c.status) and (c.status.armed or c.status.offboard):
+            self.ground_alignment.reset_pending()
+            self.get_logger().warning(
+                'Waiting for disarm and exit from Offboard before ground-frame alignment; no commands sent',
+                throttle_duration_sec=3.0)
             return False
         good = (fresh(c.status) and fresh(c.position) and fresh(c.landed) and
                 c.status.preflight_ok and not c.status.failsafe and c.landed.landed and
@@ -271,6 +273,12 @@ class FlightExecutiveNode(Node):
         now = monotonic()
         c = self.state_machine
         if self.auto_alignment and not self._align_on_ground(now):
+            return
+        if self.auto_alignment and c.state == State.WAITING and c.status is not None and (
+                c.status.armed or c.status.offboard):
+            self.get_logger().warning(
+                'Waiting for disarm before mission readiness; no commands sent',
+                throttle_duration_sec=3.0)
             return
         waiting = c.state == State.WAITING or (c.state == State.TAKEOFF and c.phase != Phase.ASCEND)
         if self.require_autonomy_ready and waiting and not (

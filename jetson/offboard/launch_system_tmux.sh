@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Jetson only. Exactly eight panes; host build/transfer never calls this script.
+# Jetson only. Eight mission panes plus a manual recorder; host build/transfer never calls this script.
 set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 if [[ -f $here/deployment.env ]]; then source "$here/deployment.env"; fi
@@ -51,19 +51,27 @@ if docker container inspect "$container" >/dev/null 2>&1; then
 fi
 docker run --rm --network none "${runtime_mounts[@]}" -v "$config:/config:ro" "$image" \
   python3 -c 'import sys; from larp_autonomy.runtime_config import load_config; load_config("/config/mission.yaml",sys.argv[1])' "$mode"
-docker create --init --name "$container" "${runtime_mounts[@]}" --runtime nvidia --network host --ipc host \
+bag_dir=${ROSBAG_DIR:-$here/bags}
+mkdir -p "$bag_dir"
+bag_dir=$(realpath "$bag_dir")
+docker create --init --name "$container" -v "$bag_dir:/bags" "${runtime_mounts[@]}" --runtime nvidia --network host --ipc host \
   --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb "${devices[@]}" "${dds[@]}" \
   -v "$config:/config:ro" -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}" \
   -e PX4_TRANSPORT="$transport" -e PX4_PORT="${PX4_PORT:-8888}" -e PX4_BAUD="${PX4_BAUD:-921600}" \
   -e OPENBLAS_NUM_THREADS=1 -e OMP_NUM_THREADS=1 "$image" sleep infinity >/dev/null
 docker start "$container" >/dev/null
 pane() {
+  if [[ $1 == rosbag ]]; then
+    printf '%q ' docker exec -it "$container" /flight-stack/jetson/offboard/entrypoint.sh \
+      python3 /flight-stack/jetson/offboard/record_bag.py
+    return
+  fi
   printf '%q ' docker exec -it "$container" /flight-stack/jetson/offboard/entrypoint.sh \
     ros2 launch larp_autonomy mission_runtime.launch.py "component:=$1" \
     "mode:=$mode" mission_file:=/config/mission.yaml
 }
-parts=(drivers foxglove vins dds depth map super executive)
-titles=(Drivers Foxglove sqrtVINS DDS LAS 'ROG map' SUPER 'Mission executive')
+parts=(drivers foxglove vins dds depth map super executive rosbag)
+titles=(Drivers Foxglove sqrtVINS DDS LAS 'ROG map' SUPER 'Mission executive' 'Record bag — press Enter')
 first=$(tmux new-session -d -P -F '#{pane_id}' -s "$session" -n system "bash --noprofile --norc -i")
 tmux set-option -t "$session" mouse on
 tmux set-option -t "$session" remain-on-exit off
@@ -71,11 +79,11 @@ tmux set-option -t "$session" pane-border-status top
 tmux select-pane -t "$first" -T "${titles[0]}"
 tmux send-keys -t "$first" -l "$(pane drivers)"
 tmux send-keys -t "$first" Enter
-for ((i=1; i<8; ++i)); do
+for ((i=1; i<${#parts[@]}; ++i)); do
   created=$(tmux split-window -d -P -F '#{pane_id}' -t "$session:system" "bash --noprofile --norc -i")
   tmux select-pane -t "$created" -T "${titles[i]}"
   tmux send-keys -t "$created" -l "$(pane "${parts[i]}")"
-  tmux send-keys -t "$created" Enter
+  if [[ ${parts[i]} != rosbag ]]; then tmux send-keys -t "$created" Enter; fi
   tmux select-layout -t "$session:system" tiled >/dev/null
 done
 tmux select-pane -t "$first"
