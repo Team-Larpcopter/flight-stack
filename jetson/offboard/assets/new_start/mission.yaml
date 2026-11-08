@@ -1,0 +1,34 @@
+mission_id: course-goal-new-start
+alignment_verified: true
+rig_file: /config/rig.json
+bridge_params: /config/bridge.yaml
+goal:
+- 0.77724
+- -4.02128
+- 1.0
+- 1.5707963267948966
+takeoff_height: 1.0
+map_heading_ned: 0.0
+map_origin_ned:
+- 0.0
+- 0.0
+- 0.0
+initial_position_m:
+- 0.0
+- 0.0
+- 0.0
+initial_yaw_rad: 0.0
+hard_boundary_lower:
+- -0.5334
+- -5.3624
+- 0.0
+hard_boundary_upper:
+- 5.5626
+- 0.7336
+- 1.8
+hard_boundary_reference: 'Original course transformed to operator-specified start:
+  old x=1.2 m, y=0, facing right 90 degrees.'
+target_system: 15
+target_component: 1
+cad_prior_file: /config/course_cad_prior_new_start.txt
+follower_route_file: /config/course_master_route_new_start.xyz

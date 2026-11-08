@@ -2,16 +2,16 @@
 
 The operator places the aircraft at old map (1.2, 0, 0), facing 90 degrees right. This becomes a new mission origin (0, 0, 0), yaw zero. No completed mission state is inherited.
 
-Coordinates use `p_new = R @ (p_old - [1.2,0,0])`, with proper rotation `R = [[0,-1,0],[1,0,0],[0,0,1]]`. Sensor/body extrinsics remain unchanged. Map registration starts at zero; PX4 ground alignment uses the existing procedure.
+All mission geometry is stored in `jetson/offboard/assets/new_start/`: mission config, CAD preload, cached guide, and independent fixed-course waypoints. Coordinates were converted during development and saved. No coordinate-conversion generator is shipped, and build/launch performs no mission-asset rotation or translation. Ordinary live sensor/body/PX4 frame handling remains unchanged.
 
-On Jetson, prepare once from the deployed original configuration/assets:
+Packaging copies these static assets directly into `config_new_start/`. On a fresh deployment, copy the aircraft calibration files alongside them (already done on the current Jetson):
 
 ```bash
 cd ~/flight-stack-arm64
-python3 prepare_new_start.py "$PWD"
+cp config/rig.json config/bridge.yaml config_new_start/
 ```
 
-This creates `config_new_start/mission.yaml`, a rotated CAD preload, a cached guide with a nearby entry for the new task, and independent `config_new_start/fixed_course.yaml`. The original config remains available. The cached guide is guidance only; the live map controls collision checks.
+Map registration starts at zero; PX4 ground alignment uses the existing procedure. The original mission remains available. The cached guide is guidance only; the live map controls collision checks.
 
 Launch one:
 

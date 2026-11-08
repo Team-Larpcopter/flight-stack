@@ -12,7 +12,9 @@ docker run --rm --platform linux/arm64 -v "$volume:/flight-stack" "$image" \
     opt/ros/humble opt/xrce-agent usr/local/bin/MicroXRCEAgent | \
   gzip -1 > "$out/stack-runtime.tar.gz"
 cp "$root/jetson/offboard/Dockerfile" "$out/Dockerfile"
-cp "$root/jetson/offboard/"{launch_localization.sh,load_image.sh,runtime_mounts.sh,replace_stack.sh,run_full_stack.sh,launch_system_tmux.sh,launch_full_system_tmux.sh,launch_mission_tmux.sh,launch_ego_mission_tmux.sh,launch_ego_full_system_tmux.sh,launch_triangle_tmux.sh,launch_takeoff_hold_tmux.sh,launch_fixed_course_tmux.sh,launch_super_new_start_tmux.sh,launch_fixed_course_new_start_tmux.sh,prepare_new_start.py,profile_vins_load.sh,profile_vins_topics.py} "$out/"
+cp "$root/jetson/offboard/"{launch_localization.sh,load_image.sh,runtime_mounts.sh,replace_stack.sh,run_full_stack.sh,launch_system_tmux.sh,launch_full_system_tmux.sh,launch_mission_tmux.sh,launch_ego_mission_tmux.sh,launch_ego_full_system_tmux.sh,launch_triangle_tmux.sh,launch_takeoff_hold_tmux.sh,launch_fixed_course_tmux.sh,launch_super_new_start_tmux.sh,launch_fixed_course_new_start_tmux.sh,profile_vins_load.sh,profile_vins_topics.py} "$out/"
+mkdir -p "$out/config_new_start"
+cp "$root/jetson/offboard/assets/new_start/"* "$out/config_new_start/"
 cp "$root/src/larp_route_follower/scripts/"launch_follower_*tmux.sh "$out/"
 cp "$root/jetson/foxglove/larpcopter-autonomy-localization.json" "$out/"
 cp "$root/jetson/foxglove/larpcopter-flight.json" "$out/"
