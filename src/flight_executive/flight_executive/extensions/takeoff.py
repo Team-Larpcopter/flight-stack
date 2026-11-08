@@ -16,7 +16,11 @@ class TakeoffResult:
 class Takeoff:
     """Own takeoff phases without changing mission state."""
 
-    def __init__(self, origin: Setpoint, height: float, now: float):
+    def __init__(self, origin: Setpoint, height: float, now: float, trigger: str = "position"):
+        if trigger not in ("position", "offboard"):
+            raise ValueError("takeoff trigger must be position or offboard")
+        self.trigger = trigger
+        self.saw_manual_mode = False
         self.height = height
         self.heartbeat_started = now
         self.origin = origin
@@ -52,6 +56,24 @@ class Takeoff:
         """Wait for the pilot's arm then Position switch before requesting control."""
         if self.reason:
             return TakeoffResult(reason=self.reason)
+        if self.trigger == 'offboard' and self.phase != Phase.ASCEND:
+            if not landed.landed or not status.preflight_ok:
+                return TakeoffResult(reason='Ground/preflight readiness lost before pilot Offboard')
+            self.origin = Setpoint(position.x, position.y, position.z, position.yaw)
+            if gap:
+                self.heartbeat_started = now
+            if not status.offboard:
+                self.saw_manual_mode = True
+                self.phase = Phase.WAIT_OFFBOARD
+                return TakeoffResult(Output(self.origin))
+            if not self.saw_manual_mode:
+                return TakeoffResult(reason='Refusing to adopt existing Offboard control')
+            if not status.armed:
+                return TakeoffResult(reason='Pilot Offboard requires an armed vehicle')
+            if now < self.heartbeat_started + 2.0:
+                return TakeoffResult(reason='Pilot Offboard before heartbeat warmup')
+            self.target = Setpoint(self.origin.x, self.origin.y, self.origin.z-self.height, self.origin.yaw)
+            self._enter_phase(Phase.ASCEND, now)
         if self.phase == Phase.ASCEND:
             if not status.offboard:
                 return TakeoffResult(reason='PX4 departed Offboard mode')

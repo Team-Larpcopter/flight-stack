@@ -15,10 +15,11 @@ from rclpy.node import Node
 from rclpy.qos import (
     DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy,
 )
-from std_msgs.msg import String
+from std_msgs.msg import String, Bool
 
-from flight_executive.model import Command, Landed, Position, Status, Trajectory
+from flight_executive.model import Command, Landed, Position, Status, Trajectory, State, Phase
 from flight_executive.state_machine import StateMachine
+from flight_executive.envelope import Envelope
 from flight_executive.extensions.tracking import stationary
 
 
@@ -41,7 +42,8 @@ class FlightExecutiveNode(Node):
         height = self.declare_parameter('takeoff_height', 1.0).value
         hold_timeout = self.declare_parameter('hold_timeout', 5.0).value
         landing_timeout = self.declare_parameter('landing_timeout', 45.0).value
-        self.state_machine = StateMachine(monotonic(), height, hold_timeout, landing_timeout)
+        trigger = self.declare_parameter('takeoff_trigger', 'offboard' if hardware else 'position').value
+        self.state_machine = StateMachine(monotonic(), height, hold_timeout, landing_timeout, trigger)
         self.prefix = self.declare_parameter('px4_topic_prefix', '/fmu').value.rstrip('/')
         if not self.prefix.startswith('/') or self.prefix == '':
             raise ValueError('px4_topic_prefix must be an absolute nonempty topic prefix')
@@ -78,14 +80,29 @@ class FlightExecutiveNode(Node):
         self.state_pub = self.create_publisher(String, '~/state', QoSProfile(
             depth=1, reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        lower = self.declare_parameter('map_boundary_lower', [0.0, 0.0, 0.0]).value
+        upper = self.declare_parameter('map_boundary_upper', [0.0, 0.0, 0.0]).value
+        enforce = self.declare_parameter('enforce_boundary', False).value
+        heading = self.declare_parameter('map_heading_ned', 0.0).value
+        origin = self.declare_parameter('map_origin_ned', [0.0, 0.0, 0.0]).value
+        self.envelope = Envelope(lower, upper, heading, origin) if enforce else None
+        self.require_autonomy_ready = self.declare_parameter('require_autonomy_ready', False).value
+        self.autonomy_ready = False
+        self.autonomy_ready_at = -float('inf')
+        self.input_subscriptions.append(self.create_subscription(
+            Bool, '/autonomy/takeoff_ready', self._autonomy_ready, telemetry_qos))
         self.last_report = None
         self.timer = self.create_timer(
             0.05, self._tick, clock=Clock(clock_type=ClockType.STEADY_TIME))
         self.get_logger().warning(
             ('SITL: ' if simulation else 'HARDWARE ENABLED: ') +
-            'Pilot arming then Position authorizes automatic takeoff. '
+            f'Pilot arming then {trigger} switch authorizes automatic takeoff. '
             'simulation_only is operator acknowledgement, not vehicle identification.')
         self._report()
+
+    def _autonomy_ready(self, msg):
+        self.autonomy_ready = msg.data
+        self.autonomy_ready_at = monotonic()
 
     def _publisher(self, message_type, name):
         return self.create_publisher(
@@ -169,7 +186,34 @@ class FlightExecutiveNode(Node):
                 self.get_logger().info(text)
 
     def _tick(self):
-        output = self.state_machine.tick(monotonic())
+        now = monotonic()
+        c = self.state_machine
+        waiting = c.state == State.WAITING or (c.state == State.TAKEOFF and c.phase != Phase.ASCEND)
+        if self.require_autonomy_ready and waiting and not (
+                self.autonomy_ready and 0 <= now-self.autonomy_ready_at < .3):
+            # No proof-of-life until the map/VIO/launch column is ready. A lost
+            # gate invalidates the prior warmup; the pilot must switch again.
+            if c.status is not None and c.status.offboard:
+                c.fail('Pilot selected Offboard without fresh autonomy readiness')
+                self._report()
+            else:
+                c.started_at = now
+                c.last_tick = now
+                if c.takeoff is not None:
+                    c.takeoff.heartbeat_started = now
+            return
+        output = c.tick(now)
+        if self.envelope is not None:
+            ground = c.state in (State.WAITING, State.TAKEOFF, State.LAND, State.DONE)
+            p = c.position
+            points = [] if p is None else [(p.x, p.y, p.z)]
+            if output.setpoint is not None:
+                p = output.setpoint
+                points.append((p.x, p.y, p.z))
+            if any(not self.envelope.contains(p, ground) for p in points):
+                c.fail('Measured position or command violates body geofence')
+                self._report()
+                return
         self._report()
         timestamp = self.get_clock().now().nanoseconds // 1000
         if output.setpoint is not None:

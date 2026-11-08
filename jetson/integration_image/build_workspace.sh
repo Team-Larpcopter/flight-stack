@@ -22,20 +22,24 @@ fi
 bash jetson/integration_image/build_sdk.sh "$workspace/sdk-source/depthai-core-v3.10.0" "$workspace/build_sdk" "$workspace/sdk_install"
 export CMAKE_PREFIX_PATH="$workspace/sdk_install:${CMAKE_PREFIX_PATH:-}"
 export LD_LIBRARY_PATH="$workspace/sdk_install/lib:${LD_LIBRARY_PATH:-}"
+testing=OFF
+if [[ ${RUN_TESTS:-1} == 1 ]]; then testing=ON; fi
 # Native production path, including planners/executive; legacy Python DepthAI
 # and CUDA depth experiments are not dependencies of this stack.
 colcon build --base-paths src --executor sequential \
   --packages-up-to larp_hardware larp_autonomy flight_executive larp_px4_bridge larp_liteanystereo larp_perception \
-  --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+  --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING="$testing" \
     -DENABLE_ARUCO_TAGS=OFF -DBoost_NO_BOOST_CMAKE=ON \
     -DBoost_NO_SYSTEM_PATHS=ON -DBOOST_ROOT=/usr \
     -DBOOST_INCLUDEDIR=/usr/include \
     "-DBOOST_LIBRARYDIR=/usr/lib/$(gcc -dumpmachine)"
 source install/setup.bash
 export ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=187
+if [[ ${RUN_TESTS:-1} == 1 ]]; then
 ctest --test-dir build/larp_hardware --output-on-failure
 ctest --test-dir build/larp_navigation --output-on-failure
 python3 -m pytest -q --ignore=src/larp_autonomy/test/test_bridge_ros.py src/larp_autonomy/test src/larp_px4_bridge/test/test_core.py src/larp_liteanystereo/test src/larp_perception/test
+fi
 ros2 pkg executables larp_hardware
 ros2 pkg executables ov_srvins
 

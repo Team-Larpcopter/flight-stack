@@ -43,7 +43,8 @@ class GlobalGridRoute {
     }
     route_={};guide_.clear();
     const auto wall=std::chrono::steady_clock::now();
-    if(retry_pending_ && retry_goal_==goal_id && retry_revision_==revision &&
+    // Depth revises the map each frame; do not let that bypass failed-search backoff.
+    if(retry_pending_ && retry_goal_==goal_id &&
        (start-retry_start_).norm()<.1 && wall-last_attempt_<std::chrono::milliseconds(500))return {};
     retry_pending_=true;retry_goal_=goal_id;retry_revision_=revision;retry_start_=start;last_attempt_=wall;
     ++searches_;

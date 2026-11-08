@@ -3,15 +3,16 @@
 #include <navigation/route_planner.hpp>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 void require(bool value,const char* message){if(!value)throw std::runtime_error(message);}
 int main(int argc,char** argv) {
-  if(argc!=2 && argc!=3)return 2;
+  if(argc!=2 && argc!=3 && argc!=4)return 2;
   double now=10.;
   auto map=std::make_shared<navigation::ObservedMap>(argv[1],[&]{return now;},true);
   auto clock=std::make_shared<navigation::PlannerClock>([&]{return now;},[](const auto& s){std::cerr<<s<<'\n';});
   navigation::Point lo(-2,-2,0),hi(2,2,2.5),start(-.8,0,1),goal(.8,0,1);
-  if(argc==3) {
-    lo={-4.1624,-5.5626,0};hi={1.9336,.5334,2.95};start={0,0,1};goal={-1.90688,-.47244,1};
+  if(argc>=3) {
+    lo={-4.1624,-5.5626,0};hi={1.9336,.5334,argc==4?std::stod(argv[3]):2.95};start={0,0,1};goal={-1.90688,-.47244,1};
     map->setHardBoundary(lo,hi,.4);map->loadCadPrior(argv[2],true);
   }
   rog_map::PointCloud free,wall;
@@ -28,6 +29,7 @@ int main(int argc,char** argv) {
   navigation::GlobalGridRoute route(argv[1],map,clock,edge);route.setBounds(lo,hi);
   auto nearby=route.nearby(start,goal,1,1,1.);
   std::cout<<"search_ms="<<route.lastSearchMs()<<" reason="<<route.reason()<<" points="<<route.route().points.size()<<std::endl;
+  for(const auto& p:route.route().points)std::cout<<"ROUTE "<<p.x()<<" "<<p.y()<<" "<<p.z()<<std::endl;
   require(nearby.size()>=2,"full-goal A* search failed");
   require((route.route().points.front()-start).norm()<1e-8,"start relocated");
   require((route.route().points.back()-goal).norm()<1e-8,"goal relocated or horizon-only route");
@@ -49,6 +51,7 @@ int main(int argc,char** argv) {
     const auto attempts=route.searches();now+=.01;
     require(route.nearby(start,goal,1,3,1.).empty() && route.searches()==attempts,"failed search retried without backoff");
     wall.clear();map->replaceClassifications(wall,free);now+=.1;
+    std::this_thread::sleep_for(std::chrono::milliseconds(510));
     require(route.nearby(start,goal,1,4,1.).size()>=2,"map reopening did not recover");
     require(route.nearby(start,{5,0,1},2,4,1.).empty(),"accepted out-of-map goal");
   }

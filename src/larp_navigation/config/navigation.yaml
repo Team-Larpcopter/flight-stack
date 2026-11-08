@@ -154,6 +154,10 @@ rog_map:
     batch_update_size: 1
     # Correlated stereo pixels contribute one occupancy update per frame/cell.
     frame_evidence: true
+    # Three hit-bearing frames; a ray miss resets pending confirmation.
+    occupancy_confirmation_frames: 3
+    # Only valid depth rays through a cell count as empty observations.
+    clear_confirmation_frames: 3
     local_update_box:
     - 12
     - 12

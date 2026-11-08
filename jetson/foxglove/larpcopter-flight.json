@@ -1,0 +1,162 @@
+{
+  "configById": {
+    "Image!left": {
+      "imageMode": {
+        "imageTopic": "/viz/native_oak/left/image_undistorted/compressed"
+      }
+    },
+    "Image!depth": {
+      "imageMode": {
+        "imageTopic": "/viz/stereo/depth/image/compressed"
+      }
+    },
+    "3D!planning": {
+      "followTf": "map",
+      "followMode": "follow-none",
+      "scene": {
+        "backgroundColor": "#101418"
+      },
+      "topics": {
+        "/viz/autonomy/occupied": {
+          "visible": true,
+          "pointSize": 3,
+          "colorMode": "flat",
+          "flatColor": "#ffcc66ff"
+        },
+        "/viz/autonomy/route": {
+          "visible": true,
+          "lineWidth": 0.04,
+          "color": "#44aaffff"
+        },
+        "/viz/autonomy/committed_path": {
+          "visible": true,
+          "lineWidth": 0.06,
+          "color": "#44ff88ff"
+        },
+        "/viz/autonomy/body_path": {
+          "visible": true,
+          "lineWidth": 0.025,
+          "color": "#ffffffff"
+        },
+        "/viz/autonomy/body_pose": {
+          "visible": true,
+          "type": "arrow",
+          "color": "#ff7744ff"
+        },
+        "/viz/autonomy/goal_pose": {
+          "visible": true,
+          "type": "arrow",
+          "color": "#ff44ffff"
+        }
+      },
+      "layers": {
+        "grid": {
+          "layerId": "foxglove.Grid",
+          "visible": true,
+          "frameId": "map",
+          "size": 20,
+          "divisions": 40,
+          "lineWidth": 1,
+          "color": "#3a4450ff",
+          "instanceId": "f1d0abad-53ac-437d-92ad-a0f2a7bbac56"
+        }
+      },
+      "cameraState": {
+        "perspective": true,
+        "distance": 6.0,
+        "phi": 55,
+        "thetaOffset": 45,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOffset": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "fovy": 45,
+        "near": 0.01,
+        "far": 500
+      }
+    },
+    "RawMessages!map": {
+      "topicPath": "/viz/autonomy/map_state",
+      "diffEnabled": false
+    },
+    "RawMessages!health": {
+      "topicPath": "/viz/autonomy/vio_healthy",
+      "diffEnabled": false
+    },
+    "Plot!velocity": {
+      "title": "Body velocity, map frame (m/s)",
+      "paths": [
+        {
+          "value": "/viz/autonomy/body_odom.twist.twist.linear.x",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/viz/autonomy/body_odom.twist.twist.linear.y",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/viz/autonomy/body_odom.twist.twist.linear.z",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        }
+      ],
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 20
+    },
+    "RawMessages!executive": {
+      "topicPath": "/viz/flight_executive/state",
+      "diffEnabled": false
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {
+    "speed": 1
+  },
+  "layout": {
+    "direction": "column",
+    "first": {
+      "direction": "row",
+      "first": {
+        "direction": "column",
+        "first": "Image!left",
+        "second": "Image!depth"
+      },
+      "second": "3D!planning",
+      "splitPercentage": 25
+    },
+    "second": {
+      "direction": "row",
+      "first": {
+        "direction": "column",
+        "first": "RawMessages!executive",
+        "second": "RawMessages!health"
+      },
+      "second": {
+        "direction": "row",
+        "first": "RawMessages!map",
+        "second": "Plot!velocity"
+      }
+    },
+    "splitPercentage": 75
+  }
+}

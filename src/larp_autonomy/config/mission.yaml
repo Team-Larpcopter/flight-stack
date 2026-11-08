@@ -1,0 +1,16 @@
+# Single final-goal course mission, matching sqrtvins-course-053.
+# Copy to DEPLOYMENT_CONFIG/mission.yaml and set the surveyed alignment.
+mission_id: course-goal
+alignment_verified: false
+rig_file: /config/rig.json
+bridge_params: /config/bridge.yaml
+goal: [-1.90688, -0.47244, 1.0, 0.0]
+takeoff_height: 1.0
+map_heading_ned: 0.0
+map_origin_ned: [0.0, 0.0, 0.0]
+initial_position_m: [0.0, 0.0, 0.0]
+initial_yaw_rad: 0.0
+# Nominal course XY, map z=0 floor; verify physical placement before hardware use.
+hard_boundary_lower: [-4.1624, -5.5626, 0.0]
+hard_boundary_upper: [1.9336, 0.5334, 1.8]
+hard_boundary_reference: nominal course; requires surveyed hardware alignment

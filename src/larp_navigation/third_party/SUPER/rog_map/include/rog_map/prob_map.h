@@ -127,6 +127,7 @@ namespace rog_map {
         ESDFMap::Ptr esdf_map_;
         /// Spherical neighborhood lookup table
         std::vector<float> occupancy_buffer_;
+        std::vector<uint8_t> confirmation_hits_;
 
         bool map_empty_{true};
         struct RaycastData {
@@ -172,9 +173,9 @@ namespace rog_map {
 
         void probabilisticMapFromCache();
 
-        void hitPointUpdate(const Vec3f &pos, const int &hash_id, const int &hit_num);
+        void hitPointUpdate(const Vec3f &pos, const int &hash_id, const int &hit_num, bool sensor_hit = false);
 
-        void missPointUpdate(const Vec3f &pos, const int &hash_id, const int &hit_num);
+        void missPointUpdate(const Vec3f &pos, const int &hash_id, const int &hit_num, bool sensor_miss = false);
 
         void raycastProcess(const PointCloud &input_cloud, const Vec3f &cur_odom);
 

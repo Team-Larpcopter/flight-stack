@@ -55,6 +55,7 @@ def node(context):
                     "target_width": ParameterValue(arg("target_width"), value_type=int),
                     "min_depth_m": ParameterValue(arg("min_depth_m"), value_type=float),
                     "max_depth_m": ParameterValue(arg("max_depth_m"), value_type=float),
+                    "viz_enable": ParameterValue(arg("viz_enable"), value_type=bool),
                     "viz_rate_hz": ParameterValue(arg("viz_rate_hz"), value_type=float),
                     "output_depth_topic": "/las_depth/depth/image_raw",
                     "output_info_topic": "/las_depth/depth/camera_info",
@@ -77,6 +78,7 @@ def generate_launch_description():
             DeclareLaunchArgument("target_width", default_value="480"),
             DeclareLaunchArgument("min_depth_m", default_value="0.15"),
             DeclareLaunchArgument("max_depth_m", default_value="8.0"),
+            DeclareLaunchArgument("viz_enable", default_value="true"),
             DeclareLaunchArgument("viz_rate_hz", default_value="5.0"),
             OpaqueFunction(function=node),
         ]

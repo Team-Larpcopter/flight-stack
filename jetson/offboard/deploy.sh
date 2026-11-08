@@ -11,5 +11,6 @@ remote=${REMOTE_DIR:-flight-stack/deployment/arm64}
 ssh "$SSH_HOST" "mkdir -p ~/'$remote'"
 scp "$out/stack-runtime.tar.gz" "$out/Dockerfile" \
   "$out/launch_localization.sh" "$out/load_image.sh" "$out/run_full_stack.sh" \
-  "$out/larpcopter-autonomy-localization.json" "$SSH_HOST:$remote/"
+  "$out/launch_system_tmux.sh" "$out/launch_full_system_tmux.sh" "$out/launch_mission_tmux.sh" \
+  "$out/larpcopter-autonomy-localization.json" "$out/larpcopter-flight.json" "$out/mission.example.yaml" "$SSH_HOST:$remote/"
 echo "Transferred to ~/$remote. Run bash ~/$remote/launch_localization.sh on Jetson separately."

@@ -44,7 +44,7 @@ def test_factory_transform_initializes_upstream_default_estimator(tmp_path):
     assert data['cam0']['resolution']==[1280,800]
     cfg=(tmp_path/'estimator_config.yaml').read_text()
     upstream=TEMPLATES.parents[2]/'vendor/ov_srvins/config/euroc_mav/estimator_config.yaml'
-    expected=upstream.read_text().replace('track_frequency: 21.0','track_frequency: 31.0')
+    expected=upstream.read_text().replace('track_frequency: 21.0','track_frequency: 31.0').replace('try_zupt: false','try_zupt: true')
     assert cfg.strip() == expected.strip()
     assert rig['bench_only'] and not rig['flight_qualified']
     assert json.loads((tmp_path/'calibration-hashes.json').read_text())['rig.json']

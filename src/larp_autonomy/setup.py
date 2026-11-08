@@ -11,6 +11,7 @@ setup(name='larp_autonomy', version='0.1.0', packages=['larp_autonomy'],
  'capture_calibration=larp_autonomy.calibration:main',
  'bench_probe=larp_autonomy.bench_probe:main',
  'planner_visualization=larp_autonomy.planner_visualization:main',
+ 'map_status=larp_autonomy.map_status:main',
  'mission_goal=larp_autonomy.mission_goal:main',
  'planner_latency=larp_autonomy.planner_latency:main',
  'trajectory_bridge=larp_autonomy.trajectory_bridge:main']})
