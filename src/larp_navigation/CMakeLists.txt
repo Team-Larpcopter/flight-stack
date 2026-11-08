@@ -41,6 +41,8 @@ file(GLOB_RECURSE SUPER_SRC CONFIGURE_DEPENDS
 # The upstream demonstration FSM does not implement the PX4 mission contract.
 list(FILTER SUPER_SRC EXCLUDE REGEX "/fsm.cpp$")
 add_library(super_core STATIC ${SUPER_SRC})
+# Use libc stack symbols without requiring optional libdw development headers.
+target_compile_definitions(super_core PUBLIC BACKWARD_HAS_BACKTRACE_SYMBOL=1)
 target_include_directories(super_core PUBLIC ${SUPER_ROOT}/super_planner/include)
 target_link_libraries(super_core rog_map_core)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/log)
