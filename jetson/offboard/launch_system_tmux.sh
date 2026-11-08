@@ -10,18 +10,7 @@ image=${RUNTIME_IMAGE:-larp-flight-stack:arm64-runtime}
 container=${CONTAINER:-flight-stack-mission-$mode}
 session=${SESSION:-flight-stack-$mode}
 command -v tmux >/dev/null
-# Reattach without launching another set of sensor/command publishers.
-if tmux has-session -t "$session" 2>/dev/null; then
-  tmux set-option -t "$session" mouse on
-  exec tmux attach-session -t "$session"
-fi
-# Match the takeoff launcher: no competing camera, UART or flight publishers.
-for other in flight-stack-takeoff-hold flight-stack-mission-hardware flight-stack-mission-shadow flight-stack-localization-runtime flight-stack-runtime; do
-  if [[ $(docker inspect --format '{{.State.Running}}' "$other" 2>/dev/null || true) == true ]]; then
-    echo "Stop $other before starting this mission; it shares camera/PX4 resources." >&2
-    exit 2
-  fi
-done
+source "$here/replace_stack.sh"
 source "$here/runtime_mounts.sh"
 config=$(realpath "$DEPLOYMENT_CONFIG")
 [[ -f $config/mission.yaml ]] || { echo 'Missing DEPLOYMENT_CONFIG/mission.yaml' >&2; exit 2; }
@@ -42,12 +31,6 @@ if [[ -n ${DDS_PROFILE:-} ]]; then
   dds+=(-v "$(realpath "$DDS_PROFILE"):/etc/flight-stack/dds.xml:ro"
        -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/flight-stack/dds.xml
        -e FASTDDS_DEFAULT_PROFILES_FILE=/etc/flight-stack/dds.xml)
-fi
-# A stopped container is not silently reused after configuration/image changes.
-# No automatic restart of an executive that might have already flown.
-if docker container inspect "$container" >/dev/null 2>&1; then
-  echo "Container $container already exists. Stop its processes and remove it before a new mission." >&2
-  exit 2
 fi
 docker run --rm --network none "${runtime_mounts[@]}" -v "$config:/config:ro" "$image" \
   python3 -c 'import sys; from larp_autonomy.runtime_config import load_config; load_config("/config/mission.yaml",sys.argv[1])' "$mode"

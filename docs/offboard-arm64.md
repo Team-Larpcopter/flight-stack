@@ -140,8 +140,10 @@ directory. The original GPU cache/engine is reused, never rebuilt.
 ### Eight-panel mission startup and timing
 
 `launch_mission_tmux.sh` loads `deployment.env` next to the launcher, including
-UART, DDS profile/domain, GPU cache and deployment configuration. It refuses a
-known competing stack container; it never stops another mission automatically.
+UART, DDS profile/domain, GPU cache and deployment configuration. Each explicit launch stops and removes existing stack containers and replaces
+their tmux sessions. Run launch commands from the SSH shell outside those sessions.
+The passive status monitor and unrelated containers are left alone; `--check` on
+the takeoff launcher does not stop anything.
 Start disarmed and wait for grounded map/PX4 alignment before arming and switching
 to Position. Landed telemetry uses the executive's existing 2.5-second allowance;
 position and body odometry still need fresh samples.
