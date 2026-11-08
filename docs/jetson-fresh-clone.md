@@ -77,3 +77,6 @@ docker exec -it "${CONTAINER:-flight-stack-localization}" bash -c '
 Planner/executive setup is documented in
 [planner integration](planner-executive-integration.md). Building and starting
 localization does not establish flight qualification or validate map alignment.
+
+For agent transport, external vision, planning and execution in one container,
+see [standalone flight runtime](full-stack-runtime.md).
