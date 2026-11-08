@@ -35,7 +35,9 @@ def nodes(context):
             max_exposure_us=5000,capture_seconds=0.)])]
     elif part=='foxglove':
         result=[include('larp_perception','perception.launch.py',{'port':'8766','send_buffer_limit':'8388608','flight_monitor_only':'true'}),
-                node('larp_autonomy','planner_visualization')]
+                node('larp_autonomy','planner_visualization',[dict(
+                    hide_boundary_lower=cfg['hard_boundary_lower'],
+                    hide_boundary_upper=cfg['hard_boundary_upper'])])]
     elif part=='vins':
         config=cfg.get('estimator_config',str(Path(share('larp_localization'))/'config/oak_d_s2/estimator_config.yaml'))
         result=[node('ov_srvins','run_subscribe_msckf',[{'config_path':config,'verbosity':'INFO'}],namespace='autonomy',
