@@ -45,6 +45,7 @@ class StateMachine:
         self.takeoff = None
         self.tracking = Tracking(persistent=skybeta_compat)
         self.hold_target = None
+        self.last_tracking_target = None
         self.last_tick = None
 
     @property
@@ -87,7 +88,7 @@ class StateMachine:
 
     def _hold(self, target: Setpoint, now: float) -> Output:
         self.hold_target = Setpoint(target.x, target.y, target.z, target.yaw,
-                                    (0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+                                    (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 0.0)
         self.tracking.clear()
         self.state = State.HOLD
         self.hold_started = now
@@ -201,10 +202,15 @@ class StateMachine:
             self.state = State.TRACKING
             if self.tracking.complete(now, self.position):
                 return self._start_land(now)
+            self.last_tracking_target = Setpoint(target.x, target.y, target.z, target.yaw,
+                                        (0., 0., 0.), (0., 0., 0.), 0.)
             return Output(target)
         if self.state == State.TRACKING:
             p = self.position
-            return self._hold(Setpoint(p.x, p.y, p.z, p.yaw), now)
+            target = (Setpoint(p.x, p.y, p.z, p.yaw)
+                      if self._fresh(p, now) and p.usable()
+                      else self.last_tracking_target or self.hold_target)
+            return self._hold(target, now)
         if self.hold_started is None:
             self.hold_started = now
         if not self.skybeta_compat and not self.wait_for_planner and now > self.hold_started + self.hold_timeout:

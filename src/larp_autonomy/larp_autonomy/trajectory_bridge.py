@@ -82,9 +82,15 @@ def main():
         new_origin=(p.x,p.y,p.z)
         new_heading=math.atan2(2*(q.w*q.z+q.x*q.y),1-2*(q.y*q.y+q.z*q.z))
         if alignment_received:
-            if any(abs(a-b)>1e-6 for a,b in zip(origin,new_origin)) or abs(math.atan2(math.sin(heading-new_heading),math.cos(heading-new_heading)))>1e-6:
+            changed = (any(abs(a-b)>1e-6 for a,b in zip(origin,new_origin)) or
+                       abs(math.atan2(math.sin(heading-new_heading),math.cos(heading-new_heading)))>1e-6)
+            if not changed:return
+            # Executive republishes ground registration after PX4 startup resets.
+            # Never mix an already active flight with a different NED frame.
+            if gate.phase not in (None, 'WAITING', 'TAKEOFF'):
                 gate.fault=True
-            return
+                return
+            state['curve']=None
         origin,heading,alignment_received=new_origin,new_heading,True
     if auto_alignment:
         node.create_subscription(PoseStamped,'/autonomy/map_to_px4',align,

@@ -295,3 +295,35 @@ def test_ground_alignment_waits_without_adopting_armed_start(node):
     node._tick()
     assert node.state_machine.state==State.WAITING
     assert node.ground_alignment.value is None
+
+
+@pytest.mark.parametrize('reset_index', [0, 1, 2])
+def test_disarmed_px4_frame_reset_refreshes_alignment_and_takeoff(node, reset_index):
+    from dataclasses import replace
+    now=monotonic()
+    node.auto_alignment=True
+    node.skybeta_compat=True
+    node.alignment_pub=Publications()
+    node.map_pose=((0.,0.,0.),0.,0.)
+    node.map_pose_at=now
+    c=node.state_machine
+    c.status=Status(now,False,False,True)
+    c.landed=Landed(now,True)
+    c.position=Position(now,1.4,-.2,.04,.01,0.,reset_counters=(1,1,1,1,1))
+    assert node._align_on_ground(now)
+    c.state=State.TAKEOFF
+    c.takeoff=Takeoff(Setpoint(1.4,-.2,.04,.01),1.,now)
+    counters=[1,1,1,1,1];counters[reset_index]+=1
+    c.position=replace(c.position,x=0.,y=0.,z=0.,yaw=0.,reset_counters=tuple(counters))
+    assert node._align_on_ground(now+.01)
+    assert c.state==State.WAITING and c.takeoff is None
+    assert node.ground_alignment.value.origin==(0.,0.,0.)
+    assert len(node.alignment_pub.messages)==2
+    out=c.tick(now+.02)
+    assert (out.setpoint.x,out.setpoint.y,out.setpoint.z)==(0.,0.,0.)
+    # A reset during flight must not silently move the shared ground frame.
+    c.status=replace(c.status,armed=True,offboard=True)
+    c.landed=replace(c.landed,landed=False)
+    c.position=replace(c.position,x=5.,reset_counters=(9,9,9,9,9))
+    assert node._align_on_ground(now+.03)
+    assert len(node.alignment_pub.messages)==2
