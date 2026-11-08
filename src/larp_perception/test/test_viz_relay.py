@@ -45,3 +45,16 @@ def test_colorize_marks_invalid_black_and_near_differs_from_far():
     color = colorize_depth(depth, 0.3, 6.0)
     assert (color[0, 0] == 0).all()
     assert not np.array_equal(color[0, 1], color[0, 2])
+
+
+def test_latched_state_flush_keeps_final_transition_without_republishing():
+    from types import SimpleNamespace
+    from larp_perception.viz_relay import VizRelay
+    sent = []
+    relay = SimpleNamespace(_latched_pending={})
+    publisher = SimpleNamespace(publish=sent.append)
+    relay._latched_pending['/flight_executive/state'] = b'WAITING'
+    relay._latched_pending['/flight_executive/state'] = b'ERROR'
+    VizRelay._flush_latched(relay, '/flight_executive/state', publisher)
+    VizRelay._flush_latched(relay, '/flight_executive/state', publisher)
+    assert sent == [b'ERROR']
