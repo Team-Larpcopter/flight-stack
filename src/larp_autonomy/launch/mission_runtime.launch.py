@@ -40,8 +40,13 @@ def nodes(context):
         config=cfg.get('estimator_config',str(Path(share('larp_localization'))/'config/oak_d_s2/estimator_config.yaml'))
         result=[node('ov_srvins','run_subscribe_msckf',[{'config_path':config,'verbosity':'INFO'}],namespace='autonomy',
                      remappings=[('/sim/processed/vio','/autonomy/processed_vio')]),
-                node('larp_navigation','body_odometry_node',[{k:cfg[k] for k in ('rig_file','initial_position_m','initial_yaw_rad')}],
-                     remappings=[('/odomimu','/autonomy/odomimu'),('/poseimu','/autonomy/poseimu'),*remaps])]
+                node('larp_navigation','body_odometry_node',[{'rig_file':cfg['rig_file'],'world_frame':'vio_odom'}],
+                     remappings=[('/odomimu','/autonomy/odomimu'),('/poseimu','/autonomy/poseimu'),
+                         ('/navigation/odometry','/autonomy/unregistered_odometry'),
+                         ('/navigation/vio_healthy','/autonomy/unregistered_vio_healthy')]),
+                node('larp_autonomy','map_origin',[dict(hardware_enabled=active,
+                     initial_position_m=cfg['initial_position_m'],initial_yaw_rad=cfg['initial_yaw_rad'],
+                     target_system=cfg.get('target_system',1),target_component=cfg.get('target_component',1))])]
         if active: result.append(node('larp_px4_bridge','vins_px4_bridge',[cfg['bridge_params'],
             {'input_topic':'/autonomy/odometry','world_frame':'map','imu_frame':'base_link',
              'imu_to_body_frd_quaternion_wxyz':[0.,1.,0.,0.], 'require_vio_health':True,
@@ -66,7 +71,9 @@ def nodes(context):
             require_hard_boundary=True,static_cad_only=False,route_backend='super_astar',
             flight_envelope_lower=[v+.4 for v in cfg['hard_boundary_lower']],
             flight_envelope_upper=[v-.4 for v in cfg['hard_boundary_upper']])
-        result=[node('larp_navigation','depth_map_node',[params],remappings=remaps)]
+        result=[node('larp_navigation','depth_map_node',[params],remappings=[
+            (source,'/autonomy/map_update_ready' if source=='/navigation/vio_healthy' else target)
+            for source,target in remaps])]
     else:
         params=dict(simulation_only=False,hardware_enabled=active,alignment_verified=cfg['alignment_verified'],
             mission_id=cfg['mission_id'],map_heading_ned=cfg['map_heading_ned'],map_origin_ned=cfg['map_origin_ned'],
