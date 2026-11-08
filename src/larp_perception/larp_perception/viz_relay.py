@@ -38,7 +38,7 @@ import numpy as np
 import rclpy
 from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.node import Node
-from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from nav_msgs.msg import Path
 from rosidl_runtime_py.utilities import get_message
 from sensor_msgs.msg import CompressedImage, Image
@@ -129,6 +129,9 @@ class VizRelay(Node):
         self.path_points = deque(maxlen=int(self.declare_parameter("path_max_points", 1500, number).value))
         self.last = {}
         self._keep = []
+        self._latched_topics = set(self.declare_parameter(
+            "latched_topics", ["/flight_executive/state"], strings).value)
+        self._latched_pending = {}
         self._pending = {}  # throttled topic -> (topic, rate) until its type is known
         for entry in filter(None, throttle):
             topic, _, hz = entry.partition("@")
@@ -155,11 +158,21 @@ class VizRelay(Node):
         for topic, hz in list(self._pending.items()):
             if topic in types:
                 cls = get_message(types[topic][0])
-                out = self.create_publisher(cls, self.prefix + topic, 1)
                 period = 1.0 / hz
-                self._keep.append(self.create_subscription(
-                    cls, topic, lambda raw, t=topic, p=out, dt=period: self._throttle(t, p, raw, dt),
-                    LATEST_ONLY, raw=True))
+                if topic in self._latched_topics:
+                    qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+                    out = self.create_publisher(cls, self.prefix + topic, qos)
+                    self._keep.append(self.create_subscription(
+                        cls, topic, lambda raw, t=topic: self._latched_pending.__setitem__(t, raw),
+                        qos, raw=True))
+                    # Retain the final transition even when several arrive in one period.
+                    self._keep.append(self.create_timer(
+                        period, lambda t=topic, p=out: self._flush_latched(t, p)))
+                else:
+                    out = self.create_publisher(cls, self.prefix + topic, 1)
+                    self._keep.append(self.create_subscription(
+                        cls, topic, lambda raw, t=topic, p=out, dt=period: self._throttle(t, p, raw, dt),
+                        LATEST_ONLY, raw=True))
                 del self._pending[topic]
                 self.get_logger().info(f"{topic} -> {self.prefix + topic} at {hz:g} Hz (raw)")
         if self._path_topic and self._path_pub is None and self._path_topic in types:
@@ -170,6 +183,11 @@ class VizRelay(Node):
             self.get_logger().info(f"{self._path_topic} -> {self.prefix + self._path_topic}/path")
         if self._discovery and not self._pending and (not self._path_topic or self._path_pub is not None):
             self._discovery.cancel()
+
+    def _flush_latched(self, topic, publisher):
+        raw = self._latched_pending.pop(topic, None)
+        if raw is not None:
+            publisher.publish(raw)
 
     def _throttle(self, topic, publisher, raw, period):
         now = self.get_clock().now().nanoseconds * 1e-9
